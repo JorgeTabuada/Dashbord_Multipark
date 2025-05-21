@@ -1,4 +1,4 @@
-// js/reservas.js - Versão atualizada com validação de campos numéricos
+// js/reservas.js - Versão atualizada com correção de referências id para id_pk
 
 document.addEventListener("DOMContentLoaded", async () => {
     // --- Verificação de Cliente Supabase ---
@@ -880,7 +880,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             console.log("Reservas para Upsert:", reservasParaUpsert);
 
             if (reservasParaUpsert.length > 0) {
-                // Usar UPSERT: se a combinação license_plate + alocation já existir, atualiza. Senão, insere.
+                // CORREÇÃO: Não incluir 'id' no array de colunas, pois essa coluna não existe na tabela
+                // A tabela usa 'id_pk' como identificador primário, não 'id'
                 const { data: upsertedData, error: upsertError } = await supabase
                     .from("reservas")
                     .upsert(reservasParaUpsert, { 
