@@ -1,4 +1,4 @@
-// js/reservas.js - Versão atualizada com correção de referências id para id_pk
+// js/reservas.js - Versão atualizada com abordagem alternativa de importação
 
 document.addEventListener("DOMContentLoaded", async () => {
     // --- Verificação de Cliente Supabase ---
@@ -793,6 +793,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
+    // NOVA ABORDAGEM: Processamento individual de reservas para evitar problemas com 'id'
     async function processarDadosImportacao(jsonData) {
         try {
             // Obter usuário atual
@@ -832,7 +833,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "booking_price", "parking_price", "delivery_price", "total_price"
             ];
             
-            const reservasParaUpsert = jsonData.map(row => {
+            // Preparar dados para importação
+            const reservasParaImportar = jsonData.map(row => {
                 const reservaSupabase = {};
                 
                 // Mapear colunas do Excel para colunas do Supabase
@@ -877,33 +879,74 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return reservaSupabase;
             }).filter(Boolean); // Remover nulos (reservas ignoradas)
 
-            console.log("Reservas para Upsert:", reservasParaUpsert);
+            console.log("Reservas para importar:", reservasParaImportar);
 
-            if (reservasParaUpsert.length > 0) {
-                // CORREÇÃO: Não incluir 'id' no array de colunas, pois essa coluna não existe na tabela
-                // A tabela usa 'id_pk' como identificador primário, não 'id'
-                const { data: upsertedData, error: upsertError } = await supabase
-                    .from("reservas")
-                    .upsert(reservasParaUpsert, { 
-                        onConflict: 'license_plate,alocation', // Colunas para verificar conflito
-                        returning: "minimal" // Não precisamos dos dados de retorno
-                    });
-                
-                if (upsertError) throw upsertError;
-                
-                // Atualizar status
-                if (importacaoStatusEl) {
-                    importacaoStatusEl.textContent = `Importação concluída com sucesso! ${reservasParaUpsert.length} reservas processadas.`;
-                    importacaoStatusEl.classList.remove("text-red-500");
-                    importacaoStatusEl.classList.add("text-green-500");
-                }
-                
-                // Recarregar lista de reservas
-                carregarReservasDaLista(1, obterFiltrosAtivos());
-                
-            } else {
+            if (reservasParaImportar.length === 0) {
                 throw new Error("Nenhuma reserva válida encontrada no ficheiro.");
             }
+
+            // Contador de operações bem-sucedidas
+            let sucessos = 0;
+            let erros = 0;
+            
+            // Processar cada reserva individualmente para evitar problemas com 'id'
+            for (const reserva of reservasParaImportar) {
+                try {
+                    // Verificar se a reserva já existe (usando license_plate e alocation como chaves)
+                    const { data: reservasExistentes, error: selectError } = await supabase
+                        .from("reservas")
+                        .select("id_pk")
+                        .eq("license_plate", reserva.license_plate)
+                        .eq("alocation", reserva.alocation)
+                        .limit(1);
+                    
+                    if (selectError) throw selectError;
+                    
+                    let resultado;
+                    
+                    // Se a reserva já existe, atualizar
+                    if (reservasExistentes && reservasExistentes.length > 0) {
+                        const id_pk = reservasExistentes[0].id_pk;
+                        const { data: updateData, error: updateError } = await supabase
+                            .from("reservas")
+                            .update(reserva)
+                            .eq("id_pk", id_pk);
+                        
+                        if (updateError) throw updateError;
+                        resultado = updateData;
+                    } 
+                    // Se a reserva não existe, inserir
+                    else {
+                        const { data: insertData, error: insertError } = await supabase
+                            .from("reservas")
+                            .insert(reserva);
+                        
+                        if (insertError) throw insertError;
+                        resultado = insertData;
+                    }
+                    
+                    sucessos++;
+                } catch (error) {
+                    console.error(`Erro ao processar reserva ${reserva.license_plate}:`, error);
+                    erros++;
+                }
+            }
+            
+            // Atualizar status
+            if (importacaoStatusEl) {
+                if (erros === 0) {
+                    importacaoStatusEl.textContent = `Importação concluída com sucesso! ${sucessos} reservas processadas.`;
+                    importacaoStatusEl.classList.remove("text-red-500");
+                    importacaoStatusEl.classList.add("text-green-500");
+                } else {
+                    importacaoStatusEl.textContent = `Importação parcial: ${sucessos} reservas importadas, ${erros} com erro.`;
+                    importacaoStatusEl.classList.remove("text-green-500");
+                    importacaoStatusEl.classList.add("text-yellow-500");
+                }
+            }
+            
+            // Recarregar lista de reservas
+            carregarReservasDaLista(1, obterFiltrosAtivos());
             
         } catch (error) {
             console.error("Erro ao processar dados de importação:", error);
