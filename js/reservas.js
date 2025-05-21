@@ -1,65 +1,16 @@
-// Função para normalizar matrículas (adaptada para formato internacional sem hífens)
-function normalizarMatricula(matricula) {
-    if (!matricula) return "";
-    
-    // Remove espaços, hífens e converte para maiúsculas
-    let normalizada = matricula.toString().toUpperCase().replace(/[\s\-]/g, "");
-    
-    // Não adiciona hífens, mantém apenas o formato limpo para compatibilidade internacional
-    return normalizada;
-}
-
-// Função local para calcular reservas por hora em um dia específico
-async function carregarReservasPorHora(data) {
-    try {
-        // Formato da data: YYYY-MM-DD
-        const dataInicio = `${data}T00:00:00`;
-        const dataFim = `${data}T23:59:59.999Z`;
-        
-        // Buscar todas as reservas do dia
-        const { data: reservas, error } = await supabase
-            .from('reservas')
-            .select('*')
-            .gte('check_in_datetime', dataInicio)
-            .lte('check_in_datetime', dataFim);
-            
-        if (error) throw error;
-        
-        // Agrupar por hora
-        const reservasPorHora = Array(24).fill(0);
-        
-        if (reservas && reservas.length > 0) {
-            reservas.forEach(reserva => {
-                if (reserva.check_in_datetime) {
-                    const hora = new Date(reserva.check_in_datetime).getHours();
-                    reservasPorHora[hora]++;
-                }
-            });
-        }
-        
-        return {
-            labels: Array.from({length: 24}, (_, i) => `${i}:00`),
-            data: reservasPorHora
-        };
-    } catch (error) {
-        console.error("Erro ao carregar reservas por hora:", error);
-        return { labels: [], data: [] };
-    }
-}
+// js/reservas.js - Lógica para a Subaplicação de Gestão de Reservas
 
 document.addEventListener("DOMContentLoaded", async () => {
     // --- Verificação de Cliente Supabase ---
     if (typeof window.getSupabaseClient !== 'function') {
-        console.error("ERRO CRÍTICO: getSupabaseClient não está definido. Verifique a inicialização no HTML.");
+        console.error("ERRO CRÍTICO (reservas.js): getSupabaseClient não está definido.");
         alert("Erro crítico na configuração da aplicação (Reservas). Contacte o suporte.");
-        document.querySelectorAll('.action-button').forEach(btn => btn.disabled = true);
         return;
     }
     const supabase = window.getSupabaseClient();
     if (!supabase) {
-        console.error("ERRO CRÍTICO: Cliente Supabase não disponível (Reservas).");
+        console.error("ERRO CRÍTICO (reservas.js): Cliente Supabase não disponível.");
         alert("Erro crítico ao conectar com o sistema (Reservas). Contacte o suporte.");
-        document.querySelectorAll('.action-button').forEach(btn => btn.disabled = true);
         return;
     }
 
@@ -90,587 +41,636 @@ document.addEventListener("DOMContentLoaded", async () => {
     const chartReservasMensalEl = document.getElementById("chartReservasMensal");
     const statReservasHoraConteudoEl = document.getElementById("statReservasHoraConteudo");
 
-
     const resSearchTermEl = document.getElementById("resSearchTerm");
     const resSearchBtnEl = document.getElementById("resSearchBtn");
 
     const resAbrirModalNovaBtnEl = document.getElementById("resAbrirModalNovaBtn");
     const resExportarBtnEl = document.getElementById("resExportarBtn");
-    const resAplicarFiltrosListaBtnEl = document.getElementById("resAplicarFiltrosListaBtn");
+
     const resFiltroClienteListaEl = document.getElementById("resFiltroClienteLista");
     const resFiltroMatriculaListaEl = document.getElementById("resFiltroMatriculaLista");
-    const resFiltroDataEntradaListaEl = document.getElementById("resFiltroDataEntradaLista");
-    const resFiltroEstadoListaEl = document.getElementById("resFiltroEstadoLista");
+    const resFiltroDataEntradaListaEl = document.getElementById("resFiltroDataEntradaLista"); // Usado para filtrar por check_in_previsto
+    const resFiltroEstadoListaEl = document.getElementById("resFiltroEstadoLista"); // Usado para filtrar por estado_reserva_atual
+    const resAplicarFiltrosListaBtnEl = document.getElementById("resAplicarFiltrosListaBtn");
     const reservasTableBodyEl = document.getElementById("reservasTableBody");
     const reservasNenhumaMsgEl = document.getElementById("reservasNenhumaMsg");
-    const reservasTotalCountEl = document.getElementById("reservasTotalCount");
     const reservasPaginacaoEl = document.getElementById("reservasPaginacao");
-    const loadingTableSpinnerEl = document.getElementById("loadingTableSpinner");
+    const loadingTableSpinnerEl = document.getElementById("loadingTableSpinner"); 
 
     const reservaFormModalEl = document.getElementById("reservaFormModal");
     const reservaFormModalTitleEl = document.getElementById("reservaFormModalTitle");
     const reservaFormEl = document.getElementById("reservaForm");
-    const reservaFormIdEl = document.getElementById("reservaFormId");
-    const reservaFormBookingIdEl = document.getElementById("reservaFormBookingId");
-    const reservaFormDataReservaEl = document.getElementById("reservaFormDataReserva");
-    const reservaFormNomeClienteEl = document.getElementById("reservaFormNomeCliente");
-    const reservaFormEmailClienteEl = document.getElementById("reservaFormEmailCliente");
-    const reservaFormTelefoneClienteEl = document.getElementById("reservaFormTelefoneCliente");
-    const reservaFormMatriculaEl = document.getElementById("reservaFormMatricula");
-    const reservaFormAlocationEl = document.getElementById("reservaFormAlocation");
-    const reservaFormDataEntradaEl = document.getElementById("reservaFormDataEntrada");
-    const reservaFormDataSaidaEl = document.getElementById("reservaFormDataSaida");
-    const reservaFormParqueEl = document.getElementById("reservaFormParque");
-    const reservaFormCampanhaEl = document.getElementById("reservaFormCampanha");
-    const reservaFormValorEl = document.getElementById("reservaFormValor");
-    const reservaFormEstadoEl = document.getElementById("reservaFormEstado");
-    const reservaFormObservacoesEl = document.getElementById("reservaFormObservacoes");
-    const reservaFormSubmitBtnEl = document.getElementById("reservaFormSubmitBtn");
-    const resFecharModalBtnEls = document.querySelectorAll(".resFecharModalBtn");
-
+    const reservaFormIdEl = document.getElementById("reservaFormId"); // Este ID no form HTML será usado para o id_pk da reserva
+    const resFecharModalBtns = document.querySelectorAll(".resFecharModalBtn");
+    
     const reservaLogModalEl = document.getElementById("reservaLogModal");
     const logReservaBookingIdEl = document.getElementById("logReservaBookingId");
     const reservaLogTableBodyEl = document.getElementById("reservaLogTableBody");
     const reservaLogNenhumaMsgEl = document.getElementById("reservaLogNenhumaMsg");
-    const resFecharLogModalBtnEls = document.querySelectorAll(".resFecharLogModalBtn");
+    const resFecharLogModalBtns = document.querySelectorAll(".resFecharLogModalBtn");
 
     const voltarDashboardBtnReservasEl = document.getElementById("voltarDashboardBtnReservas");
-
-    // --- Variáveis de Estado ---
-    let reservasData = [];
-    let filtrosAtivos = {
-        termo: "",
-        cliente: "",
-        matricula: "",
-        dataEntrada: "",
-        estado: ""
+    
+    // Mapeamento de IDs de campos do formulário HTML para as colunas da BD Supabase
+    const formHtmlIdsToSupabaseMap = {
+        reservaFormBookingId: "booking_id",       // O campo no HTML com ID "reservaFormBookingId" mapeia para a coluna "booking_id"
+        reservaFormDataReserva: "booking_date",
+        reservaFormNomeCliente: "name_cliente",   // Assumindo que o HTML tem um campo para nome completo
+        // Se o HTML tiver campos separados para nome e apelido, eles precisarão ser combinados antes de enviar para 'name_cliente' e 'lastname_cliente'
+        reservaFormEmailCliente: "email_cliente",
+        reservaFormTelefoneCliente: "phone_number_cliente",
+        reservaFormMatricula: "license_plate",
+        reservaFormAlocation: "alocation",
+        reservaFormDataEntrada: "check_in_previsto",
+        reservaFormDataSaida: "check_out_previsto",
+        reservaFormParque: "parque_id",           // O valor deste select no HTML deve ser o id_pk do parque
+        reservaFormCampanha: "campaign_id_aplicada",
+        reservaFormValor: "total_price",          // Ou booking_price? Clarificar qual preço este campo representa. Usando total_price por agora.
+        reservaFormEstado: "estado_reserva_atual",
+        reservaFormObservacoes: "remarks_cliente"
+        // Adicionar outros IDs de campos do formulário HTML e suas colunas Supabase correspondentes aqui
     };
-    let paginaAtual = 1;
-    const itensPorPagina = 10;
-    let reservaEmEdicao = null;
-    let chartReservasPorHora = null;
-    let chartReservasMensal = null;
-    let dataHoraAtual = null;
 
-    // --- Inicialização ---
-    async function initReservasPage() {
+    let todasAsReservasGeral = []; 
+    let paginaAtualLista = 1;
+    const itensPorPaginaLista = 15;
+    let totalReservasNaBD = 0;
+    let graficoReservasHora, graficoReservasMensal;
+
+    // --- Funções Utilitárias ---
+    function formatarDataHora(dataISO) {
+        if (!dataISO) return "N/A";
+        try { return new Date(dataISO).toLocaleString("pt-PT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); } 
+        catch (e) { return dataISO; }
+    }
+    function formatarDataParaInput(dataISO) {
+        if (!dataISO) return "";
         try {
-            // Verificar autenticação
-            await window.checkAuthStatus();
+            const d = new Date(dataISO);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        } catch (e) { return ""; }
+    }
+    function formatarMoeda(valor) {
+        if (valor === null || valor === undefined || isNaN(parseFloat(valor))) return "0,00 €";
+        return parseFloat(valor).toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
+    }
+    function mostrarSpinner(elementId) { const el = document.getElementById(elementId); if (el) el.classList.remove("hidden"); }
+    function esconderSpinner(elementId) { const el = document.getElementById(elementId); if (el) el.classList.add("hidden"); }
+    function normalizarMatricula(matricula) {
+        if (!matricula) return null;
+        return String(matricula).replace(/[\s\-\.]/g, '').toUpperCase();
+    }
+
+    // --- Lógica de Carregamento de Reservas (READ) ---
+    async function carregarReservasDaLista(pagina = 1, filtros = {}) {
+        if (!reservasTableBodyEl) return;
+        mostrarSpinner("loadingTableSpinner"); 
+        reservasTableBodyEl.innerHTML = ""; 
+        if(reservasNenhumaMsgEl) reservasNenhumaMsgEl.classList.add("hidden");
+
+        const rangeFrom = (pagina - 1) * itensPorPaginaLista;
+        const rangeTo = rangeFrom + itensPorPaginaLista - 1;
+
+        let query = supabase.from("reservas").select("*, parque_info:parque_id (nome_parque)", { count: "exact" });
+
+        if (filtros.searchTerm) {
+            query = query.or(`name_cliente.ilike.%${filtros.searchTerm}%,license_plate.ilike.%${filtros.searchTerm}%,booking_id.ilike.%${filtros.searchTerm}%,alocation.ilike.%${filtros.searchTerm}%`);
+        }
+        if (filtros.estado_reserva_atual && filtros.estado_reserva_atual !== "" && filtros.estado_reserva_atual !== "Todos") {
+            query = query.eq("estado_reserva_atual", filtros.estado_reserva_atual);
+        }
+        if (filtros.check_in_previsto) { 
+            query = query.gte("check_in_previsto", filtros.check_in_previsto + "T00:00:00");
+        }
+        if (filtros.cliente) { 
+            query = query.ilike("name_cliente", `%${filtros.cliente}%`); // Assumindo que name_cliente é o campo principal para nome
+        }
+        if (filtros.matricula) { 
+             query = query.ilike("license_plate", `%${filtros.matricula}%`);
+        }
+        
+        let orderByColumn = "booking_date"; 
+        let { data, error, count } = await query.order(orderByColumn, { ascending: false }).range(rangeFrom, rangeTo);
             
-            // Obter usuário atual
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-            if (userError) throw userError;
+        if (error && error.message && error.message.includes(`column "reservas.${orderByColumn}" does not exist`)) {
+            console.warn(`Coluna de ordenação '${orderByColumn}' não encontrada. Tentando ordenar por 'created_at_db'.`);
+            orderByColumn = "created_at_db"; 
+            query = supabase.from("reservas").select("*, parque_info:parque_id (nome_parque)", { count: "exact" }); // Recriar query base
+            if (filtros.searchTerm) query = query.or(`name_cliente.ilike.%${filtros.searchTerm}%,license_plate.ilike.%${filtros.searchTerm}%,booking_id.ilike.%${filtros.searchTerm}%,alocation.ilike.%${filtros.searchTerm}%`);
+            if (filtros.estado_reserva_atual && filtros.estado_reserva_atual !== "" && filtros.estado_reserva_atual !== "Todos") query = query.eq("estado_reserva_atual", filtros.estado_reserva_atual);
+            if (filtros.check_in_previsto) query = query.gte("check_in_previsto", filtros.check_in_previsto + "T00:00:00");
+            if (filtros.cliente) query = query.ilike("name_cliente", `%${filtros.cliente}%`);
+            if (filtros.matricula) query = query.ilike("license_plate", `%${filtros.matricula}%`);
             
-            if (!user) {
-                console.error("Usuário não autenticado.");
-                return;
+            const fallbackResult1 = await query.order(orderByColumn, { ascending: false }).range(rangeFrom, rangeTo);
+            data = fallbackResult1.data; error = fallbackResult1.error; count = fallbackResult1.count;
+
+            if (error && error.message && error.message.includes(`column "reservas.${orderByColumn}" does not exist`)) {
+                console.warn(`Coluna de ordenação '${orderByColumn}' não encontrada. Tentando ordenar por 'id_pk'.`);
+                orderByColumn = "id_pk";
+                query = supabase.from("reservas").select("*, parque_info:parque_id (nome_parque)", { count: "exact" }); // Recriar query base
+                if (filtros.searchTerm) query = query.or(`name_cliente.ilike.%${filtros.searchTerm}%,license_plate.ilike.%${filtros.searchTerm}%,booking_id.ilike.%${filtros.searchTerm}%,alocation.ilike.%${filtros.searchTerm}%`);
+                if (filtros.estado_reserva_atual && filtros.estado_reserva_atual !== "" && filtros.estado_reserva_atual !== "Todos") query = query.eq("estado_reserva_atual", filtros.estado_reserva_atual);
+                if (filtros.check_in_previsto) query = query.gte("check_in_previsto", filtros.check_in_previsto + "T00:00:00");
+                if (filtros.cliente) query = query.ilike("name_cliente", `%${filtros.cliente}%`);
+                if (filtros.matricula) query = query.ilike("license_plate", `%${filtros.matricula}%`);
+
+                const fallbackResult2 = await query.order(orderByColumn, { ascending: false }).range(rangeFrom, rangeTo);
+                data = fallbackResult2.data; error = fallbackResult2.error; count = fallbackResult2.count;
             }
-            
-            currentUser = user;
-            
-            // Obter perfil do usuário
-            const userProfileStr = localStorage.getItem('userProfile');
-            if (userProfileStr) {
-                try {
-                    userProfile = JSON.parse(userProfileStr);
-                } catch (e) {
-                    console.error("Erro ao parsear perfil do usuário:", e);
+        }
+        try {
+            if (error) throw error; 
+
+            todasAsReservasGeral = data; 
+            totalReservasNaBD = count;    
+
+            if (data && data.length > 0) {
+                data.forEach(reserva => {
+                    const tr = document.createElement("tr");
+                    tr.className = "border-b hover:bg-gray-50";
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 text-xs">${reserva.booking_id || "N/A"}</td>
+                        <td class="py-3 px-4 text-xs">${formatarDataHora(reserva.booking_date)}</td>
+                        <td class="py-3 px-4 text-xs">${(reserva.name_cliente || '') + ' ' + (reserva.lastname_cliente || '') || "N/A"}</td>
+                        <td class="py-3 px-4 text-xs">${reserva.license_plate || "N/A"}</td>
+                        <td class="py-3 px-4 text-xs">${reserva.alocation || "N/A"}</td>
+                        <td class="py-3 px-4 text-xs">${formatarDataHora(reserva.check_in_previsto)}</td>
+                        <td class="py-3 px-4 text-xs">${formatarDataHora(reserva.check_out_previsto)}</td>
+                        <td class="py-3 px-4 text-xs">${reserva.parque_info?.nome_parque || reserva.parque_id || "N/A"}</td>
+                        <td class="py-3 px-4 text-xs text-right">${formatarMoeda(reserva.total_price)}</td>
+                        <td class="py-3 px-4 text-xs"><span class="px-2 py-1 text-xs font-semibold rounded-full ${getEstadoClass(reserva.estado_reserva_atual)}">${reserva.estado_reserva_atual || "N/A"}</span></td>
+                        <td class="py-3 px-4 text-xs">
+                            <button class="text-blue-600 hover:text-blue-800 editar-reserva-btn" data-id="${reserva.id_pk}">Editar</button>
+                            <button class="text-red-600 hover:text-red-800 apagar-reserva-btn ml-2" data-id="${reserva.id_pk}">Apagar</button>
+                            <button class="text-gray-600 hover:text-gray-800 log-reserva-btn ml-2" data-booking-id="${reserva.booking_id || reserva.id_pk}" data-reserva-pk="${reserva.id_pk}">Hist.</button>
+                        </td>
+                    `;
+                    reservasTableBodyEl.appendChild(tr);
+                });
+                configurarBotoesAcao();
+            } else {
+                if(reservasNenhumaMsgEl) {
+                    reservasNenhumaMsgEl.textContent = "Nenhuma reserva encontrada com os filtros atuais.";
+                    reservasNenhumaMsgEl.classList.remove("hidden");
                 }
             }
-            
-            // Inicializar componentes
-            initDatePickers();
-            configurarEventos();
-            carregarParques();
-            
-            // Carregar dados iniciais
-            await carregarDashboard();
-            await carregarReservas();
-            
+            atualizarPaginacaoLista(pagina, totalReservasNaBD); 
+            atualizarDashboardStatsGeral(); 
         } catch (error) {
-            console.error("Erro ao inicializar página de reservas:", error);
-        }
-    }
-
-    // --- Inicialização de Componentes ---
-    function initDatePickers() {
-        // Inicializar datepickers com flatpickr
-        if (typeof flatpickr === 'function') {
-            // Configuração para datas simples
-            const configData = {
-                dateFormat: "Y-m-d",
-                locale: "pt",
-                allowInput: true
-            };
-            
-            // Configuração para data e hora
-            const configDataHora = {
-                dateFormat: "Y-m-d H:i",
-                enableTime: true,
-                time_24hr: true,
-                locale: "pt",
-                allowInput: true
-            };
-            
-            // Aplicar aos elementos
-            if (resDashboardFiltroDataInicioEl) flatpickr(resDashboardFiltroDataInicioEl, configData);
-            if (resDashboardFiltroDataFimEl) flatpickr(resDashboardFiltroDataFimEl, configData);
-            if (resFiltroDataEntradaListaEl) flatpickr(resFiltroDataEntradaListaEl, configData);
-            if (resDashboardDataHoraInputEl) flatpickr(resDashboardDataHoraInputEl, configData);
-            
-            // Datepickers do formulário
-            if (reservaFormDataReservaEl) flatpickr(reservaFormDataReservaEl, configDataHora);
-            if (reservaFormDataEntradaEl) flatpickr(reservaFormDataEntradaEl, configDataHora);
-            if (reservaFormDataSaidaEl) flatpickr(reservaFormDataSaidaEl, configDataHora);
-        } else {
-            console.warn("Flatpickr não disponível. Os seletores de data usarão o padrão do navegador.");
-        }
-    }
-
-    function configurarEventos() {
-        // Eventos de Dashboard
-        if (resAplicarFiltrosDashboardBtnEl) {
-            resAplicarFiltrosDashboardBtnEl.addEventListener("click", carregarDashboard);
-        }
-        
-        if (resDashboardFiltroPeriodoEl) {
-            resDashboardFiltroPeriodoEl.addEventListener("change", atualizarFiltrosPeriodo);
-        }
-        
-        if (resDashboardDataHoraInputEl) {
-            resDashboardDataHoraInputEl.addEventListener("change", async (e) => {
-                const data = e.target.value;
-                if (data) {
-                    dataHoraAtual = data;
-                    resDashboardDataHoraDisplayEl.textContent = formatarData(data);
-                    await atualizarGraficoReservasPorHora(data);
-                }
-            });
-        }
-        
-        // Eventos de Pesquisa e Filtros
-        if (resSearchBtnEl) {
-            resSearchBtnEl.addEventListener("click", () => {
-                filtrosAtivos.termo = resSearchTermEl.value.trim();
-                paginaAtual = 1;
-                carregarReservas();
-            });
-        }
-        
-        if (resSearchTermEl) {
-            resSearchTermEl.addEventListener("keypress", (e) => {
-                if (e.key === "Enter") {
-                    filtrosAtivos.termo = resSearchTermEl.value.trim();
-                    paginaAtual = 1;
-                    carregarReservas();
-                }
-            });
-        }
-        
-        if (resAplicarFiltrosListaBtnEl) {
-            resAplicarFiltrosListaBtnEl.addEventListener("click", () => {
-                filtrosAtivos.cliente = resFiltroClienteListaEl.value.trim();
-                filtrosAtivos.matricula = resFiltroMatriculaListaEl.value.trim();
-                filtrosAtivos.dataEntrada = resFiltroDataEntradaListaEl.value;
-                filtrosAtivos.estado = resFiltroEstadoListaEl.value;
-                paginaAtual = 1;
-                carregarReservas();
-            });
-        }
-        
-        // Eventos de Formulário
-        if (resAbrirModalNovaBtnEl) {
-            resAbrirModalNovaBtnEl.addEventListener("click", abrirModalNovaReserva);
-        }
-        
-        if (reservaFormEl) {
-            reservaFormEl.addEventListener("submit", (e) => {
-                e.preventDefault();
-                salvarReserva();
-            });
-        }
-        
-        if (resFecharModalBtnEls) {
-            resFecharModalBtnEls.forEach(btn => {
-                btn.addEventListener("click", () => {
-                    reservaFormModalEl.classList.remove("active");
-                });
-            });
-        }
-        
-        if (resFecharLogModalBtnEls) {
-            resFecharLogModalBtnEls.forEach(btn => {
-                btn.addEventListener("click", () => {
-                    reservaLogModalEl.classList.remove("active");
-                });
-            });
-        }
-        
-        // Eventos de Importação
-        if (resProcessarImportacaoBtnEl) {
-            resProcessarImportacaoBtnEl.addEventListener("click", processarImportacao);
-        }
-        
-        // Eventos de Exportação
-        if (resExportarBtnEl) {
-            resExportarBtnEl.addEventListener("click", exportarReservas);
-        }
-        
-        // Evento de Voltar ao Dashboard
-        if (voltarDashboardBtnReservasEl) {
-            voltarDashboardBtnReservasEl.addEventListener("click", () => {
-                window.location.href = "index.html";
-            });
-        }
-    }
-
-    async function carregarParques() {
-        try {
-            const { data: parques, error } = await supabase
-                .from('parques')
-                .select('id, nome')
-                .order('nome');
-                
-            if (error) throw error;
-            
-            if (parques && parques.length > 0 && reservaFormParqueEl) {
-                // Limpar opções existentes, exceto a primeira
-                while (reservaFormParqueEl.options.length > 1) {
-                    reservaFormParqueEl.remove(1);
-                }
-                
-                // Adicionar novas opções
-                parques.forEach(parque => {
-                    const option = document.createElement('option');
-                    option.value = parque.id;
-                    option.textContent = parque.nome;
-                    reservaFormParqueEl.appendChild(option);
-                });
+            console.error("Erro ao carregar reservas:", error);
+            if(reservasNenhumaMsgEl) {
+                reservasNenhumaMsgEl.textContent = `Erro ao carregar dados: ${error.message}. Verifique a consola.`;
+                reservasNenhumaMsgEl.classList.remove("hidden");
             }
-        } catch (error) {
-            console.error("Erro ao carregar parques:", error);
+        } finally {
+            esconderSpinner("loadingTableSpinner");
+        }
+    }
+    
+    function getEstadoClass(estado) {
+        if (!estado) return 'bg-gray-100 text-gray-700';
+        switch (String(estado).toLowerCase()) {
+            case 'confirmada': return 'bg-green-100 text-green-700';
+            case 'pendente': return 'bg-yellow-100 text-yellow-700';
+            case 'cancelada': return 'bg-red-100 text-red-700';
+            case 'concluída': case 'validadafinanceiramente': return 'bg-blue-100 text-blue-700';
+            case 'em curso': return 'bg-indigo-100 text-indigo-700';
+            default: return 'bg-gray-100 text-gray-700';
         }
     }
 
-    // --- Funções de Dashboard ---
-    async function carregarDashboard() {
+    function atualizarPaginacaoLista(paginaCorrente, totalItens) {
+        if (!reservasPaginacaoEl) return;
+        
+        const totalPaginas = Math.ceil(totalItens / itensPorPaginaLista);
+        reservasPaginacaoEl.innerHTML = "";
+        
+        if (totalPaginas <= 1) return;
+        
+        // Botão Anterior
+        const btnAnterior = document.createElement("button");
+        btnAnterior.className = `px-3 py-1 rounded ${paginaCorrente === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`;
+        btnAnterior.textContent = "Anterior";
+        btnAnterior.disabled = paginaCorrente === 1;
+        btnAnterior.addEventListener("click", () => {
+            if (paginaCorrente > 1) {
+                paginaAtualLista = paginaCorrente - 1;
+                carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+            }
+        });
+        reservasPaginacaoEl.appendChild(btnAnterior);
+        
+        // Números de Página
+        const maxPaginasVisiveis = 5;
+        let startPage = Math.max(1, paginaCorrente - Math.floor(maxPaginasVisiveis / 2));
+        let endPage = Math.min(totalPaginas, startPage + maxPaginasVisiveis - 1);
+        
+        if (endPage - startPage + 1 < maxPaginasVisiveis) {
+            startPage = Math.max(1, endPage - maxPaginasVisiveis + 1);
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const btnPagina = document.createElement("button");
+            btnPagina.className = `px-3 py-1 mx-1 rounded ${i === paginaCorrente ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`;
+            btnPagina.textContent = i;
+            btnPagina.addEventListener("click", () => {
+                if (i !== paginaCorrente) {
+                    paginaAtualLista = i;
+                    carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+                }
+            });
+            reservasPaginacaoEl.appendChild(btnPagina);
+        }
+        
+        // Botão Próximo
+        const btnProximo = document.createElement("button");
+        btnProximo.className = `px-3 py-1 rounded ${paginaCorrente === totalPaginas ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`;
+        btnProximo.textContent = "Próximo";
+        btnProximo.disabled = paginaCorrente === totalPaginas;
+        btnProximo.addEventListener("click", () => {
+            if (paginaCorrente < totalPaginas) {
+                paginaAtualLista = paginaCorrente + 1;
+                carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+            }
+        });
+        reservasPaginacaoEl.appendChild(btnProximo);
+    }
+    
+    function obterFiltrosAtivos() {
+        const filtros = {};
+        
+        if (resSearchTermEl && resSearchTermEl.value) {
+            filtros.searchTerm = resSearchTermEl.value.trim();
+        }
+        
+        if (resFiltroClienteListaEl && resFiltroClienteListaEl.value) {
+            filtros.cliente = resFiltroClienteListaEl.value.trim();
+        }
+        
+        if (resFiltroMatriculaListaEl && resFiltroMatriculaListaEl.value) {
+            filtros.matricula = resFiltroMatriculaListaEl.value.trim();
+        }
+        
+        if (resFiltroDataEntradaListaEl && resFiltroDataEntradaListaEl.value) {
+            filtros.check_in_previsto = resFiltroDataEntradaListaEl.value;
+        }
+        
+        if (resFiltroEstadoListaEl && resFiltroEstadoListaEl.value) {
+            filtros.estado_reserva_atual = resFiltroEstadoListaEl.value;
+        }
+        
+        return filtros;
+    }
+
+    // --- Lógica de Dashboard e Estatísticas ---
+    async function atualizarDashboardStatsGeral() {
         try {
-            const { inicio, fim } = obterPeriodoFiltro();
+            // Obter datas de filtro
+            const dataInicio = resDashboardFiltroDataInicioEl ? resDashboardFiltroDataInicioEl.value : null;
+            const dataFim = resDashboardFiltroDataFimEl ? resDashboardFiltroDataFimEl.value : null;
             
-            // Mostrar período selecionado
-            if (inicio && fim) {
-                const periodoTexto = `${formatarData(inicio)} a ${formatarData(fim)}`;
-                if (statTotalReservasPeriodoEl) statTotalReservasPeriodoEl.textContent = periodoTexto;
-                if (statValorTotalReservasPeriodoEl) statValorTotalReservasPeriodoEl.textContent = periodoTexto;
+            if (!dataInicio || !dataFim) return;
+            
+            const dataInicioISO = `${dataInicio}T00:00:00`;
+            const dataFimISO = `${dataFim}T23:59:59.999Z`;
+            
+            // Atualizar período exibido
+            if (statTotalReservasPeriodoEl) {
+                statTotalReservasPeriodoEl.textContent = `${formatarDataHora(dataInicioISO).split(' ')[0]} a ${formatarDataHora(dataFimISO).split(' ')[0]}`;
+            }
+            if (statValorTotalReservasPeriodoEl) {
+                statValorTotalReservasPeriodoEl.textContent = `${formatarDataHora(dataInicioISO).split(' ')[0]} a ${formatarDataHora(dataFimISO).split(' ')[0]}`;
             }
             
             // Carregar estatísticas
             await Promise.all([
-                carregarTotalReservas(inicio, fim),
-                carregarValorTotalReservas(inicio, fim),
-                carregarReservasPorCampanha(inicio, fim),
-                carregarReservasPorDiaSemana(inicio, fim),
-                carregarGraficoMensal(inicio, fim)
+                carregarTotalReservas(dataInicioISO, dataFimISO),
+                carregarValorTotalReservas(dataInicioISO, dataFimISO),
+                carregarReservasPorCampanha(dataInicioISO, dataFimISO),
+                carregarReservasPorDiaSemana(dataInicioISO, dataFimISO),
+                carregarGraficoMensal(dataInicioISO, dataFimISO)
             ]);
             
-            // Inicializar gráfico por hora com a data atual se não estiver definida
-            if (!dataHoraAtual) {
-                const hoje = new Date().toISOString().split('T')[0];
-                dataHoraAtual = hoje;
-                if (resDashboardDataHoraInputEl) resDashboardDataHoraInputEl.value = hoje;
-                if (resDashboardDataHoraDisplayEl) resDashboardDataHoraDisplayEl.textContent = formatarData(hoje);
-                await atualizarGraficoReservasPorHora(hoje);
-            }
-            
         } catch (error) {
-            console.error("Erro ao carregar dashboard:", error);
+            console.error("Erro ao atualizar dashboard:", error);
         }
     }
-
-    function obterPeriodoFiltro() {
-        let inicio = null;
-        let fim = null;
-        
-        const periodoSelecionado = resDashboardFiltroPeriodoEl ? resDashboardFiltroPeriodoEl.value : 'mes_atual';
-        
-        if (periodoSelecionado === 'personalizado') {
-            inicio = resDashboardFiltroDataInicioEl ? resDashboardFiltroDataInicioEl.value : null;
-            fim = resDashboardFiltroDataFimEl ? resDashboardFiltroDataFimEl.value : null;
-        } else {
-            const { dataInicio, dataFim } = calcularPeriodo(periodoSelecionado);
-            inicio = dataInicio;
-            fim = dataFim;
-            
-            // Atualizar campos de data
-            if (resDashboardFiltroDataInicioEl) resDashboardFiltroDataInicioEl.value = dataInicio;
-            if (resDashboardFiltroDataFimEl) resDashboardFiltroDataFimEl.value = dataFim;
-        }
-        
-        return { inicio, fim };
-    }
-
-    function calcularPeriodo(periodo) {
-        const hoje = new Date();
-        let dataInicio, dataFim;
-        
-        switch (periodo) {
-            case 'hoje':
-                dataInicio = hoje.toISOString().split('T')[0];
-                dataFim = dataInicio;
-                break;
-                
-            case 'semana_atual':
-                const primeiroDiaSemana = new Date(hoje);
-                primeiroDiaSemana.setDate(hoje.getDate() - hoje.getDay()); // Domingo
-                dataInicio = primeiroDiaSemana.toISOString().split('T')[0];
-                
-                const ultimoDiaSemana = new Date(primeiroDiaSemana);
-                ultimoDiaSemana.setDate(primeiroDiaSemana.getDate() + 6); // Sábado
-                dataFim = ultimoDiaSemana.toISOString().split('T')[0];
-                break;
-                
-            case 'mes_atual':
-                dataInicio = `${hoje.getFullYear()}-${(hoje.getMonth() + 1).toString().padStart(2, '0')}-01`;
-                
-                const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-                dataFim = ultimoDiaMes.toISOString().split('T')[0];
-                break;
-                
-            case 'ultimos_30dias':
-                const trintaDiasAtras = new Date(hoje);
-                trintaDiasAtras.setDate(hoje.getDate() - 30);
-                dataInicio = trintaDiasAtras.toISOString().split('T')[0];
-                dataFim = hoje.toISOString().split('T')[0];
-                break;
-                
-            case 'este_ano':
-                dataInicio = `${hoje.getFullYear()}-01-01`;
-                dataFim = `${hoje.getFullYear()}-12-31`;
-                break;
-                
-            default:
-                dataInicio = `${hoje.getFullYear()}-${(hoje.getMonth() + 1).toString().padStart(2, '0')}-01`;
-                const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-                dataFim = ultimoDia.toISOString().split('T')[0];
-        }
-        
-        return { dataInicio, dataFim };
-    }
-
-    function atualizarFiltrosPeriodo() {
-        const periodoSelecionado = resDashboardFiltroPeriodoEl ? resDashboardFiltroPeriodoEl.value : 'mes_atual';
-        
-        // Habilitar/desabilitar campos de data personalizada
-        const camposDataDesabilitados = periodoSelecionado !== 'personalizado';
-        if (resDashboardFiltroDataInicioEl) resDashboardFiltroDataInicioEl.disabled = camposDataDesabilitados;
-        if (resDashboardFiltroDataFimEl) resDashboardFiltroDataFimEl.disabled = camposDataDesabilitados;
-        
-        // Se não for personalizado, atualizar com as datas calculadas
-        if (periodoSelecionado !== 'personalizado') {
-            const { dataInicio, dataFim } = calcularPeriodo(periodoSelecionado);
-            if (resDashboardFiltroDataInicioEl) resDashboardFiltroDataInicioEl.value = dataInicio;
-            if (resDashboardFiltroDataFimEl) resDashboardFiltroDataFimEl.value = dataFim;
-        }
-    }
-
+    
     async function carregarTotalReservas(dataInicio, dataFim) {
         try {
-            // Consulta para total geral
-            const { count: totalGeral, error: errorGeral } = await supabase
+            if (!statTotalReservasEl) return;
+            
+            const { count, error } = await supabase
                 .from('reservas')
-                .select('*', { count: 'exact', head: true });
+                .select('*', { count: 'exact', head: true })
+                .gte('booking_date', dataInicio)
+                .lte('booking_date', dataFim);
                 
-            if (errorGeral) throw errorGeral;
+            if (error) throw error;
             
-            // Consulta para total no período
-            let totalPeriodo = 0;
-            if (dataInicio && dataFim) {
-                const { count, error } = await supabase
-                    .from('reservas')
-                    .select('*', { count: 'exact', head: true })
-                    .gte('data_reserva', `${dataInicio}T00:00:00`)
-                    .lte('data_reserva', `${dataFim}T23:59:59.999Z`);
-                    
-                if (error) throw error;
-                totalPeriodo = count || 0;
-            }
-            
-            // Atualizar UI
-            if (statTotalReservasEl) statTotalReservasEl.textContent = totalGeral || 0;
+            statTotalReservasEl.textContent = count || 0;
             
         } catch (error) {
             console.error("Erro ao carregar total de reservas:", error);
             if (statTotalReservasEl) statTotalReservasEl.textContent = "Erro";
         }
     }
-
+    
     async function carregarValorTotalReservas(dataInicio, dataFim) {
         try {
-            // Consulta para valor total geral
-            const { data: reservasGeral, error: errorGeral } = await supabase
-                .from('reservas')
-                .select('total_price');
-                
-            if (errorGeral) throw errorGeral;
+            if (!statValorTotalReservasEl) return;
             
-            const valorTotalGeral = reservasGeral.reduce((total, reserva) => {
-                return total + (reserva.total_price || 0);
+            const { data, error } = await supabase
+                .from('reservas')
+                .select('total_price')
+                .gte('booking_date', dataInicio)
+                .lte('booking_date', dataFim);
+                
+            if (error) throw error;
+            
+            const valorTotal = data.reduce((acc, reserva) => {
+                const valor = parseFloat(reserva.total_price || 0);
+                return acc + (isNaN(valor) ? 0 : valor);
             }, 0);
             
-            // Consulta para valor total no período
-            let valorTotalPeriodo = 0;
-            if (dataInicio && dataFim) {
-                const { data: reservasPeriodo, error } = await supabase
-                    .from('reservas')
-                    .select('total_price')
-                    .gte('data_reserva', `${dataInicio}T00:00:00`)
-                    .lte('data_reserva', `${dataFim}T23:59:59.999Z`);
-                    
-                if (error) throw error;
-                
-                valorTotalPeriodo = reservasPeriodo.reduce((total, reserva) => {
-                    return total + (reserva.total_price || 0);
-                }, 0);
-            }
-            
-            // Atualizar UI
-            if (statValorTotalReservasEl) {
-                statValorTotalReservasEl.textContent = formatarMoeda(valorTotalGeral);
-            }
+            statValorTotalReservasEl.textContent = formatarMoeda(valorTotal);
             
         } catch (error) {
             console.error("Erro ao carregar valor total de reservas:", error);
             if (statValorTotalReservasEl) statValorTotalReservasEl.textContent = "Erro";
         }
     }
-
+    
     async function carregarReservasPorCampanha(dataInicio, dataFim) {
         try {
-            let query = supabase
+            if (!statReservasCampanhaEl) return;
+            
+            const { data, error } = await supabase
                 .from('reservas')
-                .select('campaign_name, count');
+                .select('campaign_id_aplicada, count')
+                .gte('booking_date', dataInicio)
+                .lte('booking_date', dataFim)
+                .not('campaign_id_aplicada', 'is', null);
                 
-            if (dataInicio && dataFim) {
-                query = query
-                    .gte('data_reserva', `${dataInicio}T00:00:00`)
-                    .lte('data_reserva', `${dataFim}T23:59:59.999Z`);
-            }
-            
-            // Agrupar por campanha (simulado no cliente)
-            const { data: reservas, error } = await query;
-            
             if (error) throw error;
             
+            // Agrupar por campanha (já que o Supabase pode não suportar group by diretamente)
             const campanhas = {};
-            reservas.forEach(reserva => {
-                const campanha = reserva.campaign_name || 'Sem Campanha';
-                if (!campanhas[campanha]) {
-                    campanhas[campanha] = 0;
-                }
+            data.forEach(row => {
+                const campanha = row.campaign_id_aplicada || 'Sem Campanha';
+                if (!campanhas[campanha]) campanhas[campanha] = 0;
                 campanhas[campanha]++;
             });
             
-            // Ordenar e formatar para exibição
-            const campanhasOrdenadas = Object.entries(campanhas)
-                .sort((a, b) => b[1] - a[1])
-                .map(([nome, count]) => `${nome}: ${count}`);
-                
-            // Atualizar UI
-            if (statReservasCampanhaEl) {
-                if (campanhasOrdenadas.length > 0) {
-                    statReservasCampanhaEl.innerHTML = campanhasOrdenadas.slice(0, 5).join('<br>');
-                } else {
-                    statReservasCampanhaEl.textContent = "Sem dados";
-                }
+            // Converter para array e ordenar
+            const campanhasArray = Object.entries(campanhas)
+                .map(([nome, count]) => ({ nome, count }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Exibir top 3 campanhas
+            if (campanhasArray.length > 0) {
+                const topCampanhas = campanhasArray.slice(0, 3);
+                statReservasCampanhaEl.innerHTML = topCampanhas.map(c => 
+                    `<div class="flex justify-between"><span>${c.nome}</span><span class="font-semibold">${c.count}</span></div>`
+                ).join('');
+            } else {
+                statReservasCampanhaEl.textContent = "Sem dados de campanhas";
             }
             
         } catch (error) {
             console.error("Erro ao carregar reservas por campanha:", error);
-            if (statReservasCampanhaEl) statReservasCampanhaEl.textContent = "Erro";
+            if (statReservasCampanhaEl) statReservasCampanhaEl.textContent = "Erro ao carregar dados";
         }
     }
-
+    
     async function carregarReservasPorDiaSemana(dataInicio, dataFim) {
         try {
-            let query = supabase
+            if (!statReservasDiaSemanaEl) return;
+            
+            const { data, error } = await supabase
                 .from('reservas')
-                .select('data_reserva');
+                .select('booking_date')
+                .gte('booking_date', dataInicio)
+                .lte('booking_date', dataFim);
                 
-            if (dataInicio && dataFim) {
-                query = query
-                    .gte('data_reserva', `${dataInicio}T00:00:00`)
-                    .lte('data_reserva', `${dataFim}T23:59:59.999Z`);
-            }
-            
-            const { data: reservas, error } = await query;
-            
             if (error) throw error;
             
             // Agrupar por dia da semana
             const diasSemana = [0, 0, 0, 0, 0, 0, 0]; // Dom, Seg, Ter, Qua, Qui, Sex, Sáb
-            const nomesDiasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const nomesDias = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
             
-            reservas.forEach(reserva => {
-                if (reserva.data_reserva) {
-                    const data = new Date(reserva.data_reserva);
+            data.forEach(reserva => {
+                if (reserva.booking_date) {
+                    const data = new Date(reserva.booking_date);
                     const diaSemana = data.getDay(); // 0 = Domingo, 6 = Sábado
                     diasSemana[diaSemana]++;
                 }
             });
             
-            // Ordenar e formatar para exibição
-            const diasOrdenados = nomesDiasSemana.map((nome, index) => ({
-                nome,
-                count: diasSemana[index]
-            })).sort((a, b) => b.count - a.count);
+            // Encontrar o dia com mais reservas
+            const maxReservas = Math.max(...diasSemana);
+            const diaMaisReservas = diasSemana.indexOf(maxReservas);
             
-            // Atualizar UI
-            if (statReservasDiaSemanaEl) {
-                if (diasOrdenados.some(dia => dia.count > 0)) {
-                    statReservasDiaSemanaEl.innerHTML = diasOrdenados
-                        .filter(dia => dia.count > 0)
-                        .map(dia => `${dia.nome}: ${dia.count}`)
-                        .join('<br>');
-                } else {
-                    statReservasDiaSemanaEl.textContent = "Sem dados";
-                }
+            // Exibir resultado
+            if (maxReservas > 0) {
+                statReservasDiaSemanaEl.innerHTML = `
+                    <div class="font-semibold text-lg">${nomesDias[diaMaisReservas]}</div>
+                    <div class="text-sm">Dia com mais reservas (${maxReservas})</div>
+                    <div class="mt-1 grid grid-cols-7 gap-1 text-xs text-center">
+                        ${nomesDias.map((dia, i) => `<div>${dia}</div>`).join('')}
+                        ${diasSemana.map(count => `<div class="font-semibold">${count}</div>`).join('')}
+                    </div>
+                `;
+            } else {
+                statReservasDiaSemanaEl.textContent = "Sem dados suficientes";
             }
             
         } catch (error) {
             console.error("Erro ao carregar reservas por dia da semana:", error);
-            if (statReservasDiaSemanaEl) statReservasDiaSemanaEl.textContent = "Erro";
+            if (statReservasDiaSemanaEl) statReservasDiaSemanaEl.textContent = "Erro ao carregar dados";
         }
     }
-
-    async function atualizarGraficoReservasPorHora(data) {
+    
+    async function carregarReservasPorHora(data) {
         try {
             if (!chartReservasPorHoraEl) return;
             
-            // Usar a função local para calcular reservas por hora
-            const resultado = await carregarReservasPorHora(data);
+            // Formato da data: YYYY-MM-DD
+            const dataInicio = `${data}T00:00:00`;
+            const dataFim = `${data}T23:59:59.999Z`;
             
-            // Atualizar ou criar o gráfico
-            if (chartReservasPorHora) {
-                chartReservasPorHora.data.labels = resultado.labels;
-                chartReservasPorHora.data.datasets[0].data = resultado.data;
-                chartReservasPorHora.update();
+            // Buscar todas as reservas do dia
+            const { data: reservas, error } = await supabase
+                .from('reservas')
+                .select('*')
+                .gte('check_in_previsto', dataInicio)
+                .lte('check_in_previsto', dataFim);
+                
+            if (error) throw error;
+            
+            // Agrupar por hora
+            const reservasPorHora = Array(24).fill(0);
+            
+            if (reservas && reservas.length > 0) {
+                reservas.forEach(reserva => {
+                    if (reserva.check_in_previsto) {
+                        const hora = new Date(reserva.check_in_previsto).getHours();
+                        reservasPorHora[hora]++;
+                    }
+                });
+            }
+            
+            // Atualizar gráfico
+            if (graficoReservasHora) {
+                graficoReservasHora.data.datasets[0].data = reservasPorHora;
+                graficoReservasHora.update();
             } else {
-                chartReservasPorHora = new Chart(chartReservasPorHoraEl, {
+                graficoReservasHora = new Chart(chartReservasPorHoraEl, {
                     type: 'bar',
                     data: {
-                        labels: resultado.labels,
+                        labels: Array.from({length: 24}, (_, i) => `${i}:00`),
                         datasets: [{
-                            label: 'Reservas por Hora',
-                            data: resultado.data,
+                            label: 'Reservas',
+                            data: reservasPorHora,
                             backgroundColor: 'rgba(54, 162, 235, 0.5)',
                             borderColor: 'rgba(54, 162, 235, 1)',
                             borderWidth: 1
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Atualizar texto informativo
+            if (statReservasHoraConteudoEl) {
+                const totalDia = reservasPorHora.reduce((a, b) => a + b, 0);
+                const horasPico = [];
+                const maxReservas = Math.max(...reservasPorHora);
+                
+                if (maxReservas > 0) {
+                    reservasPorHora.forEach((count, hora) => {
+                        if (count === maxReservas) {
+                            horasPico.push(`${hora}:00`);
+                        }
+                    });
+                    
+                    statReservasHoraConteudoEl.textContent = `Total: ${totalDia} reservas. Hora(s) de pico: ${horasPico.join(', ')} com ${maxReservas} reservas.`;
+                } else {
+                    statReservasHoraConteudoEl.textContent = `Sem reservas neste dia.`;
+                }
+            }
+            
+            return {
+                labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+                data: reservasPorHora
+            };
+            
+        } catch (error) {
+            console.error("Erro ao carregar reservas por hora:", error);
+            if (statReservasHoraConteudoEl) statReservasHoraConteudoEl.textContent = `Erro: ${error.message}`;
+            return { labels: [], data: [] };
+        }
+    }
+    
+    async function carregarGraficoMensal(dataInicio, dataFim) {
+        try {
+            if (!chartReservasMensalEl) return;
+            
+            // Obter o primeiro dia do mês anterior e o último dia do mês seguinte
+            const dataInicioObj = new Date(dataInicio);
+            const dataFimObj = new Date(dataFim);
+            
+            const anoInicio = dataInicioObj.getFullYear();
+            const mesInicio = dataInicioObj.getMonth();
+            
+            const anoFim = dataFimObj.getFullYear();
+            const mesFim = dataFimObj.getMonth();
+            
+            // Calcular o número de meses entre as datas
+            const mesesTotal = (anoFim - anoInicio) * 12 + (mesFim - mesInicio) + 1;
+            
+            // Limitar a 12 meses para não sobrecarregar o gráfico
+            const mesesAExibir = Math.min(mesesTotal, 12);
+            
+            // Criar array de labels e dados
+            const labels = [];
+            const dados = [];
+            
+            // Buscar dados de reservas por mês
+            const { data: reservas, error } = await supabase
+                .from('reservas')
+                .select('booking_date')
+                .gte('booking_date', dataInicio)
+                .lte('booking_date', dataFim);
+                
+            if (error) throw error;
+            
+            // Agrupar por mês
+            const reservasPorMes = {};
+            
+            for (let i = 0; i < mesesAExibir; i++) {
+                const data = new Date(anoInicio, mesInicio + i, 1);
+                const anoMes = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+                const label = data.toLocaleDateString('pt-PT', { month: 'short', year: 'numeric' });
+                
+                labels.push(label);
+                reservasPorMes[anoMes] = 0;
+            }
+            
+            // Contar reservas por mês
+            reservas.forEach(reserva => {
+                if (reserva.booking_date) {
+                    const data = new Date(reserva.booking_date);
+                    const anoMes = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    if (reservasPorMes[anoMes] !== undefined) {
+                        reservasPorMes[anoMes]++;
+                    }
+                }
+            });
+            
+            // Converter para array de dados
+            for (let i = 0; i < mesesAExibir; i++) {
+                const data = new Date(anoInicio, mesInicio + i, 1);
+                const anoMes = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+                dados.push(reservasPorMes[anoMes]);
+            }
+            
+            // Atualizar gráfico
+            if (graficoReservasMensal) {
+                graficoReservasMensal.data.labels = labels;
+                graficoReservasMensal.data.datasets[0].data = dados;
+                graficoReservasMensal.update();
+            } else {
+                graficoReservasMensal = new Chart(chartReservasMensalEl, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Reservas',
+                            data: dados,
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 2,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
                         scales: {
                             y: {
                                 beginAtZero: true,
@@ -683,548 +683,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                 });
             }
             
-            // Atualizar texto de estatísticas
-            if (statReservasHoraConteudoEl) {
-                const total = resultado.data.reduce((sum, val) => sum + val, 0);
-                if (total > 0) {
-                    const horaMaxima = resultado.data.indexOf(Math.max(...resultado.data));
-                    statReservasHoraConteudoEl.textContent = `Total: ${total} reservas. Hora mais movimentada: ${horaMaxima}:00 (${resultado.data[horaMaxima]} reservas)`;
-                } else {
-                    statReservasHoraConteudoEl.textContent = "Sem reservas neste dia.";
-                }
-            }
-            
-        } catch (error) {
-            console.error("Erro ao atualizar gráfico de reservas por hora:", error);
-            if (statReservasHoraConteudoEl) statReservasHoraConteudoEl.textContent = "Erro ao carregar dados.";
-        }
-    }
-
-    async function carregarGraficoMensal(dataInicio, dataFim) {
-        try {
-            if (!chartReservasMensalEl) return;
-            
-            // Determinar o período para o gráfico mensal
-            const hoje = new Date();
-            const anoAtual = hoje.getFullYear();
-            const mesAtual = hoje.getMonth();
-            
-            // Buscar dados dos últimos 12 meses
-            const dataInicioGrafico = new Date(anoAtual, mesAtual - 11, 1).toISOString().split('T')[0];
-            const dataFimGrafico = new Date(anoAtual, mesAtual + 1, 0).toISOString().split('T')[0];
-            
-            const { data: reservas, error } = await supabase
-                .from('reservas')
-                .select('data_reserva')
-                .gte('data_reserva', `${dataInicioGrafico}T00:00:00`)
-                .lte('data_reserva', `${dataFimGrafico}T23:59:59.999Z`);
-                
-            if (error) throw error;
-            
-            // Agrupar por mês
-            const meses = Array(12).fill(0);
-            const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-            const labels = [];
-            
-            // Gerar labels para os últimos 12 meses
-            for (let i = 0; i < 12; i++) {
-                const m = (mesAtual - 11 + i + 12) % 12; // Garantir que o índice seja positivo
-                labels.push(nomesMeses[m]);
-            }
-            
-            // Contar reservas por mês
-            reservas.forEach(reserva => {
-                if (reserva.data_reserva) {
-                    const data = new Date(reserva.data_reserva);
-                    const mes = data.getMonth();
-                    const ano = data.getFullYear();
-                    
-                    // Calcular o índice no array de meses (relativo ao mês atual)
-                    const indice = (mes - (mesAtual - 11) + 12) % 12;
-                    
-                    // Só contar se estiver dentro dos últimos 12 meses
-                    if (indice >= 0 && indice < 12) {
-                        meses[indice]++;
-                    }
-                }
-            });
-            
-            // Atualizar ou criar o gráfico
-            if (chartReservasMensal) {
-                chartReservasMensal.data.labels = labels;
-                chartReservasMensal.data.datasets[0].data = meses;
-                chartReservasMensal.update();
-            } else {
-                chartReservasMensal = new Chart(chartReservasMensalEl, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Reservas por Mês',
-                            data: meses,
-                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 2,
-                            tension: 0.1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true
-                            }
-                        }
-                    }
-                });
-            }
-            
         } catch (error) {
             console.error("Erro ao carregar gráfico mensal:", error);
         }
     }
 
-    // --- Funções de Listagem de Reservas ---
-    async function carregarReservas() {
-        try {
-            if (loadingTableSpinnerEl) loadingTableSpinnerEl.classList.remove("hidden");
-            
-            // Construir query base
-            let query = supabase
-                .from('reservas')
-                .select('*');
-            
-            // Aplicar filtros
-            if (filtrosAtivos.termo) {
-                query = query.or(`booking_id.ilike.%${filtrosAtivos.termo}%,matricula.ilike.%${filtrosAtivos.termo}%,alocation.ilike.%${filtrosAtivos.termo}%,nome_cliente.ilike.%${filtrosAtivos.termo}%`);
-            }
-            
-            if (filtrosAtivos.cliente) {
-                query = query.ilike('nome_cliente', `%${filtrosAtivos.cliente}%`);
-            }
-            
-            if (filtrosAtivos.matricula) {
-                query = query.ilike('matricula', `%${filtrosAtivos.matricula}%`);
-            }
-            
-            if (filtrosAtivos.dataEntrada) {
-                const dataInicio = `${filtrosAtivos.dataEntrada}T00:00:00`;
-                const dataFim = `${filtrosAtivos.dataEntrada}T23:59:59.999Z`;
-                query = query.gte('check_in_datetime', dataInicio).lte('check_in_datetime', dataFim);
-            }
-            
-            if (filtrosAtivos.estado) {
-                query = query.eq('estado_reserva', filtrosAtivos.estado);
-            }
-            
-            // Ordenar por data de criação (mais recentes primeiro)
-            query = query.order('created_at_db', { ascending: false });
-            
-            // Executar query
-            const { data: reservas, error, count } = await query;
-            
-            if (error) throw error;
-            
-            // Armazenar dados
-            reservasData = reservas || [];
-            
-            // Atualizar contagem total
-            if (reservasTotalCountEl) reservasTotalCountEl.textContent = reservasData.length;
-            
-            // Renderizar tabela
-            renderizarTabelaReservas();
-            
-        } catch (error) {
-            console.error("Erro ao carregar reservas:", error);
-            if (reservasTableBodyEl) {
-                reservasTableBodyEl.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-red-500">Erro ao carregar reservas: ${error.message}</td></tr>`;
-            }
-        } finally {
-            if (loadingTableSpinnerEl) loadingTableSpinnerEl.classList.add("hidden");
-        }
-    }
-
-    function renderizarTabelaReservas() {
-        if (!reservasTableBodyEl) return;
-        
-        // Calcular paginação
-        const inicio = (paginaAtual - 1) * itensPorPagina;
-        const fim = inicio + itensPorPagina;
-        const reservasPaginadas = reservasData.slice(inicio, fim);
-        
-        // Verificar se há reservas
-        if (reservasPaginadas.length === 0) {
-            reservasTableBodyEl.innerHTML = `<tr><td colspan="11" class="text-center py-4">Nenhuma reserva encontrada.</td></tr>`;
-            if (reservasNenhumaMsgEl) reservasNenhumaMsgEl.classList.remove("hidden");
-            return;
-        }
-        
-        if (reservasNenhumaMsgEl) reservasNenhumaMsgEl.classList.add("hidden");
-        
-        // Renderizar linhas da tabela
-        let html = '';
-        reservasPaginadas.forEach(reserva => {
-            html += `
-                <tr>
-                    <td>${reserva.booking_id || '-'}</td>
-                    <td>${formatarData(reserva.data_reserva) || '-'}</td>
-                    <td>${reserva.nome_cliente || '-'}</td>
-                    <td>${reserva.matricula || '-'}</td>
-                    <td>${reserva.alocation || '-'}</td>
-                    <td>${formatarDataHora(reserva.check_in_datetime) || '-'}</td>
-                    <td>${formatarDataHora(reserva.check_out_datetime) || '-'}</td>
-                    <td>${reserva.physical_park_name || '-'}</td>
-                    <td>${formatarMoeda(reserva.total_price) || '-'}</td>
-                    <td>${formatarEstado(reserva.estado_reserva) || '-'}</td>
-                    <td class="actions-cell">
-                        <button onclick="window.verReserva('${reserva.id}')" class="bg-blue-500 hover:bg-blue-600 text-white rounded px-2 py-1">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button onclick="window.editarReserva('${reserva.id}')" class="bg-yellow-500 hover:bg-yellow-600 text-white rounded px-2 py-1">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="window.verHistoricoReserva('${reserva.id}')" class="bg-gray-500 hover:bg-gray-600 text-white rounded px-2 py-1">
-                            <i class="fas fa-history"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        reservasTableBodyEl.innerHTML = html;
-        
-        // Renderizar paginação
-        renderizarPaginacao();
-        
-        // Adicionar funções globais para os botões
-        window.verReserva = verReserva;
-        window.editarReserva = editarReserva;
-        window.verHistoricoReserva = verHistoricoReserva;
-    }
-
-    function renderizarPaginacao() {
-        if (!reservasPaginacaoEl) return;
-        
-        const totalPaginas = Math.ceil(reservasData.length / itensPorPagina);
-        
-        let html = '';
-        
-        // Botão Anterior
-        html += `
-            <button 
-                class="px-3 py-1 rounded ${paginaAtual === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}"
-                ${paginaAtual === 1 ? 'disabled' : 'onclick="window.mudarPagina(' + (paginaAtual - 1) + ')"'}
-            >
-                &laquo;
-            </button>
-        `;
-        
-        // Páginas
-        const maxPaginas = 5; // Máximo de botões de página a mostrar
-        let inicio = Math.max(1, paginaAtual - Math.floor(maxPaginas / 2));
-        let fim = Math.min(totalPaginas, inicio + maxPaginas - 1);
-        
-        if (fim - inicio + 1 < maxPaginas) {
-            inicio = Math.max(1, fim - maxPaginas + 1);
-        }
-        
-        for (let i = inicio; i <= fim; i++) {
-            html += `
-                <button 
-                    class="px-3 py-1 rounded ${i === paginaAtual ? 'bg-blue-700 text-white' : 'bg-blue-500 text-white hover:bg-blue-600'}"
-                    onclick="window.mudarPagina(${i})"
-                >
-                    ${i}
-                </button>
-            `;
-        }
-        
-        // Botão Próxima
-        html += `
-            <button 
-                class="px-3 py-1 rounded ${paginaAtual === totalPaginas ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}"
-                ${paginaAtual === totalPaginas ? 'disabled' : 'onclick="window.mudarPagina(' + (paginaAtual + 1) + ')"'}
-            >
-                &raquo;
-            </button>
-        `;
-        
-        reservasPaginacaoEl.innerHTML = html;
-        
-        // Adicionar função global para mudar página
-        window.mudarPagina = mudarPagina;
-    }
-
-    function mudarPagina(pagina) {
-        paginaAtual = pagina;
-        renderizarTabelaReservas();
-        window.scrollTo(0, document.querySelector('.table-container').offsetTop - 20);
-    }
-
-    // --- Funções de Formulário ---
-    function abrirModalNovaReserva() {
-        // Limpar formulário
-        reservaFormEl.reset();
-        reservaFormIdEl.value = '';
-        reservaFormBookingIdEl.value = 'Será gerado automaticamente';
-        reservaFormBookingIdEl.disabled = true;
-        
-        // Definir data atual nos campos de data
-        const agora = new Date().toISOString().slice(0, 16);
-        reservaFormDataReservaEl.value = agora;
-        reservaFormDataEntradaEl.value = agora;
-        
-        // Data de saída padrão (1 dia depois)
-        const amanha = new Date();
-        amanha.setDate(amanha.getDate() + 1);
-        reservaFormDataSaidaEl.value = amanha.toISOString().slice(0, 16);
-        
-        // Atualizar título
-        reservaFormModalTitleEl.textContent = 'Nova Reserva';
-        
-        // Limpar reserva em edição
-        reservaEmEdicao = null;
-        
-        // Mostrar modal
-        reservaFormModalEl.classList.add("active");
-    }
-
-    function editarReserva(id) {
-        const reserva = reservasData.find(r => r.id === id);
-        if (!reserva) {
-            console.error("Reserva não encontrada:", id);
-            return;
-        }
-        
-        // Preencher formulário
-        reservaFormIdEl.value = reserva.id;
-        reservaFormBookingIdEl.value = reserva.booking_id || 'Não definido';
-        reservaFormBookingIdEl.disabled = true;
-        
-        reservaFormDataReservaEl.value = reserva.data_reserva ? new Date(reserva.data_reserva).toISOString().slice(0, 16) : '';
-        reservaFormNomeClienteEl.value = reserva.nome_cliente || '';
-        reservaFormEmailClienteEl.value = reserva.email_cliente || '';
-        reservaFormTelefoneClienteEl.value = reserva.telefone_cliente || '';
-        reservaFormMatriculaEl.value = reserva.matricula || '';
-        reservaFormAlocationEl.value = reserva.alocation || '';
-        
-        reservaFormDataEntradaEl.value = reserva.check_in_datetime ? new Date(reserva.check_in_datetime).toISOString().slice(0, 16) : '';
-        reservaFormDataSaidaEl.value = reserva.check_out_datetime ? new Date(reserva.check_out_datetime).toISOString().slice(0, 16) : '';
-        
-        if (reserva.physical_park_id) {
-            reservaFormParqueEl.value = reserva.physical_park_id;
-        } else {
-            reservaFormParqueEl.selectedIndex = 0;
-        }
-        
-        reservaFormCampanhaEl.value = reserva.campaign_name || '';
-        reservaFormValorEl.value = reserva.total_price || '';
-        
-        if (reserva.estado_reserva) {
-            reservaFormEstadoEl.value = reserva.estado_reserva;
-        } else {
-            reservaFormEstadoEl.selectedIndex = 0;
-        }
-        
-        reservaFormObservacoesEl.value = reserva.observacoes || '';
-        
-        // Atualizar título
-        reservaFormModalTitleEl.textContent = `Editar Reserva ${reserva.booking_id || ''}`;
-        
-        // Armazenar reserva em edição
-        reservaEmEdicao = reserva;
-        
-        // Mostrar modal
-        reservaFormModalEl.classList.add("active");
-    }
-
-    function verReserva(id) {
-        // Implementar visualização detalhada da reserva
-        console.log("Ver reserva:", id);
-        
-        // Por enquanto, apenas abre o formulário em modo de edição
-        editarReserva(id);
-    }
-
-    function verHistoricoReserva(id) {
-        const reserva = reservasData.find(r => r.id === id);
-        if (!reserva) {
-            console.error("Reserva não encontrada:", id);
-            return;
-        }
-        
-        // Atualizar título
-        logReservaBookingIdEl.textContent = reserva.booking_id || 'Sem ID';
-        
-        // Carregar histórico
-        carregarHistoricoReserva(id);
-        
-        // Mostrar modal
-        reservaLogModalEl.classList.add("active");
-    }
-
-    async function carregarHistoricoReserva(id) {
-        try {
-            // Limpar tabela
-            reservaLogTableBodyEl.innerHTML = '<tr><td colspan="4" class="text-center py-4">Carregando histórico...</td></tr>';
-            
-            // Buscar histórico
-            const { data: historico, error } = await supabase
-                .from('reservas_log')
-                .select('*')
-                .eq('reserva_id', id)
-                .order('created_at', { ascending: false });
-                
-            if (error) throw error;
-            
-            // Verificar se há registros
-            if (!historico || historico.length === 0) {
-                reservaLogTableBodyEl.innerHTML = '<tr><td colspan="4" class="text-center py-4">Nenhum registro de histórico encontrado.</td></tr>';
-                if (reservaLogNenhumaMsgEl) reservaLogNenhumaMsgEl.classList.remove("hidden");
-                return;
-            }
-            
-            if (reservaLogNenhumaMsgEl) reservaLogNenhumaMsgEl.classList.add("hidden");
-            
-            // Renderizar linhas da tabela
-            let html = '';
-            historico.forEach(log => {
-                html += `
-                    <tr>
-                        <td>${formatarDataHora(log.created_at)}</td>
-                        <td>${log.action || '-'}</td>
-                        <td>${log.user_name || '-'}</td>
-                        <td>${log.details || '-'}</td>
-                    </tr>
-                `;
-            });
-            
-            reservaLogTableBodyEl.innerHTML = html;
-            
-        } catch (error) {
-            console.error("Erro ao carregar histórico da reserva:", error);
-            reservaLogTableBodyEl.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-red-500">Erro ao carregar histórico: ${error.message}</td></tr>`;
-        }
-    }
-
-    async function salvarReserva() {
-        try {
-            // Validar formulário
-            if (!reservaFormEl.checkValidity()) {
-                alert("Por favor, preencha todos os campos obrigatórios.");
-                return;
-            }
-            
-            // Obter dados do formulário
-            const dadosReserva = {
-                data_reserva: reservaFormDataReservaEl.value,
-                nome_cliente: reservaFormNomeClienteEl.value,
-                email_cliente: reservaFormEmailClienteEl.value,
-                telefone_cliente: reservaFormTelefoneClienteEl.value,
-                matricula: normalizarMatricula(reservaFormMatriculaEl.value),
-                alocation: reservaFormAlocationEl.value,
-                check_in_datetime: reservaFormDataEntradaEl.value,
-                check_out_datetime: reservaFormDataSaidaEl.value,
-                physical_park_id: reservaFormParqueEl.value,
-                physical_park_name: reservaFormParqueEl.options[reservaFormParqueEl.selectedIndex].text,
-                campaign_name: reservaFormCampanhaEl.value,
-                total_price: parseFloat(reservaFormValorEl.value),
-                estado_reserva: reservaFormEstadoEl.value,
-                observacoes: reservaFormObservacoesEl.value,
-                updated_at: new Date().toISOString()
-            };
-            
-            // Obter usuário atual
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                dadosReserva.user_id_last_modified = user.id;
-            }
-            
-            let resultado;
-            
-            if (reservaEmEdicao) {
-                // Atualizar reserva existente
-                const { data, error } = await supabase
-                    .from('reservas')
-                    .update(dadosReserva)
-                    .eq('id', reservaEmEdicao.id)
-                    .select();
-                    
-                if (error) throw error;
-                resultado = data;
-                
-                // Registrar no histórico
-                await registrarHistoricoReserva(reservaEmEdicao.id, 'Atualização', 'Reserva atualizada');
-                
-            } else {
-                // Criar nova reserva
-                // Gerar booking_id
-                dadosReserva.booking_id = `RES-${Date.now().toString().slice(-5)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-                dadosReserva.created_at = new Date().toISOString();
-                
-                if (user) {
-                    dadosReserva.user_id_created = user.id;
-                }
-                
-                const { data, error } = await supabase
-                    .from('reservas')
-                    .insert(dadosReserva)
-                    .select();
-                    
-                if (error) throw error;
-                resultado = data;
-                
-                // Registrar no histórico
-                if (data && data[0]) {
-                    await registrarHistoricoReserva(data[0].id, 'Criação', 'Nova reserva criada');
-                }
-            }
-            
-            // Fechar modal
-            reservaFormModalEl.classList.remove("active");
-            
-            // Recarregar lista
-            await carregarReservas();
-            
-            // Mostrar mensagem de sucesso
-            alert(reservaEmEdicao ? "Reserva atualizada com sucesso!" : "Reserva criada com sucesso!");
-            
-        } catch (error) {
-            console.error("Erro ao salvar reserva:", error);
-            alert(`Erro ao salvar reserva: ${error.message}`);
-        }
-    }
-
-    async function registrarHistoricoReserva(reservaId, acao, detalhes) {
-        try {
-            // Obter usuário atual
-            const { data: { user } } = await supabase.auth.getUser();
-            
-            const dadosLog = {
-                reserva_id: reservaId,
-                action: acao,
-                details: detalhes,
-                created_at: new Date().toISOString()
-            };
-            
-            if (user) {
-                dadosLog.user_id = user.id;
-                dadosLog.user_name = user.email;
-            }
-            
-            const { error } = await supabase
-                .from('reservas_log')
-                .insert(dadosLog);
-                
-            if (error) throw error;
-            
-        } catch (error) {
-            console.error("Erro ao registrar histórico da reserva:", error);
-        }
-    }
-
-    // --- Funções de Importação/Exportação ---
+    // --- Lógica de Importação/Exportação ---
     async function processarImportacao() {
         try {
             if (!importReservasFileEl || !importReservasFileEl.files || importReservasFileEl.files.length === 0) {
@@ -1270,6 +734,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 } catch (error) {
                     console.error("Erro ao processar o ficheiro Excel:", error);
                     if (importacaoStatusEl) importacaoStatusEl.textContent = `Erro ao processar o ficheiro Excel: ${error.message}`;
+                    if (loadingImportSpinnerEl) loadingImportSpinnerEl.classList.add("hidden");
                 }
             };
             
@@ -1291,105 +756,78 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function processarDadosImportacao(jsonData) {
         try {
             // Obter usuário atual
-            const { data: { user: importUser } } = await supabase.auth.getUser(); // Obter o utilizador que está a importar
+            const { data: { user: importUser } } = await supabase.auth.getUser();
 
-            // Mapeamento mais robusto e adaptado ao schema_final.md
+            // Mapeamento de colunas do Excel para colunas do Supabase
             const mapeamentoColunas = {
                 // Coluna no Excel : Coluna no Supabase
-                "licensePlate": "matricula", "alocation": "alocation", "bookingPrice": "total_price",
-                "action": "last_action", "actionUser": "last_action_user_details", "actionDate": "last_action_date",
-                "extraServices": "extra_services", "hasOnlinePayment": "has_online_payment", "stats": "estado_reserva",
-                "parkBrand": "park_brand", "parkingPrice": "parking_price", "deliveryPrice": "delivery_price",
-                "deliveryName": "delivery_name", "imported": "is_imported", "idClient": "client_external_id",
-                "name": "nome_cliente_primeiro", "lastname": "nome_cliente_ultimo", "phoneNumber": "telefone_cliente",
-                "carInfo": "car_info_details", "brand": "car_brand", "model": "car_model", "color": "car_color",
-                "infoBasedOnLicensePlate": "info_from_license_plate", "carLocation": "car_location_description",
-                "checkInVideo": "check_in_video_url", "park": "physical_park_name", "row": "parking_row",
-                "spot": "parking_spot", "deliveryLocation": "delivery_location", "taxName": "tax_name",
-                "taxNumber": "tax_number", "city": "client_city", "bookingRemarks": "observacoes",
-                "terms": "terms_agreed", "campaign": "campaign_name", "campaignPay": "campaign_payment_details",
-                "condutorRecolha": "pickup_driver_name", "checkIn": "check_in_datetime",
-                "parkingType": "parking_type", "bookingDate": "data_reserva", "returnFlight": "flight_number",
-                "checkOut": "check_out_datetime", "email": "email_cliente",
-                "Booking ID": "booking_id_excel" // Se o Booking ID vier do Excel e for diferente do gerado
+                "licensePlate": "license_plate",
+                "alocation": "alocation",
+                "bookingDate": "booking_date",
+                "checkIn": "check_in_previsto",
+                "checkOut": "check_out_previsto",
+                "name": "name_cliente",
+                "lastname": "lastname_cliente",
+                "phoneNumber": "phone_number_cliente",
+                "email": "email_cliente",
+                "bookingPrice": "booking_price",
+                "parkingPrice": "parking_price",
+                "deliveryPrice": "delivery_price",
+                "totalPrice": "total_price",
+                "hasOnlinePayment": "has_online_payment",
+                "parkingType": "parking_type",
+                "returnFlight": "return_flight",
+                "bookingRemarks": "remarks_cliente",
+                "brand": "car_info_brand",
+                "model": "car_info_model",
+                "color": "car_info_color",
+                "taxNumber": "nif_cliente",
+                "city": "cidade_cliente",
+                "idClient": "id_cliente_externo",
+                "bookingId": "booking_id"
             };
             
             const reservasParaUpsert = jsonData.map(row => {
                 const reservaSupabase = {};
+                
+                // Mapear colunas do Excel para colunas do Supabase
                 for (const excelCol in mapeamentoColunas) {
                     if (row[excelCol] !== undefined && row[excelCol] !== null) {
                         const supabaseCol = mapeamentoColunas[excelCol];
-                        // Tratamento de Datas
-                        if (["data_reserva", "check_in_datetime", "check_out_datetime", "last_action_date"].includes(supabaseCol)) {
-                            if (row[excelCol] instanceof Date) {
-                                reservaSupabase[supabaseCol] = row[excelCol].toISOString();
-                            } else if (typeof row[excelCol] === 'number') { // Data do Excel como número
-                                reservaSupabase[supabaseCol] = new Date(XLSX.SSF.format("yyyy-mm-dd hh:mm:ss", row[excelCol])).toISOString();
-                            } else if (typeof row[excelCol] === 'string' && !isNaN(new Date(row[excelCol]).getTime())) {
-                                reservaSupabase[supabaseCol] = new Date(row[excelCol]).toISOString();
-                            } else {
-                                reservaSupabase[supabaseCol] = null; // Data inválida
-                            }
-                        } 
-                        // Tratamento de Booleanos
-                        else if (["has_online_payment", "is_imported", "terms_agreed"].includes(supabaseCol)) {
-                            reservaSupabase[supabaseCol] = ['true', '1', 'sim', 'yes', true].includes(String(row[excelCol]).toLowerCase());
-                        }
-                        // Tratamento de Números (total_price, parking_price, delivery_price)
-                        else if (["total_price", "parking_price", "delivery_price"].includes(supabaseCol)) {
-                            const valorLimpo = String(row[excelCol]).replace(/[^0-9.,-]/g, '').replace(',', '.');
-                            reservaSupabase[supabaseCol] = parseFloat(valorLimpo);
-                            if (isNaN(reservaSupabase[supabaseCol])) reservaSupabase[supabaseCol] = null;
-                        }
-                        else {
-                            reservaSupabase[supabaseCol] = row[excelCol];
-                        }
+                        reservaSupabase[supabaseCol] = row[excelCol];
                     }
                 }
-
-                // Combinar nome e apelido
-                let nomeCompleto = "";
-                if (reservaSupabase.nome_cliente_primeiro) nomeCompleto += reservaSupabase.nome_cliente_primeiro;
-                if (reservaSupabase.nome_cliente_ultimo) nomeCompleto += (nomeCompleto ? " " : "") + reservaSupabase.nome_cliente_ultimo;
-                reservaSupabase.nome_cliente = nomeCompleto.trim() || null;
-                delete reservaSupabase.nome_cliente_primeiro;
-                delete reservaSupabase.nome_cliente_ultimo;
-
-                // Gerar booking_id se não vier do Excel ou se for para ser gerado sempre
-                if (!reservaSupabase.booking_id_excel) { // Se não houver uma coluna "Booking ID" no Excel
-                    reservaSupabase.booking_id = `IMP-${Date.now().toString().slice(-5)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-                } else {
-                    reservaSupabase.booking_id = reservaSupabase.booking_id_excel; // Usar o do Excel
-                }
-                delete reservaSupabase.booking_id_excel;
-
-
-                reservaSupabase.user_id_created = importUser ? importUser.id : null;
-                reservaSupabase.created_at = new Date().toISOString();
-                reservaSupabase.updated_at = new Date().toISOString();
-                reservaSupabase.user_id_last_modified = importUser ? importUser.id : null;
-                reservaSupabase.is_imported = true;
-                reservaSupabase.last_update_source = 'Import Excel Reservas';
                 
-                // Garantir que chaves de conflito (matricula, alocation) existem
-                if (!reservaSupabase.matricula || !reservaSupabase.alocation) {
-                    console.warn("Reserva ignorada por falta de matrícula ou alocation:", reservaSupabase);
+                // Garantir que chaves de conflito (license_plate, alocation) existem
+                if (!reservaSupabase.license_plate || !reservaSupabase.alocation) {
+                    console.warn("Reserva ignorada por falta de license_plate ou alocation:", reservaSupabase);
                     return null; // Ignorar esta reserva
                 }
-                reservaSupabase.matricula = normalizarMatricula(reservaSupabase.matricula);
-
-
+                
+                // Normalizar matrícula
+                reservaSupabase.license_plate = normalizarMatricula(reservaSupabase.license_plate);
+                
+                // Gerar booking_id se não existir
+                if (!reservaSupabase.booking_id) {
+                    reservaSupabase.booking_id = `BK${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000)}`;
+                }
+                
+                // Adicionar metadados de importação
+                reservaSupabase.source_file_imported = importReservasFileEl.files[0].name;
+                reservaSupabase.user_id_criacao_registo = importUser?.id;
+                reservaSupabase.action_date = new Date().toISOString();
+                
                 return reservaSupabase;
             }).filter(Boolean); // Remover nulos (reservas ignoradas)
 
             console.log("Reservas para Upsert:", reservasParaUpsert);
 
             if (reservasParaUpsert.length > 0) {
-                // Usar UPSERT: se a combinação matricula + alocation já existir, atualiza. Senão, insere.
+                // Usar UPSERT: se a combinação license_plate + alocation já existir, atualiza. Senão, insere.
                 const { data: upsertedData, error: upsertError } = await supabase
                     .from("reservas")
                     .upsert(reservasParaUpsert, { 
-                        onConflict: 'matricula,alocation', // Colunas para verificar conflito
+                        onConflict: 'license_plate,alocation', // Colunas para verificar conflito
                         returning: "minimal" // Não precisamos dos dados de retorno
                     });
                 
@@ -1402,11 +840,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                     importacaoStatusEl.classList.add("text-green-500");
                 }
                 
-                // Recarregar lista
-                await carregarReservas();
-                
-                // Recarregar dashboard
-                await carregarDashboard();
+                // Recarregar lista de reservas
+                carregarReservasDaLista(1, obterFiltrosAtivos());
                 
             } else {
                 throw new Error("Nenhuma reserva válida encontrada no ficheiro.");
@@ -1424,134 +859,189 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    async function exportarReservas() {
-        try {
-            // Obter todas as reservas (com filtros aplicados)
-            let query = supabase
-                .from('reservas')
-                .select('*');
-            
-            // Aplicar filtros
-            if (filtrosAtivos.termo) {
-                query = query.or(`booking_id.ilike.%${filtrosAtivos.termo}%,matricula.ilike.%${filtrosAtivos.termo}%,alocation.ilike.%${filtrosAtivos.termo}%,nome_cliente.ilike.%${filtrosAtivos.termo}%`);
-            }
-            
-            if (filtrosAtivos.cliente) {
-                query = query.ilike('nome_cliente', `%${filtrosAtivos.cliente}%`);
-            }
-            
-            if (filtrosAtivos.matricula) {
-                query = query.ilike('matricula', `%${filtrosAtivos.matricula}%`);
-            }
-            
-            if (filtrosAtivos.dataEntrada) {
-                const dataInicio = `${filtrosAtivos.dataEntrada}T00:00:00`;
-                const dataFim = `${filtrosAtivos.dataEntrada}T23:59:59.999Z`;
-                query = query.gte('check_in_datetime', dataInicio).lte('check_in_datetime', dataFim);
-            }
-            
-            if (filtrosAtivos.estado) {
-                query = query.eq('estado_reserva', filtrosAtivos.estado);
-            }
-            
-            // Ordenar por data de criação (mais recentes primeiro)
-            query = query.order('created_at_db', { ascending: false });
-            
-            // Executar query
-            const { data: reservas, error } = await query;
-            
-            if (error) throw error;
-            
-            if (!reservas || reservas.length === 0) {
-                alert("Não há reservas para exportar com os filtros atuais.");
-                return;
-            }
-            
-            // Preparar dados para exportação
-            const dadosExportacao = reservas.map(reserva => {
-                return {
-                    'ID': reserva.booking_id || '',
-                    'Data Reserva': formatarData(reserva.data_reserva) || '',
-                    'Cliente': reserva.nome_cliente || '',
-                    'Email': reserva.email_cliente || '',
-                    'Telefone': reserva.telefone_cliente || '',
-                    'Matrícula': reserva.matricula || '',
-                    'Alocation': reserva.alocation || '',
-                    'Check-in': formatarDataHora(reserva.check_in_datetime) || '',
-                    'Check-out': formatarDataHora(reserva.check_out_datetime) || '',
-                    'Parque': reserva.physical_park_name || '',
-                    'Valor': reserva.total_price || '',
-                    'Estado': reserva.estado_reserva || '',
-                    'Campanha': reserva.campaign_name || '',
-                    'Observações': reserva.observacoes || ''
-                };
+    // --- Configuração de Eventos ---
+    function configurarEventos() {
+        // Eventos de Importação
+        if (resProcessarImportacaoBtnEl) {
+            resProcessarImportacaoBtnEl.addEventListener("click", processarImportacao);
+        }
+        
+        // Eventos de Dashboard
+        if (resAplicarFiltrosDashboardBtnEl) {
+            resAplicarFiltrosDashboardBtnEl.addEventListener("click", atualizarDashboardStatsGeral);
+        }
+        
+        if (resDashboardFiltroPeriodoEl) {
+            resDashboardFiltroPeriodoEl.addEventListener("change", () => {
+                const hoje = new Date();
+                const dataFim = new Date(hoje);
+                let dataInicio = new Date(hoje);
+                
+                switch (resDashboardFiltroPeriodoEl.value) {
+                    case "hoje":
+                        // Não mudar dataInicio, já é hoje
+                        break;
+                    case "semana_atual":
+                        dataInicio.setDate(hoje.getDate() - hoje.getDay()); // Domingo desta semana
+                        break;
+                    case "mes_atual":
+                        dataInicio.setDate(1); // Primeiro dia do mês atual
+                        break;
+                    case "ultimos_30dias":
+                        dataInicio.setDate(hoje.getDate() - 30);
+                        break;
+                    case "este_ano":
+                        dataInicio = new Date(hoje.getFullYear(), 0, 1); // 1 de Janeiro do ano atual
+                        break;
+                    case "personalizado":
+                        // Não mudar as datas, deixar o usuário escolher
+                        return;
+                }
+                
+                if (resDashboardFiltroDataInicioEl) {
+                    resDashboardFiltroDataInicioEl.value = dataInicio.toISOString().split('T')[0];
+                }
+                if (resDashboardFiltroDataFimEl) {
+                    resDashboardFiltroDataFimEl.value = dataFim.toISOString().split('T')[0];
+                }
+            });
+        }
+        
+        if (resDashboardDataHoraInputEl) {
+            resDashboardDataHoraInputEl.addEventListener("change", async () => {
+                const dataHora = resDashboardDataHoraInputEl.value;
+                if (dataHora) {
+                    if (resDashboardDataHoraDisplayEl) {
+                        const dataFormatada = new Date(dataHora).toLocaleDateString('pt-PT');
+                        resDashboardDataHoraDisplayEl.textContent = dataFormatada;
+                    }
+                    await carregarReservasPorHora(dataHora);
+                }
             });
             
-            // Criar workbook
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(dadosExportacao);
+            // Inicializar com a data de hoje
+            const hoje = new Date().toISOString().split('T')[0];
+            resDashboardDataHoraInputEl.value = hoje;
+            if (resDashboardDataHoraDisplayEl) {
+                resDashboardDataHoraDisplayEl.textContent = new Date(hoje).toLocaleDateString('pt-PT');
+            }
+            carregarReservasPorHora(hoje);
+        }
+        
+        // Eventos de Lista
+        if (resSearchBtnEl) {
+            resSearchBtnEl.addEventListener("click", () => {
+                paginaAtualLista = 1;
+                carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+            });
+        }
+        
+        if (resSearchTermEl) {
+            resSearchTermEl.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") {
+                    paginaAtualLista = 1;
+                    carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+                }
+            });
+        }
+        
+        if (resAplicarFiltrosListaBtnEl) {
+            resAplicarFiltrosListaBtnEl.addEventListener("click", () => {
+                paginaAtualLista = 1;
+                carregarReservasDaLista(paginaAtualLista, obterFiltrosAtivos());
+            });
+        }
+        
+        // Evento de Voltar ao Dashboard
+        if (voltarDashboardBtnReservasEl) {
+            voltarDashboardBtnReservasEl.addEventListener("click", () => {
+                window.location.href = "index.html";
+            });
+        }
+        
+        // Inicializar datas do dashboard
+        if (resDashboardFiltroDataInicioEl && resDashboardFiltroDataFimEl) {
+            const hoje = new Date();
+            const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
             
-            // Adicionar worksheet ao workbook
-            XLSX.utils.book_append_sheet(wb, ws, "Reservas");
-            
-            // Gerar nome do ficheiro
-            const dataHora = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-            const nomeArquivo = `Reservas_Export_${dataHora}.xlsx`;
-            
-            // Exportar
-            XLSX.writeFile(wb, nomeArquivo);
-            
-        } catch (error) {
-            console.error("Erro ao exportar reservas:", error);
-            alert(`Erro ao exportar reservas: ${error.message}`);
+            resDashboardFiltroDataInicioEl.value = primeiroDiaMes.toISOString().split('T')[0];
+            resDashboardFiltroDataFimEl.value = ultimoDiaMes.toISOString().split('T')[0];
         }
     }
-
-    // --- Funções Utilitárias ---
-    function formatarData(dataStr) {
-        if (!dataStr) return '';
+    
+    function configurarBotoesAcao() {
+        // Configurar botões de editar
+        document.querySelectorAll('.editar-reserva-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const reservaId = btn.getAttribute('data-id');
+                if (reservaId) {
+                    await abrirModalEditarReserva(reservaId);
+                }
+            });
+        });
         
-        try {
-            const data = new Date(dataStr);
-            return data.toLocaleDateString('pt-PT');
-        } catch (e) {
-            return dataStr;
-        }
-    }
-
-    function formatarDataHora(dataStr) {
-        if (!dataStr) return '';
+        // Configurar botões de apagar
+        document.querySelectorAll('.apagar-reserva-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const reservaId = btn.getAttribute('data-id');
+                if (reservaId && confirm('Tem certeza que deseja apagar esta reserva?')) {
+                    await apagarReserva(reservaId);
+                }
+            });
+        });
         
-        try {
-            const data = new Date(dataStr);
-            return `${data.toLocaleDateString('pt-PT')} ${data.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}`;
-        } catch (e) {
-            return dataStr;
-        }
-    }
-
-    function formatarMoeda(valor) {
-        if (valor === null || valor === undefined) return '';
-        
-        return new Intl.NumberFormat('pt-PT', {
-            style: 'currency',
-            currency: 'EUR'
-        }).format(valor);
-    }
-
-    function formatarEstado(estado) {
-        if (!estado) return '';
-        
-        const estados = {
-            'pendente': 'Pendente',
-            'confirmada': 'Confirmada',
-            'cancelada': 'Cancelada',
-            'concluida': 'Concluída'
-        };
-        
-        return estados[estado] || estado;
+        // Configurar botões de log
+        document.querySelectorAll('.log-reserva-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const bookingId = btn.getAttribute('data-booking-id');
+                const reservaPk = btn.getAttribute('data-reserva-pk');
+                if (bookingId || reservaPk) {
+                    await abrirModalLogReserva(bookingId || reservaPk);
+                }
+            });
+        });
     }
 
     // --- Inicialização da Página ---
+    async function initReservasPage() {
+        try {
+            // Verificar autenticação
+            await window.checkAuthStatus();
+            
+            // Obter usuário atual
+            const { data: { user }, error: userError } = await supabase.auth.getUser();
+            if (userError) throw userError;
+            
+            if (!user) {
+                console.error("Usuário não autenticado.");
+                return;
+            }
+            
+            currentUser = user;
+            
+            // Obter perfil do usuário
+            const userProfileStr = localStorage.getItem('userProfile');
+            if (userProfileStr) {
+                try {
+                    userProfile = JSON.parse(userProfileStr);
+                } catch (e) {
+                    console.error("Erro ao parsear perfil do usuário:", e);
+                }
+            }
+            
+            // Inicializar componentes
+            configurarEventos();
+            
+            // Carregar dados iniciais
+            await carregarReservasDaLista(1);
+            await atualizarDashboardStatsGeral();
+            
+        } catch (error) {
+            console.error("Erro ao inicializar página de reservas:", error);
+        }
+    }
+
+    // Iniciar a página
     initReservasPage();
 });
