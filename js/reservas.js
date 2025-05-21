@@ -120,6 +120,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!matricula) return null;
         return String(matricula).replace(/[\s\-\.]/g, '').toUpperCase();
     }
+    
+    // Função para converter datas do formato DD/MM/YYYY, HH:MM para o formato ISO 8601
+    function converterDataParaISO(dataStr) {
+        if (!dataStr) return null;
+        
+        // Verificar se é uma data no formato DD/MM/YYYY, HH:MM
+        const regexData = /(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/;
+        const match = String(dataStr).match(regexData);
+        
+        if (match) {
+            const [_, dia, mes, ano, hora, minuto] = match;
+            return `${ano}-${mes}-${dia}T${hora}:${minuto}:00`;
+        }
+        
+        return dataStr;
+    }
 
     // --- Lógica de Carregamento de Reservas (READ) ---
     async function carregarReservasDaLista(pagina = 1, filtros = {}) {
@@ -408,14 +424,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             
             const { data, error } = await supabase
                 .from('reservas')
-                .select('campaign_id_aplicada, count')
+                .select('campaign_id_aplicada')
                 .gte('booking_date', dataInicio)
                 .lte('booking_date', dataFim)
                 .not('campaign_id_aplicada', 'is', null);
                 
             if (error) throw error;
             
-            // Agrupar por campanha (já que o Supabase pode não suportar group by diretamente)
+            // Agrupar por campanha manualmente em JavaScript
             const campanhas = {};
             data.forEach(row => {
                 const campanha = row.campaign_id_aplicada || 'Sem Campanha';
@@ -794,7 +810,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                 for (const excelCol in mapeamentoColunas) {
                     if (row[excelCol] !== undefined && row[excelCol] !== null) {
                         const supabaseCol = mapeamentoColunas[excelCol];
-                        reservaSupabase[supabaseCol] = row[excelCol];
+                        
+                        // ALTERAÇÃO: Converter datas para formato ISO
+                        if (supabaseCol.includes('date') || supabaseCol.includes('check_in') || supabaseCol.includes('check_out')) {
+                            reservaSupabase[supabaseCol] = converterDataParaISO(row[excelCol]);
+                        } else {
+                            reservaSupabase[supabaseCol] = row[excelCol];
+                        }
                     }
                 }
                 
