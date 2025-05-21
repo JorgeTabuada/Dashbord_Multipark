@@ -1,4 +1,4 @@
-// js/reservas.js - Lógica para a Subaplicação de Gestão de Reservas
+// js/reservas.js - Versão atualizada com validação de campos numéricos
 
 document.addEventListener("DOMContentLoaded", async () => {
     // --- Verificação de Cliente Supabase ---
@@ -135,6 +135,30 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         
         return dataStr;
+    }
+    
+    // Função para validar e converter campos numéricos
+    function validarCampoNumerico(valor) {
+        if (valor === null || valor === undefined) return null;
+        
+        // Se for string, tentar converter para número
+        if (typeof valor === 'string') {
+            // Remover caracteres não numéricos, exceto ponto decimal
+            // Primeiro substituir vírgula por ponto para lidar com formato europeu
+            valor = valor.replace(',', '.').replace(/[^\d.-]/g, '');
+            
+            // Verificar se é um número válido
+            const numero = parseFloat(valor);
+            return isNaN(numero) ? null : numero;
+        }
+        
+        // Se já for número, retornar como está
+        if (typeof valor === 'number') {
+            return valor;
+        }
+        
+        // Para outros tipos, retornar null
+        return null;
     }
 
     // --- Lógica de Carregamento de Reservas (READ) ---
@@ -803,6 +827,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "bookingId": "booking_id"
             };
             
+            // Lista de campos numéricos que precisam ser validados
+            const camposNumericos = [
+                "booking_price", "parking_price", "delivery_price", "total_price"
+            ];
+            
             const reservasParaUpsert = jsonData.map(row => {
                 const reservaSupabase = {};
                 
@@ -811,10 +840,16 @@ document.addEventListener("DOMContentLoaded", async () => {
                     if (row[excelCol] !== undefined && row[excelCol] !== null) {
                         const supabaseCol = mapeamentoColunas[excelCol];
                         
-                        // ALTERAÇÃO: Converter datas para formato ISO
+                        // Converter datas para formato ISO
                         if (supabaseCol.includes('date') || supabaseCol.includes('check_in') || supabaseCol.includes('check_out')) {
                             reservaSupabase[supabaseCol] = converterDataParaISO(row[excelCol]);
-                        } else {
+                        } 
+                        // Validar e converter campos numéricos
+                        else if (camposNumericos.includes(supabaseCol)) {
+                            reservaSupabase[supabaseCol] = validarCampoNumerico(row[excelCol]);
+                        } 
+                        // Outros campos sem conversão especial
+                        else {
                             reservaSupabase[supabaseCol] = row[excelCol];
                         }
                     }
@@ -1063,6 +1098,17 @@ document.addEventListener("DOMContentLoaded", async () => {
             console.error("Erro ao inicializar página de reservas:", error);
         }
     }
+
+    // Implementação da função showPagePrincipal para compatibilidade com auth_global.js
+    window.showPagePrincipal = function(page) {
+        console.log("Navegação para:", page);
+        if (page === 'login') {
+            window.location.href = 'index.html';
+        } else if (page === 'dashboard') {
+            // Não fazer nada, já estamos numa subaplicação
+            console.log("Navegação para dashboard ignorada na subaplicação");
+        }
+    };
 
     // Iniciar a página
     initReservasPage();
