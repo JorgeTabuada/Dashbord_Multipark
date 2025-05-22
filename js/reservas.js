@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const reservaFormModalEl = document.getElementById("reservaFormModal");
     const reservaFormModalTitleEl = document.getElementById("reservaFormModalTitle");
     const reservaFormEl = document.getElementById("reservaForm");
-    const reservaFormIdEl = document.getElementById("reservaFormId");
+    const reservaFormIdEl = document.getElementById("reservaFormId"); 
     const resFecharModalBtns = document.querySelectorAll(".resFecharModalBtn");
     const reservaLogModalEl = document.getElementById("reservaLogModal");
     const logReservaBookingIdEl = document.getElementById("logReservaBookingId");
@@ -66,6 +66,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const voltarDashboardBtnReservasEl = document.getElementById("voltarDashboardBtnReservas");
     const reservasTotalCountEl = document.getElementById("reservasTotalCount"); 
     const somaValoresFiltroEl = document.getElementById("somaValoresFiltro"); 
+    const loadingModalSpinnerFormEl = document.getElementById('loadingModalSpinnerForm'); // Spinner do Modal de formulário
 
     const formHtmlIdsToSupabaseMap = {
         reservaFormBookingId: "booking_id",
@@ -232,7 +233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (filtros.searchTerm) {
             query = query.or(`name_cliente.ilike.%${filtros.searchTerm}%,license_plate.ilike.%${filtros.searchTerm}%,booking_id.ilike.%${filtros.searchTerm}%,alocation.ilike.%${filtros.searchTerm}%`);
         }
-        if (filtros.estado_reserva_atual && filtros.estado_reserva_atual !== "") { // "Todos" é ""
+        if (filtros.estado_reserva_atual && filtros.estado_reserva_atual !== "") { 
             query = query.eq("estado_reserva_atual", filtros.estado_reserva_atual);
         }
         if (filtros.check_in_previsto) { 
@@ -259,8 +260,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (filtros.tipo_reserva === "telefone") {
                 query = query.like("remarks_cliente", "%telres%"); 
             } else if (filtros.tipo_reserva === "online") {
-                 // Para ser 'online', não pode ter 'telres' E remarks_cliente não pode ser NULL (ou pode, dependendo da lógica de negócio)
-                 // Se remarks_cliente for NULL, não é telefone.
                 query = query.or("remarks_cliente.not.like.%telres%,remarks_cliente.is.null");
             }
         }
@@ -268,7 +267,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         let orderByColumn = "booking_date";
         let { data, error, count } = await query.order(orderByColumn, { ascending: false }).range(rangeFrom, rangeTo);
         
-        // Fallback de ordenação (mantido, mas a query principal já inclui os novos filtros)
         if (error && error.message && error.message.includes(`column "reservas.${orderByColumn}" does not exist`)) {
             orderByColumn = "created_at_db"; 
             let fallbackQuery = supabase.from("reservas").select("*, parque_info:parque_id (nome_parque)", { count: "exact" });
@@ -349,7 +347,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     function getEstadoClass(estado) {
         if (!estado) return 'bg-gray-100 text-gray-700'; 
-        switch (String(estado).toLowerCase()) {
+        const estadoLower = String(estado).toLowerCase();
+        switch (estadoLower) {
             case 'reservado': return 'bg-blue-100 text-blue-700'; 
             case 'recolhido': return 'bg-yellow-100 text-yellow-700'; 
             case 'entregue': return 'bg-green-100 text-green-700'; 
@@ -359,7 +358,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             case 'concluída': return 'bg-green-100 text-green-700'; 
             case 'em curso': return 'bg-indigo-100 text-indigo-700';
             case 'validadafinanceiramente': return 'bg-purple-100 text-purple-700';
-            default: return 'bg-gray-100 text-gray-700'; 
+            default: 
+                return 'bg-gray-100 text-gray-700'; 
         }
     }
 
@@ -402,8 +402,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (resFiltroClienteListaEl && resFiltroClienteListaEl.value) filtros.cliente = resFiltroClienteListaEl.value.trim();
         if (resFiltroMatriculaListaEl && resFiltroMatriculaListaEl.value) filtros.matricula = resFiltroMatriculaListaEl.value.trim();
         if (resFiltroDataEntradaListaEl && resFiltroDataEntradaListaEl.value) filtros.check_in_previsto = resFiltroDataEntradaListaEl.value;
-        if (resFiltroEstadoListaEl && resFiltroEstadoListaEl.value) { // Adicionado para ler o filtro de estado
-             filtros.estado_reserva_atual = resFiltroEstadoListaEl.value;
+        if (resFiltroEstadoListaEl && resFiltroEstadoListaEl.value) { 
+             filtros.estado_reserva_atual = resFiltroEstadoListaEl.value; 
         }
         if (resFiltroCampanhaListaEl && resFiltroCampanhaListaEl.value) {
             filtros.campaign_id_aplicada = resFiltroCampanhaListaEl.value;
@@ -792,6 +792,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                             reservaSupabase[supabaseCol] = validarCampoNumerico(valor);
                         } else if (supabaseCol === '_parque_codigo_excel') { 
                             reservaSupabase._parque_codigo_excel = String(valor).trim();
+                        } else if (supabaseCol === 'estado_reserva_atual' && valor) { // Converter estado para minúsculas
+                            reservaSupabase[supabaseCol] = String(valor).trim().toLowerCase();
                         }
                         else {
                             reservaSupabase[supabaseCol] = String(valor).trim();
@@ -945,7 +947,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "Preço Parque": reserva.parking_price,
                 "Preço Entrega": reserva.delivery_price,
                 "Preço Extras": reserva.extras_price,
-                "Preço Total": reserva.total_price, // Este vem de priceOnDelivery do Excel
+                "Preço Total": reserva.total_price, 
                 "Pagamento Online": reserva.has_online_payment ? 'Sim' : 'Não',
                 "Método Pagamento": reserva.payment_method,
                 "Estado Reserva": reserva.estado_reserva_atual,
@@ -1007,18 +1009,37 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (resSearchBtnEl) resSearchBtnEl.addEventListener("click", () => { paginaAtualLista = 1; carregarReservasDaLista(1, obterFiltrosAtivos()); });
         if (resSearchTermEl) resSearchTermEl.addEventListener("keypress", (e) => { if (e.key === "Enter") { paginaAtualLista = 1; carregarReservasDaLista(1, obterFiltrosAtivos()); } });
         if (resAplicarFiltrosListaBtnEl) resAplicarFiltrosListaBtnEl.addEventListener("click", () => { paginaAtualLista = 1; carregarReservasDaLista(1, obterFiltrosAtivos()); });
-        if (voltarDashboardBtnReservasEl) voltarDashboardBtnReservasEl.addEventListener("click", () => { window.location.href = "index.html"; });
-        resFecharModalBtns.forEach(btn => btn.addEventListener('click', () => { if (reservaFormModalEl) reservaFormModalEl.classList.add('hidden'); }));
-        resFecharLogModalBtns.forEach(btn => btn.addEventListener('click', () => { if (reservaLogModalEl) reservaLogModalEl.classList.add('hidden'); }));
+        if (voltarDashboardBtnReservasEl) voltarDashboardBtnReservasEl.addEventListener("click", () => { 
+            // Modificado para usar a função global de navegação se existir, ou fallback
+            if (typeof window.navigateToSubApp === 'function') {
+                window.navigateToSubApp('index.html#dashboard');
+            } else {
+                window.location.href = "index.html#dashboard";
+            }
+        });
+        
+        resFecharModalBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const modal = btn.closest('.form-modal-backdrop, .log-modal-backdrop');
+                if (modal) {
+                    modal.classList.remove('active');
+                    setTimeout(() => { modal.classList.add('hidden'); }, 300); 
+                }
+            });
+        });
+
         if (resAbrirModalNovaBtnEl) resAbrirModalNovaBtnEl.addEventListener('click', abrirModalNovaReserva);
-        if (reservaFormEl) reservaFormEl.addEventListener('submit', handleReservaFormSubmit);
+        
+        if (reservaFormEl) {
+            reservaFormEl.addEventListener('submit', handleReservaFormSubmit);
+        }
         if (resExportarBtnEl) resExportarBtnEl.addEventListener("click", exportarReservasParaExcel); 
     }
     
-    function configurarBotoesAcao() {
+    function configurarBotoesAcao() { 
         document.querySelectorAll('.editar-reserva-btn').forEach(btn => {
             const newBtn = btn.cloneNode(true);
-            btn.parentNode.replaceChild(newBtn, btn); // Substitui o botão para remover listeners antigos
+            btn.parentNode.replaceChild(newBtn, btn); 
             newBtn.addEventListener('click', async (event) => {
                 const id = event.currentTarget.getAttribute('data-id'); if (id) await abrirModalEditarReserva(id);
             });
@@ -1042,65 +1063,171 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     function abrirModalNovaReserva() {
         if (!reservaFormModalEl || !reservaFormEl || !reservaFormModalTitleEl || !reservaFormIdEl) return;
-        reservaFormModalTitleEl.textContent = "Nova Reserva"; reservaFormEl.reset(); reservaFormIdEl.value = ""; 
+        reservaFormModalTitleEl.textContent = "Nova Reserva"; 
+        reservaFormEl.reset(); 
+        reservaFormIdEl.value = ""; 
+        const bookingIdField = document.getElementById('reservaFormBookingId');
+        if (bookingIdField) {
+            bookingIdField.value = ''; 
+            bookingIdField.placeholder = 'Gerado automaticamente se não fornecido';
+        }
         reservaFormModalEl.classList.remove('hidden');
-        reservaFormModalEl.classList.add('active'); // Para ativar a transição de opacidade/visibilidade
+        void reservaFormModalEl.offsetWidth; 
+        reservaFormModalEl.classList.add('active'); 
     }
 
     async function abrirModalEditarReserva(idPk) {
         if (!reservaFormModalEl || !reservaFormEl || !reservaFormModalTitleEl || !reservaFormIdEl) return;
-        const { data: r, error } = await supabase.from('reservas').select('*').eq('id_pk', idPk).single();
-        if (error || !r) { console.error("Erro reserva edição:", error); alert("Erro ao carregar reserva."); return; }
-        reservaFormModalTitleEl.textContent = "Editar Reserva"; reservaFormEl.reset(); reservaFormIdEl.value = r.id_pk;
-        for (const [fid, scol] of Object.entries(formHtmlIdsToSupabaseMap)) {
-            const el = document.getElementById(fid);
-            if (el && r[scol] !== undefined && r[scol] !== null) {
-                if (el.type === 'datetime-local') el.value = formatarDataParaInput(r[scol]);
-                else if (el.type === 'date') el.value = r[scol].split('T')[0];
-                else el.value = r[scol];
-            } else if (el) el.value = "";
+        
+        if(loadingModalSpinnerFormEl) mostrarSpinner('loadingModalSpinnerForm'); 
+        try {
+            const { data: r, error } = await supabase.from('reservas').select('*').eq('id_pk', idPk).single();
+            if (error || !r) { 
+                console.error("Erro ao buscar reserva para edição:", error); 
+                alert("Erro ao carregar os dados da reserva para edição."); 
+                if(loadingModalSpinnerFormEl) esconderSpinner('loadingModalSpinnerForm');
+                return; 
+            }
+            reservaFormModalTitleEl.textContent = "Editar Reserva"; 
+            reservaFormEl.reset(); 
+            reservaFormIdEl.value = r.id_pk; 
+
+            for (const [fid, scol] of Object.entries(formHtmlIdsToSupabaseMap)) {
+                const el = document.getElementById(fid);
+                if (el) { 
+                    if (r[scol] !== undefined && r[scol] !== null) {
+                        if (el.type === 'datetime-local') {
+                            el.value = formatarDataParaInput(r[scol]);
+                        } else if (el.type === 'date') {
+                            el.value = r[scol].split('T')[0];
+                        } else if (el.type === 'checkbox') { 
+                            el.checked = r[scol];
+                        }
+                        else {
+                            el.value = r[scol];
+                        }
+                    } else {
+                        el.value = ""; 
+                        if (el.type === 'checkbox') el.checked = false;
+                    }
+                }
+            }
+            const bookingIdField = document.getElementById('reservaFormBookingId');
+            if (bookingIdField && r.booking_id) {
+                bookingIdField.value = r.booking_id;
+            }
+
+            reservaFormModalEl.classList.remove('hidden');
+            void reservaFormModalEl.offsetWidth; 
+            reservaFormModalEl.classList.add('active');
+        } catch (e) {
+            console.error("Exceção ao abrir modal de edição:", e);
+            alert("Ocorreu um erro inesperado ao tentar abrir a reserva para edição.");
+        } finally {
+            if(loadingModalSpinnerFormEl) esconderSpinner('loadingModalSpinnerForm');
         }
-        reservaFormModalEl.classList.remove('hidden');
-        reservaFormModalEl.classList.add('active');
     }
 
     async function handleReservaFormSubmit(event) {
-        event.preventDefault();
-        if (!reservaFormEl || !currentUser) return;
-        const rd = {};
-        for (const [fid, scol] of Object.entries(formHtmlIdsToSupabaseMap)) {
-            const el = document.getElementById(fid);
+        event.preventDefault(); 
+        console.log("Formulário submetido (handleReservaFormSubmit).");
+
+        if (!reservaFormEl || !currentUser) {
+            console.error("Formulário ou utilizador não definidos em handleReservaFormSubmit");
+            alert("Erro interno: Formulário ou utilizador não disponíveis.");
+            return;
+        }
+
+        const rd = {}; 
+        let formValido = true;
+        let primeiroCampoInvalido = null;
+
+        for (const [formId, supabaseCol] of Object.entries(formHtmlIdsToSupabaseMap)) {
+            const el = document.getElementById(formId);
             if (el) {
                 let val = el.value;
-                if (el.type === 'datetime-local' || el.type === 'date') val = val ? converterDataParaISO(new Date(val)) : null;
-                else if (camposNumericosSupabase.includes(scol)) val = validarCampoNumerico(val);
-                rd[scol] = (val === "" || val === undefined) ? null : val;
+                if (el.type === 'datetime-local' || el.type === 'date') {
+                    val = val ? converterDataParaISO(new Date(val)) : null; 
+                    if (el.required && !val) {
+                        console.warn(`Campo de data obrigatório '${formId}' está vazio ou inválido.`);
+                        formValido = false; 
+                        if (!primeiroCampoInvalido) primeiroCampoInvalido = el;
+                    }
+                } else if (camposNumericosSupabase.includes(supabaseCol)) {
+                    val = validarCampoNumerico(val);
+                } else if (el.type === 'checkbox') { 
+                    val = el.checked;
+                }
+                
+                rd[supabaseCol] = (typeof val === 'string' && val.trim() === "") ? null : val;
+
+                if (el.required && (rd[supabaseCol] === null || rd[supabaseCol] === undefined) && supabaseCol !== 'booking_id') {
+                     console.warn(`Campo obrigatório '${formId}' (${supabaseCol}) está vazio.`);
+                     formValido = false;
+                     if (!primeiroCampoInvalido) primeiroCampoInvalido = el;
+                }
+            } else {
+                console.warn(`Elemento de formulário com ID '${formId}' não encontrado.`);
             }
         }
-        rd.action_date = new Date().toISOString();
-        const idEdit = reservaFormIdEl.value;
-        const spinner = document.getElementById('loadingModalSpinner');
+        
+        const bookingIdInput = document.getElementById('reservaFormBookingId');
+        if (bookingIdInput && bookingIdInput.value.trim() !== "" && !rd.booking_id) { 
+            rd.booking_id = bookingIdInput.value.trim();
+        }
+
+        if (!formValido) {
+            alert("Por favor, preencha todos os campos obrigatórios corretamente.");
+            primeiroCampoInvalido?.focus(); 
+            return;
+        }
+
+        rd.action_date = new Date().toISOString(); 
+        const idEdit = reservaFormIdEl.value; 
+        
+        if(loadingModalSpinnerFormEl) mostrarSpinner('loadingModalSpinnerForm');
+
         try {
-            if(spinner) spinner.classList.remove('hidden');
-            if (idEdit) {
-                rd.user_id_modificacao_registo = currentUser.id;
-                const { error } = await supabase.from('reservas').update(rd).eq('id_pk', idEdit);
-                if (error) throw error; alert('Reserva atualizada!');
-            } else {
-                if (!rd.booking_date) { alert("Data da reserva é obrigatória."); if(spinner) spinner.classList.add('hidden'); return; }
-                rd.user_id_criacao_registo = currentUser.id;
-                const { error } = await supabase.from('reservas').insert([rd]);
-                if (error) throw error; alert('Reserva criada!');
+            console.log("Dados da reserva a serem enviados:", JSON.parse(JSON.stringify(rd))); 
+            
+            let resultadoOperacao;
+            if (idEdit) { 
+                console.log(`A atualizar reserva com id_pk: ${idEdit}`);
+                rd.user_id_modificacao_registo = currentUser.id; 
+                resultadoOperacao = await supabase.from('reservas').update(rd).eq('id_pk', idEdit).select(); 
+            } else { 
+                console.log("A criar nova reserva...");
+                if (!rd.booking_date) { 
+                    alert("Data da reserva (Booking Date) é obrigatória para novas reservas."); 
+                    if(loadingModalSpinnerFormEl) esconderSpinner('loadingModalSpinnerForm'); 
+                    return; 
+                }
+                rd.user_id_criacao_registo = currentUser.id; 
+                resultadoOperacao = await supabase.from('reservas').insert([rd]).select(); 
             }
+
+            const { data: opData, error: opError } = resultadoOperacao;
+
+            if (opError) throw opError;
+            
+            console.log(idEdit ? "Resposta da atualização:" : "Resposta da inserção:", opData);
+            alert(idEdit ? 'Reserva atualizada com sucesso!' : 'Reserva criada com sucesso!');
+            
+
             if (reservaFormModalEl) {
                  reservaFormModalEl.classList.remove('active');
-                 // Adicionar um pequeno delay para a transição antes de esconder completamente
                  setTimeout(() => { reservaFormModalEl.classList.add('hidden'); }, 300);
             }
-            carregarReservasDaLista(idEdit ? paginaAtualLista : 1, obterFiltrosAtivos());
-            atualizarDashboardStatsGeral();
-        } catch (err) { console.error('Erro reserva:', err); alert(`Erro: ${err.message}`); }
-        finally { if(spinner) spinner.classList.add('hidden'); }
+            carregarReservasDaLista(idEdit ? paginaAtualLista : 1, obterFiltrosAtivos()); 
+            atualizarDashboardStatsGeral(); 
+
+        } catch (err) { 
+            console.error('Erro ao salvar reserva:', err); 
+            alert(`Erro ao salvar reserva: ${err.message || 'Ocorreu um erro desconhecido.'}`); 
+        }
+        finally { 
+            if(loadingModalSpinnerFormEl) esconderSpinner('loadingModalSpinnerForm'); 
+        }
     }
 
     async function apagarReserva(idPk) {
@@ -1120,7 +1247,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         reservaLogModalEl.classList.remove('hidden');
         reservaLogModalEl.classList.add('active');
         try {
-            // Assumindo que tens uma tabela 'reservas_logs'
             const { data: logs, error } = await supabase.from('reservas_logs').select('*').eq('reserva_id_pk', reservaPk).order('timestamp_log', { ascending: false });
             if (error) throw error;
             if (logs && logs.length > 0) {
@@ -1140,7 +1266,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     async function mostrarConfirmacaoCustomizada(mensagem) {
-        // TODO: Substituir por um modal de confirmação customizado
         return new Promise(resolve => resolve(confirm(mensagem)));
     }
 
@@ -1150,10 +1275,14 @@ document.addEventListener("DOMContentLoaded", async () => {
                  console.error("ERRO CRÍTICO: checkAuthStatus não definido."); alert("Erro config Auth."); return;
             }
             await window.checkAuthStatus();
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-            if (userError || !user) { console.error("Utilizador não autenticado:", userError); return; }
+            const { data: { user }, error: userError } = await supabase.auth.getUser(); // Pega o utilizador da sessão atual
+            if (userError || !user) { 
+                console.error("Utilizador não autenticado em initReservasPage:", userError); 
+                // checkAuthStatus já deve ter redirecionado se necessário
+                return; 
+            }
             currentUser = user;
-            const usp = localStorage.getItem('userProfile'); if (usp) try { userProfile = JSON.parse(usp); } catch (e) { console.error("Erro parse perfil:", e); }
+            userProfile = window.getCurrentUserProfile(); // Pega do localStorage
             
             configurarEventos();
             await popularFiltroCampanhas(); 
@@ -1179,6 +1308,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch (error) { console.error("Erro inicializar reservas:", error); }
     }
 
-    window.showPagePrincipal = function(page) { if (page === 'login') window.location.href = 'index.html'; };
-    initReservasPage();
+    // Garante que auth_global.js carregou e verificou o estado antes de iniciar a página
+    if (typeof window.checkAuthStatus === 'function') {
+        initReservasPage();
+    } else {
+        // Adia a inicialização se auth_global ainda não definiu checkAuthStatus
+        // Isto é um fallback, idealmente a ordem dos scripts no HTML garante que auth_global.js corre primeiro.
+        const checkAuthInterval = setInterval(() => {
+            if (typeof window.checkAuthStatus === 'function') {
+                clearInterval(checkAuthInterval);
+                initReservasPage();
+            }
+        }, 100);
+    }
 });
