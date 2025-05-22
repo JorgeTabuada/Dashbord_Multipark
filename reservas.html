@@ -14,13 +14,11 @@
         const SUPABASE_URL = 'https://ioftqsvjqwjeprsckeym.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvZnRxc3ZqcXdqZXByc2NrZXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcxNTYwNzQsImV4cCI6MjA2MjczMjA3NH0.TXDfhioMFVNxLhjKgpXAxnKCPOl5n8QWpOkX2eafbYw';
 
-        // Implementação da função showPagePrincipal para compatibilidade com auth_global.js
         window.showPagePrincipal = function(page) {
             console.log("Navegação para:", page);
             if (page === 'login') {
                 window.location.href = 'index.html';
             } else if (page === 'dashboard') {
-                // Não fazer nada, já estamos numa subaplicação
                 console.log("Navegação para dashboard ignorada na subaplicação");
             }
         };
@@ -138,6 +136,7 @@
             display: flex;
             flex-direction: column;
             flex-grow: 1; 
+            min-width: 150px; 
         }
         .filters-grid label, .search-container label { 
             font-size: 0.875rem;
@@ -146,6 +145,7 @@
         }
         .filters-grid input[type="text"],
         .filters-grid input[type="date"],
+        .filters-grid input[type="number"], 
         .filters-grid input[type="datetime-local"],
         .filters-grid select,
         .search-container input[type="text"],
@@ -154,14 +154,11 @@
             border: 1px solid #ccc;
             border-radius: 0.25rem;
             font-size: 0.9rem;
-            background-color: #fff; /* Adicionado para consistência */
+            background-color: #fff; 
         }
-        /* Estilo específico para o input de ficheiro para que pareça um botão */
         input[type="file"].file-input-styled {
             cursor: pointer;
         }
-        /* Esconder o input de ficheiro real se usarmos um label estilizado para o acionar */
-        /* input[type="file"]#importReservasFile { display: none; } */
 
         .action-button { 
             background-color: #0d6efd; 
@@ -172,6 +169,7 @@
             transition: background-color 0.2s;
             border: none;
             cursor: pointer;
+            height: fit-content; 
         }
         .action-button:hover {
             background-color: #0b5ed7; 
@@ -384,13 +382,35 @@
                         <input type="date" id="resFiltroDataEntradaLista">
                     </div>
                     <div>
+                        <label for="resFiltroCampanhaLista">Campanha:</label>
+                        <select id="resFiltroCampanhaLista">
+                            <option value="">Todas as Campanhas</option>
+                            </select>
+                    </div>
+                     <div>
+                        <label for="resFiltroPagamentoOnlineLista">Pagamento Online:</label>
+                        <select id="resFiltroPagamentoOnlineLista">
+                            <option value="">Todos</option>
+                            <option value="true">Sim</option>
+                            <option value="false">Não</option>
+                        </select>
+                    </div>
+                     <div>
+                        <label for="resFiltroTipoReservaLista">Tipo de Reserva:</label>
+                        <select id="resFiltroTipoReservaLista">
+                            <option value="">Todos</option>
+                            <option value="online">Online</option> 
+                            <option value="telefone">Telefone</option>
+                        </select>
+                    </div>
+                    <div>
                         <label for="resFiltroEstadoLista">Estado:</label>
                         <select id="resFiltroEstadoLista">
                             <option value="">Todos</option>
-                            <option value="pendente">Pendente</option>
-                            <option value="confirmada">Confirmada</option>
-                            <option value="cancelada">Cancelada</option>
-                            <option value="concluida">Concluída</option>
+                            <option value="Reservado">Reservado</option>
+                            <option value="Recolhido">Recolhido</option>
+                            <option value="Entregue">Entregue</option>
+                            <option value="Cancelado">Cancelado</option>
                         </select>
                     </div>
                     <button id="resAplicarFiltrosListaBtn" class="action-button">Aplicar Filtros</button>
@@ -424,16 +444,17 @@
                 </div>
 
                 <div class="flex justify-between items-center mt-4">
-                    <div>Total: <span id="reservasTotalCount">0</span> reservas</div>
-                    <div id="reservasPaginacao" class="flex gap-2">
-                        <!-- Paginação será inserida via JavaScript -->
+                    <div>
+                        <span>Total: <span id="reservasTotalCount">0</span> reservas</span>
+                        <span class="ml-4">| Soma Valores (Filtro): <span id="somaValoresFiltro" class="font-semibold">0,00 €</span></span>
                     </div>
+                    <div id="reservasPaginacao" class="flex gap-2">
+                        </div>
                 </div>
             </section>
         </div>
     </div>
 
-    <!-- Modal de Formulário de Reserva -->
     <div id="reservaFormModal" class="form-modal-backdrop">
         <div class="form-modal-dialog">
             <div class="form-modal-header">
@@ -445,16 +466,20 @@
                     <input type="hidden" id="reservaFormId">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label for="reservaFormBookingId">ID da Reserva:</label>
-                            <input type="text" id="reservaFormBookingId" placeholder="Gerado automaticamente" disabled>
+                            <label for="reservaFormBookingId">ID da Reserva (Booking ID):</label>
+                            <input type="text" id="reservaFormBookingId" placeholder="Gerado automaticamente se não fornecido">
                         </div>
                         <div class="form-group">
-                            <label for="reservaFormDataReserva">Data da Reserva:</label>
+                            <label for="reservaFormDataReserva">Data da Reserva (Booking Date):</label>
                             <input type="datetime-local" id="reservaFormDataReserva" required>
                         </div>
                         <div class="form-group">
                             <label for="reservaFormNomeCliente">Nome do Cliente:</label>
                             <input type="text" id="reservaFormNomeCliente" required>
+                        </div>
+                         <div class="form-group">
+                            <label for="reservaFormApelidoCliente">Apelido do Cliente:</label>
+                            <input type="text" id="reservaFormApelidoCliente">
                         </div>
                         <div class="form-group">
                             <label for="reservaFormEmailCliente">Email do Cliente:</label>
@@ -473,35 +498,36 @@
                             <input type="text" id="reservaFormAlocation" required>
                         </div>
                         <div class="form-group">
-                            <label for="reservaFormDataEntrada">Data de Entrada:</label>
+                            <label for="reservaFormDataEntrada">Data de Entrada Prevista:</label>
                             <input type="datetime-local" id="reservaFormDataEntrada" required>
                         </div>
                         <div class="form-group">
-                            <label for="reservaFormDataSaida">Data de Saída:</label>
+                            <label for="reservaFormDataSaida">Data de Saída Prevista:</label>
                             <input type="datetime-local" id="reservaFormDataSaida" required>
                         </div>
                         <div class="form-group">
-                            <label for="reservaFormParque">Parque:</label>
-                            <select id="reservaFormParque" required>
-                                <option value="">Selecione um parque</option>
-                                <!-- Opções serão carregadas via JavaScript -->
-                            </select>
-                        </div>
+                            <label for="reservaFormParque">Parque (ID ou Código):</label>
+                             <input type="text" id="reservaFormParque" placeholder="Insira o ID ou código do parque" required>
+                            </div>
                         <div class="form-group">
-                            <label for="reservaFormCampanha">Campanha:</label>
+                            <label for="reservaFormCampanha">Campanha (ID/Nome):</label>
                             <input type="text" id="reservaFormCampanha">
                         </div>
                         <div class="form-group">
-                            <label for="reservaFormValor">Valor Total:</label>
-                            <input type="number" id="reservaFormValor" step="0.01" min="0" required>
+                            <label for="reservaFormValor">Valor Total (Preço Final):</label>
+                            <input type="number" id="reservaFormValor" step="0.01" min="0">
+                        </div>
+                         <div class="form-group">
+                            <label for="reservaFormBookingPrice">Preço da Reserva (Booking Price):</label>
+                            <input type="number" id="reservaFormBookingPrice" step="0.01" min="0">
                         </div>
                         <div class="form-group">
                             <label for="reservaFormEstado">Estado:</label>
                             <select id="reservaFormEstado" required>
-                                <option value="pendente">Pendente</option>
-                                <option value="confirmada">Confirmada</option>
-                                <option value="cancelada">Cancelada</option>
-                                <option value="concluida">Concluída</option>
+                                <option value="Reservado">Reservado</option>
+                                <option value="Recolhido">Recolhido</option>
+                                <option value="Entregue">Entregue</option>
+                                <option value="Cancelado">Cancelado</option>
                             </select>
                         </div>
                         <div class="form-group md:col-span-2">
@@ -510,6 +536,7 @@
                         </div>
                     </div>
                 </form>
+                 <div id="loadingModalSpinner" class="loader hidden mt-4"></div>
             </div>
             <div class="form-modal-footer">
                 <button class="resFecharModalBtn action-button secondary">Cancelar</button>
@@ -518,7 +545,6 @@
         </div>
     </div>
 
-    <!-- Modal de Log de Reserva -->
     <div id="reservaLogModal" class="log-modal-backdrop">
         <div class="log-modal-dialog">
             <div class="log-modal-header">
@@ -531,8 +557,8 @@
                         <thead>
                             <tr>
                                 <th>Data</th>
-                                <th>Ação</th>
                                 <th>Utilizador</th>
+                                <th>Ação</th>
                                 <th>Detalhes</th>
                             </tr>
                         </thead>
@@ -551,10 +577,8 @@
         </div>
     </div>
 
-    <!-- Autenticação Global -->
     <script src="js/auth_global.js"></script>
     
-    <!-- Script específico da página -->
     <script src="js/reservas.js"></script>
 </body>
 </html>
