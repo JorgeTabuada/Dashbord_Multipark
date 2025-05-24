@@ -1444,60 +1444,86 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
 
-    async function initReservasPage() {
-        try {
-            // Assegura que a verificação de autenticação global foi concluída
-            if (typeof window.checkAuthStatus !== 'function') {
-                 console.error("ERRO CRÍTICO (reservas.js): checkAuthStatus não definido. auth_global.js não carregado ou falhou?");
-                 alert("Erro crítico na configuração de autenticação. Contacte o suporte.");
-                 return; // Interrompe a inicialização da página de reservas
-            }
-            await window.checkAuthStatus(); // Espera que o estado de autenticação seja verificado
-
-            // Depois de checkAuthStatus, currentUserGlobal e userProfileGlobal devem estar disponíveis em window se o login foi bem-sucedido
-            currentUser = window.getCurrentUser && window.getCurrentUser(); // Pega da função global, se existir
-            userProfile = window.getCurrentUserProfile && window.getCurrentUserProfile(); // Pega da função global
-
-            if (!currentUser) {
-                console.error("Reservas.js: Utilizador não autenticado após checkAuthStatus. Redirecionamento deveria ter ocorrido.");
-                // Não é necessário redirecionar daqui, auth_global.js já deve ter tratado disso.
-                // Apenas impede a continuação da inicialização da página de reservas.
-                return;
-            }
-
-            console.log("Reservas.js: Utilizador autenticado:", currentUser.email);
-            if (userProfile) console.log("Reservas.js: Perfil do utilizador:", userProfile.full_name);
-
-            configurarEventos();
-            await popularFiltroCampanhas(); // Popular o dropdown de campanhas
-
-            // Configurar datas padrão para o dashboard (Ex: mês atual)
-            if (resDashboardFiltroDataInicioEl && resDashboardFiltroDataFimEl && !resDashboardFiltroDataInicioEl.value) {
-                const hoje = new Date();
-                const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-                resDashboardFiltroDataInicioEl.value = primeiroDiaMes.toISOString().split('T')[0];
-                resDashboardFiltroDataFimEl.value = ultimoDiaMes.toISOString().split('T')[0];
-                if(resDashboardFiltroPeriodoEl) resDashboardFiltroPeriodoEl.value = "mes_atual"; // Define o dropdown para "Este Mês"
-            }
-
-            // Carregar dados iniciais do gráfico por hora (para o dia atual por defeito)
-            if (resDashboardDataHoraInputEl) {
-                const dataAtualInput = resDashboardDataHoraInputEl.value || new Date().toISOString().split('T')[0];
-                resDashboardDataHoraInputEl.value = dataAtualInput; // Garante que tem um valor
-                if (resDashboardDataHoraDisplayEl) {
-                     const [a, m, d] = dataAtualInput.split('-'); resDashboardDataHoraDisplayEl.textContent = `${d}/${m}/${a}`;
-                }
-                await carregarReservasPorHora(dataAtualInput); // Carrega o gráfico para a data
-            }
-
-            await carregarReservasDaLista(1); // Carrega a primeira página da lista
-            // atualizarDashboardStatsGeral será chamado dentro de carregarReservasDaLista ou após definir datas
-        } catch (error) {
-            console.error("Erro ao inicializar a página de reservas:", error);
-            // Poderia mostrar uma mensagem de erro genérica para o utilizador aqui
+    // Certifica-te de que esta função substitui a tua função initReservasPage existente
+async function initReservasPage() {
+    try {
+        // Assegura que a verificação de autenticação global foi concluída
+        if (typeof window.checkAuthStatus !== 'function') {
+             console.error("ERRO CRÍTICO (reservas.js): checkAuthStatus não definido. auth_global.js não carregado ou falhou?");
+             alert("Erro crítico na configuração de autenticação. Contacte o suporte.");
+             return; 
         }
+        console.log("Reservas.js: A chamar window.checkAuthStatus()...");
+        await window.checkAuthStatus(); // Espera que auth_global.js verifique o estado inicial e redirecione se necessário.
+        console.log("Reservas.js: window.checkAuthStatus() concluído.");
+
+        // **** MODIFICAÇÃO PRINCIPAL AQUI: Voltar a obter o utilizador diretamente ****
+        console.log("Reservas.js: A obter utilizador diretamente do Supabase Auth...");
+        const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
+
+        if (userError) {
+            console.error("Reservas.js: Erro ao obter utilizador do Supabase Auth:", userError);
+            // Considera redirecionar para o login ou mostrar uma mensagem de erro
+            // window.location.href = "index.html"; // Exemplo de redirecionamento
+            return;
+        }
+
+        currentUser = supabaseUser; // Define currentUser com o resultado direto
+        console.log("Reservas.js: Utilizador obtido de supabase.auth.getUser():", currentUser);
+
+        if (!currentUser) {
+            console.error("Reservas.js: Utilizador não autenticado após supabase.auth.getUser(). Redirecionamento deveria ter ocorrido por auth_global.js.");
+            // Se auth_global.js não redirecionou e chegamos aqui sem utilizador, algo está errado.
+            // Forçar redirecionamento como fallback.
+            window.location.href = "index.html";
+            return;
+        }
+
+        // Tenta obter o perfil do utilizador do localStorage (como na versão antiga)
+        const userProfileStr = localStorage.getItem('userProfile');
+        if (userProfileStr) {
+            try {
+                userProfile = JSON.parse(userProfileStr);
+            } catch (e) {
+                console.error("Reservas.js: Erro ao parsear userProfile do localStorage:", e);
+                userProfile = null; // Garante que userProfile é null se houver erro
+            }
+        } else {
+            userProfile = null; // Garante que userProfile é null se não estiver no localStorage
+        }
+        // Alternativamente, se window.getCurrentUserProfile() for mais fiável no teu auth_global.js:
+        // userProfile = window.getCurrentUserProfile && window.getCurrentUserProfile();
+
+        console.log("Reservas.js: Utilizador autenticado:", currentUser.email);
+        if (userProfile) console.log("Reservas.js: Perfil do utilizador:", userProfile.full_name || "Nome não disponível no perfil");
+
+        // O resto da tua função initReservasPage continua como na versão mais recente:
+        configurarEventos();
+        await popularFiltroCampanhas(); 
+
+        if (resDashboardFiltroDataInicioEl && resDashboardFiltroDataFimEl && !resDashboardFiltroDataInicioEl.value) {
+            const hoje = new Date();
+            const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+            resDashboardFiltroDataInicioEl.value = primeiroDiaMes.toISOString().split('T')[0];
+            resDashboardFiltroDataFimEl.value = ultimoDiaMes.toISOString().split('T')[0];
+            if(resDashboardFiltroPeriodoEl) resDashboardFiltroPeriodoEl.value = "mes_atual";
+        }
+
+        if (resDashboardDataHoraInputEl) {
+            const dataAtualInput = resDashboardDataHoraInputEl.value || new Date().toISOString().split('T')[0];
+            resDashboardDataHoraInputEl.value = dataAtualInput; 
+            if (resDashboardDataHoraDisplayEl) {
+                 const [a, m, d] = dataAtualInput.split('-'); resDashboardDataHoraDisplayEl.textContent = `<span class="math-inline">\{d\}/</span>{m}/${a}`;
+            }
+            await carregarReservasPorHora(dataAtualInput); 
+        }
+        await carregarReservasDaLista(1); 
+
+    } catch (error) {
+        console.error("Erro ao inicializar a página de reservas:", error);
     }
+}
 
     // Garante que auth_global.js carregou e verificou o estado antes de iniciar a página.
     // O script auth_global.js deve ser carregado ANTES de reservas.js no HTML.
