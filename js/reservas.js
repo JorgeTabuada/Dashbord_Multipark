@@ -964,6 +964,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             if (reservasParaUpsert.length > 0) {
                 // O onConflict garante que se license_plate + alocation já existir, atualiza; senão, insere.
+// Dentro da função processarDadosImportacao, ANTES da linha:
+// const { error: upsertError } = await supabase.from("reservas").upsert(reservasParaUpsert, ...);
+
+console.log("Dados DETALHADOS sendo enviados para UPSERT:", JSON.stringify(reservasParaUpsert, null, 2));
+reservasParaUpsert.forEach((reserva, index) => {
+    console.log(`Reserva índice ${index}:`);
+    camposDePrecoSupabase.forEach(campoPreco => { // camposDePrecoSupabase é a tua lista ajustada
+        if (reserva.hasOwnProperty(campoPreco)) {
+            console.log(`  ${campoPreco}: ${reserva[campoPreco]}`);
+            // Verifica se algum é um número muito grande
+            if (typeof reserva[campoPreco] === 'number' && Math.abs(reserva[campoPreco]) >= 100000000) {
+                console.error(`VALOR GRANDE DETETADO na reserva índice ${index}, campo ${campoPreco}: ${reserva[campoPreco]}`);
+            }
+        }
+    });
+});
                 const { error: upsertError } = await supabase.from("reservas").upsert(reservasParaUpsert, { onConflict: 'license_plate,alocation', returning: "minimal" });
                 if (upsertError) {
                     console.error("Erro detalhado do Supabase (upsert):", upsertError);
