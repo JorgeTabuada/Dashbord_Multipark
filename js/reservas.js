@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         "booking_price",      // Preço da reserva
         "parking_price",      // Preço do estacionamento
         "delivery_price",     // Preço da entrega
-        "extras_price",       // Preço dos extras
+        //"extras_price",       // Preço dos extras
         "total_price",        // Preço total (no Excel, pode vir de "priceOnDelivery")
         "corrected_price",    // Preço corrigido
         "price_on_delivery"   // Preço na entrega (se for uma coluna de preço separada na BD)
