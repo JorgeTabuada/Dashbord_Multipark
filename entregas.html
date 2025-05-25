@@ -3,45 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entregas - Ferramentas Multipark</title>
+    <title>Gestão de Entregas - Ferramentas Multipark</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/pt.js"></script>
+
     <style>
-        /* Estilos adaptados */
         body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; }
         .subapp-page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 1rem; box-sizing: border-box; }
-        .subapp-main-content { background-color: #f0f2f5; padding: 1rem; border-radius: 0.5rem; width: 100%; max-width: 1400px; display: flex; flex-direction: column; align-items: center; margin-top: 1rem; margin-bottom: 2rem; }
+        .subapp-main-content { background-color: #f0f2f5; padding: 1rem; border-radius: 0.5rem; width: 100%; max-width: 1600px; display: flex; flex-direction: column; align-items: center; margin-top: 1rem; margin-bottom: 2rem; }
         .app-logo-styled { font-size: 1.75rem; font-weight: 700; color: #0A2B5C; margin-bottom: 1.5rem; text-align: center; display: flex; align-items: center; justify-content: center; letter-spacing: 0.5px; width: 100%; }
         .app-logo-styled .logo-p-icon { background-color: #0A2B5C; color: #fff; padding: 3px 9px; margin-right: 5px; border-radius: 4px; font-family: 'Arial Black', Gadget, sans-serif; font-size: 1.8rem; line-height: 1; }
         .subapp-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 1rem; background-color: #fff; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .subapp-title { font-size: 1.5rem; font-weight: 600; color: #0A2B5C; }
         .subapp-section { width: 100%; background-color: #fff; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
         .subapp-section-title { font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; }
-        .filters-grid, .actions-container { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; align-items: flex-end; }
-        .filters-grid > div { display: flex; flex-direction: column; flex-grow: 1; }
-        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; }
-        .filters-grid input[type="text"], .filters-grid input[type="date"],
-        .filters-grid select {
-            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem; background-color: #fff;
+        
+        .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; }
+        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; display: block;}
+        .filters-grid input, .filters-grid select, .file-input {
+            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem; background-color: #fff; width: 100%; box-sizing: border-box;
         }
-        .action-button { background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem; border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer; }
+        .action-button { background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem; border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer; height: fit-content;}
         .action-button:hover { background-color: #0b5ed7; }
         .action-button.secondary { background-color: #6c757d; }
         .action-button.secondary:hover { background-color: #5a6268; }
+        .action-button.success { background-color: #198754; }
+        .action-button.success:hover { background-color: #157347; }
+
         .table-container { overflow-x: auto; margin-top: 1rem; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.85em; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 0.8em; white-space: nowrap; }
         th { background-color: #f8f9fa; font-weight: 600; color: #495057; }
+        .actions-cell button { margin-right: 4px; padding: 4px 6px; font-size:0.75em; }
+
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-card { background-color: #e6fffa; padding: 1.25rem; border-radius: 0.375rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #0d9488; } /* Cor Teal para entregas */
-        .stat-card h4 { font-weight: 600; color: #0f766e; margin-bottom: 0.5rem; font-size: 0.95rem; }
-        .stat-card p.stat-value { font-size: 1.75rem; font-weight: 700; color: #0d9488; }
+        .stat-card { background-color: #e6fffa; /* Verde claro para Entregas */ padding: 1.25rem; border-radius: 0.375rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #38b2ac; }
+        .stat-card h4 { font-weight: 600; color: #2c7a7b; margin-bottom: 0.5rem; font-size: 0.95rem; }
+        .stat-card p.stat-value { font-size: 1.75rem; font-weight: 700; color: #2c7a7b; }
         .stat-card div.stat-subtext { font-size: 0.85rem; font-weight: normal; color: #555; }
-        .content-placeholder { min-height: 200px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ddd; border-radius: 0.25rem; color: #777; text-align: center; padding: 1rem; background-color: #f9f9f9; }
+
         .hidden { display: none !important; }
-        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1050; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-backdrop.active { opacity: 1; visibility: visible; }
+        .modal-dialog { background-color: white; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 100%; max-width: 900px; transform: translateY(-20px); transition: transform 0.3s ease; max-height: 90vh; display: flex; flex-direction: column;}
+        .modal-backdrop.active .modal-dialog { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-body { overflow-y: auto; padding-right: 10px; /* Para a scrollbar não sobrepor o conteúdo */ }
+        .modal-body .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+        .modal-body .form-grid label, .modal-body .form-group label { font-size: 0.8rem; margin-bottom: 0.15rem; display: block; font-weight: 500; }
+        .modal-body .form-grid input, .modal-body .form-grid select, .modal-body .form-grid textarea,
+        .modal-body .form-group input, .modal-body .form-group select, .modal-body .form-group textarea { 
+            font-size: 0.85rem; padding: 0.5rem; width: 100%; border: 1px solid #ccc; border-radius: 0.25rem; box-sizing: border-box;
+        }
+        .modal-body .form-group { margin-bottom: 1rem; }
+        .modal-footer { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .image-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+        .image-preview-item img { max-width: 100px; max-height: 100px; object-fit: cover; border-radius: 0.25rem; border: 1px solid #ddd; }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -52,89 +78,60 @@
             </div>
 
             <header class="subapp-header">
-                <h2 class="subapp-title">Dashboard de Entregas</h2>
+                <h2 class="subapp-title">Gestão de Entregas</h2>
                 <button id="voltarDashboardBtnEntregas" class="action-button secondary">Voltar ao Dashboard</button>
             </header>
 
             <section class="subapp-section">
-                <h3 class="subapp-section-title">Análise de Entregas</h3>
-                <div class="filters-grid mb-6">
-                    <div>
-                        <label for="entDashboardFiltroDataInicio">Data Início (Entrega):</label>
-                        <input type="date" id="entDashboardFiltroDataInicio">
+                <h3 class="subapp-section-title">Importar Dados de Entregas (Excel)</h3>
+                <div class="flex flex-col sm:flex-row gap-4 items-end">
+                    <div class="flex-grow">
+                        <label for="importEntregasFile" class="block mb-1 text-sm font-medium text-gray-700">Ficheiro Excel (.xlsx):</label>
+                        <input type="file" id="importEntregasFile" class="file-input block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
                     </div>
-                    <div>
-                        <label for="entDashboardFiltroDataFim">Data Fim (Entrega):</label>
-                        <input type="date" id="entDashboardFiltroDataFim">
-                    </div>
-                    <div>
-                        <label for="entDashboardFiltroPeriodo">Período Rápido:</label>
-                        <select id="entDashboardFiltroPeriodo">
-                            <option value="personalizado">Personalizado</option>
-                            <option value="hoje">Hoje</option>
-                            <option value="semana_atual">Esta Semana</option>
-                            <option value="mes_atual" selected>Este Mês</option>
-                            <option value="ultimos_30dias">Últimos 30 Dias</option>
-                            <option value="este_ano">Este Ano</option>
-                        </select>
-                    </div>
-                     <div>
-                        <label for="entDashboardFiltroParque">Parque:</label>
-                        <select id="entDashboardFiltroParque">
-                            <option value="">Todos</option>
-                            <option value="lisboa">Lisboa</option>
-                            <option value="porto">Porto</option>
-                            <option value="faro">Faro</option>
-                        </select>
-                    </div>
-                    <button id="entAplicarFiltrosDashboardBtn" class="action-button">Analisar</button>
+                    <button id="processarImportacaoEntregasBtn" class="action-button success w-full sm:w-auto">Processar Ficheiro</button>
                 </div>
-
-                <div id="entregasDashboardStats" class="stats-grid">
-                    <div class="stat-card"><h4>Total Entregas Efetuadas</h4><p id="statTotalEntregas" class="stat-value">0</p><div id="statTotalEntregasPeriodo" class="stat-subtext">N/A</div></div>
-                    <div class="stat-card"><h4>Entregas vs. Previstas</h4><p id="statEntregasVsPrevistas" class="stat-value">0 / 0</p><div id="statEntregasVsPrevistasPeriodo" class="stat-subtext">N/A</div></div>
-                    <div class="stat-card"><h4>Valor Total Entregue</h4><p id="statValorTotalEntregue" class="stat-value">0,00 €</p><div id="statValorTotalEntreguePeriodo" class="stat-subtext">N/A</div></div>
-                    <div class="stat-card"><h4>Média Entregas/Dia</h4><p id="statMediaEntregasDia" class="stat-value">0</p><div id="statMediaEntregasDiaPeriodo" class="stat-subtext">N/A</div></div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                    <div class="subapp-section p-4 rounded-lg shadow-md">
-                        <h4 class="subapp-section-title text-center">Entregas por Hora (<span id="entDashboardDataHoraDisplay">selecione um dia</span>)</h4>
-                        <input type="date" id="entDashboardDataHoraInput" class="w-full p-2 border rounded mb-2">
-                        <canvas id="chartEntregasPorHora" height="200"></canvas>
-                    </div>
-                    <div class="subapp-section p-4 rounded-lg shadow-md">
-                         <h4 class="subapp-section-title text-center">Entregas por Método de Pagamento</h4>
-                        <canvas id="chartEntregasMetodoPagamento" height="200"></canvas>
-                    </div>
-                </div>
-                 <div class="subapp-section mt-6">
-                    <h4 class="subapp-section-title">Calendário de Entregas</h4>
-                    <div id="calendarioEntregasContainer" class="content-placeholder">
-                        <p>A vista de calendário com as entregas (baseado em data_saida_real) aparecerá aqui.</p>
-                    </div>
-                </div>
+                <div id="importacaoEntregasStatus" class="mt-3 text-sm"></div>
+                <div id="loadingImportEntregasSpinner" class="loader hidden"></div>
             </section>
 
             <section class="subapp-section">
-                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
-                    <h3 class="subapp-section-title !mb-0 flex-grow">Lista de Entregas Realizadas</h3>
-                    <div class="actions-container !mb-0">
-                        <button id="entExportarListaBtn" class="action-button secondary">Exportar Lista (CSV)</button>
-                    </div>
-                </div>
+                <h3 class="subapp-section-title">Consultar Entregas</h3>
                 <div class="filters-grid">
-                    <div><label for="entFiltroMatriculaLista">Matrícula</label><input type="text" id="entFiltroMatriculaLista" placeholder="AA-00-BB..."></div>
-                    <div><label for="entFiltroDataSaidaRealLista">Data Entrega (a partir de)</label><input type="date" id="entFiltroDataSaidaRealLista"></div>
                     <div>
-                        <label for="entFiltroCondutorLista">Condutor Entrega:</label>
-                        <select id="entFiltroCondutorLista">
-                            <option value="">Todos</option>
-                            {/* Populado por JS */}
-                        </select>
+                        <label for="entFiltroMatricula">Matrícula:</label>
+                        <input type="text" id="entFiltroMatricula" placeholder="AA-00-BB">
                     </div>
-                    <button id="entAplicarFiltrosListaBtn" class="action-button">Filtrar Lista</button>
+                    <div>
+                        <label for="entFiltroAlocation">Alocation ID:</label>
+                        <input type="text" id="entFiltroAlocation" placeholder="ID da Reserva">
+                    </div>
+                    <div>
+                        <label for="entFiltroDataEntregaInicio">Entrega De (Real):</label>
+                        <input type="text" id="entFiltroDataEntregaInicio" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="entFiltroDataEntregaFim">Entrega Até (Real):</label>
+                        <input type="text" id="entFiltroDataEntregaFim" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="entFiltroCondutorEntrega">Condutor Entrega:</label>
+                        <select id="entFiltroCondutorEntrega">
+                            <option value="">Todos</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label for="entFiltroEstadoReserva">Estado Reserva Pós-Entrega:</label>
+                        <select id="entFiltroEstadoReserva">
+                            <option value="">Todos</option>
+                            <option value="Entregue">Entregue</option>
+                            <option value="Concluída">Concluída</option>
+                            <option value="ValidadaFinanceiramente">Validada Financeiramente</option>
+                            </select>
+                    </div>
+                    <button id="entAplicarFiltrosBtn" class="action-button col-span-full sm:col-span-1 self-end">Aplicar Filtros</button>
                 </div>
+
                 <div id="loadingEntregasTableSpinner" class="loader hidden"></div>
                 <div class="table-container">
                     <table id="entregasTable">
@@ -144,28 +141,145 @@
                                 <th>Matrícula</th>
                                 <th>Alocation</th>
                                 <th>Cliente</th>
-                                <th>Data Saída Prev.</th>
-                                <th>Data Saída Real</th>
+                                <th>Check-out Previsto</th>
+                                <th>Check-out Real (Entrega)</th>
                                 <th>Condutor Entrega</th>
-                                <th>Valor Pago (€)</th>
-                                <th>Método Pag.</th>
                                 <th>Parque</th>
+                                <th>Estado Atual Reserva</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="entregasTableBody"></tbody>
                     </table>
                 </div>
-                <p id="entregasNenhumaMsg" class="content-placeholder hidden">Nenhuma entrega encontrada com os filtros atuais.</p>
-                <div id="entregasPaginacao" class="mt-4 flex justify-center"></div>
+                <p id="entregasNenhumaMsg" class="text-center text-gray-500 py-4 hidden">Nenhuma entrega encontrada.</p>
+                <div class="flex justify-between items-center mt-4">
+                    <div>Total de Registos: <span id="entregasTotalCount" class="font-semibold">0</span></div>
+                    <div id="entregasPaginacao" class="flex gap-2"></div>
+                </div>
+            </section>
+            
+            <section class="subapp-section">
+                <h3 class="subapp-section-title">Dashboard de Entregas</h3>
+                 <div class="filters-grid mb-6">
+                    <div>
+                        <label for="entregasDashboardFiltroDataInicio">Data Início:</label>
+                        <input type="text" id="entregasDashboardFiltroDataInicio" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="entregasDashboardFiltroDataFim">Data Fim:</label>
+                        <input type="text" id="entregasDashboardFiltroDataFim" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="entregasDashboardFiltroPeriodo">Período Rápido:</label>
+                        <select id="entregasDashboardFiltroPeriodo">
+                            <option value="hoje">Hoje</option>
+                            <option value="semana_atual">Esta Semana</option>
+                            <option value="mes_atual" selected>Este Mês</option>
+                            <option value="ultimos_30dias">Últimos 30 Dias</option>
+                            <option value="este_ano">Este Ano</option>
+                            <option value="personalizado">Personalizado</option>
+                        </select>
+                    </div>
+                    <button id="entregasAplicarFiltrosDashboardBtn" class="action-button self-end">Analisar</button>
+                </div>
+                 <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4 >Total de Entregas</h4>
+                        <p id="statTotalEntregasDashboard" class="stat-value">0</p>
+                        <div id="statTotalEntregasPeriodoDashboard" class="stat-subtext">N/A</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4 >Média Entregas/Dia</h4>
+                        <p id="statMediaEntregasDiaDashboard" class="stat-value">0</p>
+                         <div id="statMediaEntregasDiaPeriodoDashboard" class="stat-subtext">N/A</div>
+                    </div>
+                 </div>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div class="subapp-section p-4 rounded-lg shadow-md">
+                        <h4 class="subapp-section-title text-center">Entregas por Hora (<span id="entregasDashboardDataHoraDisplay">selecione um dia</span>)</h4>
+                        <input type="text" id="entregasDashboardDataHoraInput" class="flatpickr-input w-full p-2 border rounded mb-2" placeholder="DD/MM/AAAA">
+                        <canvas id="chartEntregasPorHoraDashboard" height="200"></canvas>
+                    </div>
+                    <div class="subapp-section p-4 rounded-lg shadow-md">
+                         <h4 class="subapp-section-title text-center">Top Condutores (Entregas)</h4>
+                        <canvas id="chartTopCondutoresEntregasDashboard" height="200"></canvas>
+                    </div>
+                </div>
             </section>
         </div>
     </div>
 
-                    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabaseClient.js"></script>
-<script src="js/auth_global.js"></script>
-<script src="js/entregas.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <div id="entregaDetalhesModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h5 class="modal-title" id="entregaModalTitle">Registar/Ver Detalhes da Entrega</h5>
+                <button type="button" class="text-2xl font-bold text-gray-500 hover:text-gray-700 entFecharModalBtn">&times;</button>
+            </div>
+            <form id="entregaDetalhesForm">
+                <div class="modal-body">
+                    <input type="hidden" id="entregaModalReservaIdPk">
+                    <h4 class="text-md font-semibold mb-2 text-gray-700">Dados da Reserva Original:</h4>
+                    <div class="form-grid mb-4 p-3 bg-gray-50 rounded-md border">
+                        <div class="form-group"><label>Booking ID:</label><p id="modalEntInfoBookingId" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Matrícula:</label><p id="modalEntInfoMatricula" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Alocation:</label><p id="modalEntInfoAlocation" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Cliente:</label><p id="modalEntInfoNomeCliente" class="text-sm"></p></div>
+                        <div class="form-group"><label>Check-out Previsto:</label><p id="modalEntInfoCheckoutPrevisto" class="text-sm"></p></div>
+                        <div class="form-group"><label>Parque Atual:</label><p id="modalEntInfoParqueAtual" class="text-sm"></p></div>
+                    </div>
+
+                    <h4 class="text-md font-semibold mb-2 text-gray-700">Dados da Entrega:</h4>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="modalEntregaDataReal">Data/Hora Real da Entrega:</label>
+                            <input type="text" id="modalEntregaDataReal" class="flatpickr-datetime" required placeholder="DD/MM/AAAA HH:MM">
+                        </div>
+                        <div class="form-group">
+                            <label for="modalEntregaCondutor">Condutor da Entrega:</label>
+                            <select id="modalEntregaCondutor" required>
+                                <option value="">Selecione o Condutor</option>
+                                </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalEntregaKmsSaida">KMs à Saída:</label>
+                            <input type="number" id="modalEntregaKmsSaida" placeholder="Ex: 12580">
+                        </div>
+                        <div class="form-group col-span-full md:col-span-2"> <label for="modalEntregaDanosCheckOut">Danos Observados (Check-out):</label>
+                            <textarea id="modalEntregaDanosCheckOut" rows="3" placeholder="Descrever quaisquer novos danos ou confirmar estado..."></textarea>
+                        </div>
+                        <div class="form-group col-span-full">
+                            <label for="modalEntregaFotos">Fotos da Viatura (Check-out - máx. 5):</label>
+                            <input type="file" id="modalEntregaFotos" class="file-input" multiple accept="image/jpeg, image/png, image/heic, image/webp">
+                            <div id="modalEntregaFotosPreview" class="image-preview-grid"></div>
+                            <div id="modalEntregaFotosUrlsExistentes" class="image-preview-grid mt-2"></div>
+                        </div>
+                         <div class="form-group col-span-full">
+                            <label for="modalEntregaObsInternas">Observações Internas da Entrega:</label>
+                            <textarea id="modalEntregaObsInternas" rows="2" placeholder="Notas adicionais do operador..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalEntregaEstadoFinalReserva">Estado Final da Reserva Pós-Entrega:</label>
+                            <select id="modalEntregaEstadoFinalReserva" required>
+                                <option value="Entregue">Entregue</option>
+                                <option value="Concluída">Concluída (Ex: após pagamento final)</option>
+                                <option value="ValidadaFinanceiramente">Validada Financeiramente</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-button secondary entFecharModalBtn">Cancelar</button>
+                    <button type="submit" class="action-button success">Confirmar Entrega e Guardar</button>
+                </div>
+            </form>
+            <div id="entregaModalStatus" class="mt-2 text-sm text-center"></div>
+            <div id="loadingModalSpinnerEntrega" class="loader hidden"></div>
+        </div>
+    </div>
+
+    <script src="js/supabaseClient.js"></script> 
+    <script src="js/auth_global.js"></script>
+    <script src="js/entregas_multipark.js"></script> 
 </body>
 </html>
