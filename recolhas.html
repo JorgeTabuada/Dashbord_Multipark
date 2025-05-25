@@ -3,111 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recolhas - Ferramentas Multipark</title>
+    <title>Gestão de Recolhas - Ferramentas Multipark</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/pt.js"></script> 
+
     <style>
-        /* Estilos base e da subaplicação (semelhantes a reservas.html) */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            color: #333;
-            margin: 0;
-        }
-        .subapp-page-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding: 1rem;
-            box-sizing: border-box;
-        }
-        .subapp-main-content {
-            background-color: #f0f2f5;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            max-width: 1300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 1rem;
-            margin-bottom: 2rem;
-        }
-        .app-logo-styled {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #0A2B5C;
-            margin-bottom: 1.5rem;
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            letter-spacing: 0.5px;
-            width: 100%;
-        }
-        .app-logo-styled .logo-p-icon {
-            background-color: #0A2B5C; color: #fff; padding: 3px 9px; margin-right: 5px;
-            border-radius: 4px; font-family: 'Arial Black', Gadget, sans-serif;
-            font-size: 1.8rem; line-height: 1;
-        }
-        .subapp-header {
-            width: 100%; display: flex; justify-content: space-between; align-items: center;
-            padding: 1rem; background-color: #fff; border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; }
+        .subapp-page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 1rem; box-sizing: border-box; }
+        .subapp-main-content { background-color: #f0f2f5; padding: 1rem; border-radius: 0.5rem; width: 100%; max-width: 1600px; display: flex; flex-direction: column; align-items: center; margin-top: 1rem; margin-bottom: 2rem; }
+        .app-logo-styled { font-size: 1.75rem; font-weight: 700; color: #0A2B5C; margin-bottom: 1.5rem; text-align: center; display: flex; align-items: center; justify-content: center; letter-spacing: 0.5px; width: 100%; }
+        .app-logo-styled .logo-p-icon { background-color: #0A2B5C; color: #fff; padding: 3px 9px; margin-right: 5px; border-radius: 4px; font-family: 'Arial Black', Gadget, sans-serif; font-size: 1.8rem; line-height: 1; }
+        .subapp-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 1rem; background-color: #fff; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .subapp-title { font-size: 1.5rem; font-weight: 600; color: #0A2B5C; }
-        .subapp-section {
-            width: 100%; background-color: #fff; padding: 1.5rem;
-            border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem;
+        .subapp-section { width: 100%; background-color: #fff; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+        .subapp-section-title { font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; }
+        
+        .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; }
+        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; display: block;}
+        .filters-grid input, .filters-grid select, .file-input {
+            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem; background-color: #fff; width: 100%; box-sizing: border-box;
         }
-        .subapp-section-title {
-            font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 1rem;
-            padding-bottom: 0.5rem; border-bottom: 1px solid #eee;
-        }
-        .filters-grid, .actions-container {
-            display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; align-items: flex-end;
-        }
-        .filters-grid > div { display: flex; flex-direction: column; flex-grow: 1; }
-        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; }
-        .filters-grid input[type="text"], .filters-grid input[type="date"],
-        .filters-grid input[type="datetime-local"], .filters-grid select, .file-input {
-            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem;
-            background-color: #fff;
-        }
-        .action-button {
-            background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem;
-            border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer;
-        }
+        .action-button { background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem; border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer; height: fit-content;}
         .action-button:hover { background-color: #0b5ed7; }
         .action-button.secondary { background-color: #6c757d; }
         .action-button.secondary:hover { background-color: #5a6268; }
+        .action-button.success { background-color: #198754; }
+        .action-button.success:hover { background-color: #157347; }
+
         .table-container { overflow-x: auto; margin-top: 1rem; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.85em; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 0.8em; white-space: nowrap; }
         th { background-color: #f8f9fa; font-weight: 600; color: #495057; }
-        .actions-cell button { margin-right: 5px; padding: 5px 8px; font-size:0.8em; }
+        .actions-cell button { margin-right: 4px; padding: 4px 6px; font-size:0.75em; }
 
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-card {
-            background-color: #e9f2ff; padding: 1.25rem; border-radius: 0.375rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #0d6efd;
-        }
-        .stat-card h4 { font-weight: 600; color: #1e40af; margin-bottom: 0.5rem; font-size: 0.95rem; }
-        .stat-card p.stat-value { font-size: 1.75rem; font-weight: 700; color: #1d4ed8; }
+        .stat-card { background-color: #fff3e0; /* Laranja claro para Recolhas */ padding: 1.25rem; border-radius: 0.375rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #ffa726; }
+        .stat-card h4 { font-weight: 600; color: #c77700; margin-bottom: 0.5rem; font-size: 0.95rem; }
+        .stat-card p.stat-value { font-size: 1.75rem; font-weight: 700; color: #c77700; }
         .stat-card div.stat-subtext { font-size: 0.85rem; font-weight: normal; color: #555; }
-        .content-placeholder {
-            min-height: 150px; display: flex; align-items: center; justify-content: center;
-            border: 2px dashed #ddd; border-radius: 0.25rem; color: #777; text-align: center;
-            padding: 1rem; background-color: #f9f9f9;
-        }
+
         .hidden { display: none !important; }
-        .loader {
-            border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%;
-            width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto;
-        }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1050; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-backdrop.active { opacity: 1; visibility: visible; }
+        .modal-dialog { background-color: white; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 100%; max-width: 900px; transform: translateY(-20px); transition: transform 0.3s ease; max-height: 90vh; display: flex; flex-direction: column;}
+        .modal-backdrop.active .modal-dialog { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-body { overflow-y: auto; padding-right: 10px; }
+        .modal-body .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+        .modal-body .form-grid label, .modal-body .form-group label { font-size: 0.8rem; margin-bottom: 0.15rem; display: block; font-weight: 500; }
+        .modal-body .form-grid input, .modal-body .form-grid select, .modal-body .form-grid textarea,
+        .modal-body .form-group input, .modal-body .form-group select, .modal-body .form-group textarea { 
+            font-size: 0.85rem; padding: 0.5rem; width: 100%; border: 1px solid #ccc; border-radius: 0.25rem; box-sizing: border-box;
+        }
+        .modal-body .form-group { margin-bottom: 1rem; }
+        .modal-footer { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .image-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+        .image-preview-item img { max-width: 100px; max-height: 100px; object-fit: cover; border-radius: 0.25rem; border: 1px solid #ddd; }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -123,133 +83,203 @@
             </header>
 
             <section class="subapp-section">
-                <h3 class="subapp-section-title">Importar Ficheiro de Recolhas</h3>
-                <div class="actions-container">
-                    <div>
-                        <label for="importRecolhasFile" class="block mb-2 text-sm font-medium text-gray-700">Carregar ficheiro de recolhas (Excel/CSV):</label>
-                        <input type="file" id="importRecolhasFile" class="file-input block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel">
+                <h3 class="subapp-section-title">Importar Dados de Recolhas (Excel)</h3>
+                <div class="flex flex-col sm:flex-row gap-4 items-end">
+                    <div class="flex-grow">
+                        <label for="importRecolhasFile" class="block mb-1 text-sm font-medium text-gray-700">Ficheiro Excel (.xlsx):</label>
+                        <input type="file" id="importRecolhasFile" class="file-input block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
                     </div>
-                    <button id="recProcessarImportacaoBtn" class="action-button">Processar Ficheiro de Recolhas</button>
+                    <button id="processarImportacaoRecolhasBtn" class="action-button success w-full sm:w-auto">Processar Ficheiro</button>
                 </div>
-                <div id="importacaoRecolhasStatus" class="mt-4 text-sm text-gray-600"></div>
-                <div id="loadingRecolhasImportSpinner" class="loader hidden"></div>
+                <div id="importacaoRecolhasStatus" class="mt-3 text-sm"></div>
+                <div id="loadingImportRecolhasSpinner" class="loader hidden"></div>
             </section>
 
             <section class="subapp-section">
-                <h3 class="subapp-section-title">Dashboard de Análise de Recolhas</h3>
-                <div class="filters-grid mb-6">
+                <h3 class="subapp-section-title">Consultar Recolhas Efetuadas / Pendentes</h3>
+                <div class="filters-grid">
                     <div>
-                        <label for="recDashboardFiltroDataInicio">Data Início:</label>
-                        <input type="date" id="recDashboardFiltroDataInicio">
+                        <label for="recFiltroMatricula">Matrícula:</label>
+                        <input type="text" id="recFiltroMatricula" placeholder="AA-00-BB">
                     </div>
                     <div>
-                        <label for="recDashboardFiltroDataFim">Data Fim:</label>
-                        <input type="date" id="recDashboardFiltroDataFim">
+                        <label for="recFiltroAlocation">Alocation ID:</label>
+                        <input type="text" id="recFiltroAlocation" placeholder="ID da Reserva">
                     </div>
                     <div>
-                        <label for="recDashboardFiltroPeriodo">Período Rápido:</label>
-                        <select id="recDashboardFiltroPeriodo">
-                            <option value="personalizado">Personalizado</option>
-                            <option value="hoje">Hoje</option>
-                            <option value="semana_atual">Esta Semana</option>
-                            <option value="mes_atual" selected>Este Mês</option>
-                            <option value="ultimos_30dias">Últimos 30 Dias</option>
-                            <option value="este_ano">Este Ano</option>
+                        <label for="recFiltroDataRecolhaInicio">Recolha De (Real):</label>
+                        <input type="text" id="recFiltroDataRecolhaInicio" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="recFiltroDataRecolhaFim">Recolha Até (Real):</label>
+                        <input type="text" id="recFiltroDataRecolhaFim" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="recFiltroCondutorRecolha">Condutor Recolha:</label>
+                        <select id="recFiltroCondutorRecolha">
+                            <option value="">Todos</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label for="recFiltroEstadoReserva">Estado Reserva:</label>
+                        <select id="recFiltroEstadoReserva">
+                            <option value="">Todos</option>
+                            <option value="Confirmada">Confirmada (Aguardando Recolha)</option>
+                            <option value="Recolhido">Recolhido</option>
+                            <option value="Em Curso">Em Curso (Pós-Recolha)</option>
                         </select>
                     </div>
-                     <div>
-                        <label for="recDashboardFiltroCondutor">Condutor:</label>
-                        <select id="recDashboardFiltroCondutor">
-                            <option value="">Todos</option>
-                            </select>
-                    </div>
-                    <button id="recAplicarFiltrosDashboardBtn" class="action-button">Analisar</button>
+                    <button id="recAplicarFiltrosBtn" class="action-button col-span-full sm:col-span-1 self-end">Aplicar Filtros</button>
                 </div>
 
-                <div id="recolhasDashboardStats" class="stats-grid">
-                    <div class="stat-card">
-                        <h4>Total de Recolhas Efetuadas</h4>
-                        <p id="statTotalRecolhas" class="stat-value">0</p>
-                        <div id="statTotalRecolhasPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>Reservas Correspondentes</h4>
-                        <p id="statReservasRecolhidas" class="stat-value">0</p>
-                        <div id="statReservasRecolhidasPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>Valor Total (Reservas Recolhidas)</h4>
-                        <p id="statValorTotalRecolhas" class="stat-value">0,00 €</p>
-                         <div id="statValorTotalRecolhasPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>Recolhas por Condutor</h4>
-                        <div id="statRecolhasPorCondutor" class="stat-subtext">Calculando...</div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                    <div class="subapp-section p-4 rounded-lg shadow-md">
-                        <h4 class="subapp-section-title text-center">Recolhas por Hora (<span id="recDashboardDataHoraDisplay">selecione um dia</span>)</h4>
-                        <input type="date" id="recDashboardDataHoraInput" class="w-full p-2 border rounded mb-2">
-                        <canvas id="chartRecolhasPorHora" height="200"></canvas>
-                    </div>
-                    <div class="subapp-section p-4 rounded-lg shadow-md">
-                         <h4 class="subapp-section-title text-center">Top Condutores (Nº Recolhas)</h4>
-                        <canvas id="chartTopCondutoresRecolhas" height="200"></canvas>
-                    </div>
-                </div>
-            </section>
-
-            <section class="subapp-section">
-                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
-                    <h3 class="subapp-section-title !mb-0 flex-grow">Lista de Recolhas Efetuadas</h3>
-                    <div class="actions-container !mb-0">
-                        <button id="recExportarListaBtn" class="action-button secondary">Exportar Lista (CSV)</button>
-                    </div>
-                </div>
-                <div class="filters-grid">
-                    <div><label for="recFiltroMatriculaLista">Matrícula</label><input type="text" id="recFiltroMatriculaLista" placeholder="AA-00-BB..."></div>
-                    <div><label for="recFiltroAlocationLista">Alocation</label><input type="text" id="recFiltroAlocationLista" placeholder="Alocação..."></div>
-                    <div><label for="recFiltroDataRecolhaLista">Data Recolha (a partir de)</label><input type="date" id="recFiltroDataRecolhaLista"></div>
-                    <div>
-                        <label for="recFiltroCondutorLista">Condutor</label>
-                        <select id="recFiltroCondutorLista">
-                            <option value="">Todos</option>
-                            </select>
-                    </div>
-                    <button id="recAplicarFiltrosListaBtn" class="action-button">Filtrar Lista</button>
-                </div>
                 <div id="loadingRecolhasTableSpinner" class="loader hidden"></div>
                 <div class="table-container">
                     <table id="recolhasTable">
                         <thead>
                             <tr>
-                                <th>Booking ID (Reserva)</th>
+                                <th>Booking ID</th>
                                 <th>Matrícula</th>
                                 <th>Alocation</th>
                                 <th>Cliente</th>
-                                <th>Data Recolha Real</th>
+                                <th>Check-in Previsto</th>
+                                <th>Check-in Real (Recolha)</th>
                                 <th>Condutor Recolha</th>
                                 <th>Parque</th>
-                                <th>Estado Original Reserva</th>
+                                <th>Estado Atual Reserva</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="recolhasTableBody"></tbody>
                     </table>
                 </div>
-                <p id="recolhasNenhumaMsg" class="content-placeholder hidden">Nenhuma recolha encontrada com os filtros atuais.</p>
-                <div id="recolhasPaginacao" class="mt-4 flex justify-center"></div>
+                <p id="recolhasNenhumaMsg" class="text-center text-gray-500 py-4 hidden">Nenhuma recolha encontrada.</p>
+                <div class="flex justify-between items-center mt-4">
+                    <div>Total de Registos: <span id="recolhasTotalCount" class="font-semibold">0</span></div>
+                    <div id="recolhasPaginacao" class="flex gap-2"></div>
+                </div>
+            </section>
+            
+            <section class="subapp-section">
+                <h3 class="subapp-section-title">Dashboard de Recolhas</h3>
+                 <div class="filters-grid mb-6">
+                    <div>
+                        <label for="recolhasDashboardFiltroDataInicio">Data Início:</label>
+                        <input type="text" id="recolhasDashboardFiltroDataInicio" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="recolhasDashboardFiltroDataFim">Data Fim:</label>
+                        <input type="text" id="recolhasDashboardFiltroDataFim" class="flatpickr-input" placeholder="DD/MM/AAAA">
+                    </div>
+                    <div>
+                        <label for="recolhasDashboardFiltroPeriodo">Período Rápido:</label>
+                        <select id="recolhasDashboardFiltroPeriodo">
+                            <option value="hoje">Hoje</option>
+                            <option value="semana_atual">Esta Semana</option>
+                            <option value="mes_atual" selected>Este Mês</option>
+                            <option value="ultimos_30dias">Últimos 30 Dias</option>
+                            <option value="este_ano">Este Ano</option>
+                            <option value="personalizado">Personalizado</option>
+                        </select>
+                    </div>
+                    <button id="recolhasAplicarFiltrosDashboardBtn" class="action-button self-end">Analisar</button>
+                </div>
+                 <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>Total de Recolhas</h4>
+                        <p id="statTotalRecolhasDashboard" class="stat-value">0</p>
+                        <div id="statTotalRecolhasPeriodoDashboard" class="stat-subtext">N/A</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Média Recolhas/Dia</h4>
+                        <p id="statMediaRecolhasDiaDashboard" class="stat-value">0</p>
+                         <div id="statMediaRecolhasDiaPeriodoDashboard" class="stat-subtext">N/A</div>
+                    </div>
+                 </div>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div class="subapp-section p-4 rounded-lg shadow-md">
+                        <h4 class="subapp-section-title text-center">Recolhas por Hora (<span id="recolhasDashboardDataHoraDisplay">selecione um dia</span>)</h4>
+                        <input type="text" id="recolhasDashboardDataHoraInput" class="flatpickr-input w-full p-2 border rounded mb-2" placeholder="DD/MM/AAAA">
+                        <canvas id="chartRecolhasPorHoraDashboard" height="200"></canvas>
+                    </div>
+                    <div class="subapp-section p-4 rounded-lg shadow-md">
+                         <h4 class="subapp-section-title text-center">Top Condutores (Recolhas)</h4>
+                        <canvas id="chartTopCondutoresRecolhasDashboard" height="200"></canvas>
+                    </div>
+                </div>
             </section>
         </div>
     </div>
-                <script src="js/recolhas.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabaseClient.js"></script>
-<script src="js/auth_global.js"></script>
-<script src="js/jsrecolhas.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <div id="recolhaDetalhesModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recolhaModalTitle">Registar/Ver Detalhes da Recolha</h5>
+                <button type="button" class="text-2xl font-bold text-gray-500 hover:text-gray-700 recFecharModalBtn">&times;</button>
+            </div>
+            <form id="recolhaDetalhesForm">
+                <div class="modal-body">
+                    <input type="hidden" id="recolhaModalReservaIdPk"> 
+                    <h4 class="text-md font-semibold mb-2 text-gray-700">Dados da Reserva Original:</h4>
+                    <div class="form-grid mb-4 p-3 bg-gray-50 rounded-md border">
+                        <div class="form-group"><label>Booking ID:</label><p id="modalInfoBookingId" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Matrícula:</label><p id="modalInfoMatricula" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Alocation:</label><p id="modalInfoAlocation" class="text-sm font-medium"></p></div>
+                        <div class="form-group"><label>Cliente:</label><p id="modalInfoNomeCliente" class="text-sm"></p></div>
+                        <div class="form-group"><label>Check-in Previsto:</label><p id="modalInfoCheckinPrevisto" class="text-sm"></p></div>
+                        <div class="form-group"><label>Parque Previsto:</label><p id="modalInfoParquePrevisto" class="text-sm"></p></div>
+                    </div>
+
+                    <h4 class="text-md font-semibold mb-2 text-gray-700">Dados da Recolha:</h4>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="modalRecolhaDataReal">Data/Hora Real da Recolha:</label>
+                            <input type="text" id="modalRecolhaDataReal" class="flatpickr-datetime" required placeholder="DD/MM/AAAA HH:MM">
+                        </div>
+                        <div class="form-group">
+                            <label for="modalRecolhaCondutor">Condutor da Recolha:</label>
+                            <select id="modalRecolhaCondutor" required>
+                                <option value="">Selecione o Condutor</option>
+                                </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalRecolhaKmsEntrada">KMs à Entrada:</label>
+                            <input type="number" id="modalRecolhaKmsEntrada" placeholder="Ex: 12345">
+                        </div>
+                        <div class="form-group col-span-full md:col-span-2"> 
+                            <label for="modalRecolhaDanosObservados">Danos Observados (Check-in):</label>
+                            <textarea id="modalRecolhaDanosObservados" rows="3" placeholder="Descrever quaisquer danos visíveis no veículo..."></textarea>
+                        </div>
+                        <div class="form-group col-span-full">
+                            <label for="modalRecolhaFotos">Fotos da Viatura (Check-in - máx. 5):</label>
+                            <input type="file" id="modalRecolhaFotos" class="file-input" multiple accept="image/jpeg, image/png, image/heic, image/webp">
+                            <div id="modalRecolhaFotosPreview" class="image-preview-grid"></div>
+                            <div id="modalRecolhaFotosUrlsExistentes" class="image-preview-grid mt-2"></div>
+                        </div>
+                         <div class="form-group col-span-full">
+                            <label for="modalRecolhaObsInternas">Observações Internas da Recolha:</label>
+                            <textarea id="modalRecolhaObsInternas" rows="2" placeholder="Notas adicionais do operador..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalRecolhaNovoEstadoReserva">Novo Estado da Reserva Pós-Recolha:</label>
+                            <select id="modalRecolhaNovoEstadoReserva" required>
+                                <option value="Recolhido">Recolhido</option>
+                                <option value="Em Curso">Em Curso</option>
+                                </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-button secondary recFecharModalBtn">Cancelar</button>
+                    <button type="submit" class="action-button success">Guardar Dados da Recolha</button>
+                </div>
+            </form>
+            <div id="recolhaModalStatus" class="mt-2 text-sm text-center"></div>
+            <div id="loadingModalSpinnerRecolha" class="loader hidden"></div>
+        </div>
+    </div>
+
+    <script src="js/supabaseClient.js"></script> 
+    <script src="js/auth_global.js"></script>
+    <script src="js/recolhas.js"></script>
 </body>
 </html>
-
