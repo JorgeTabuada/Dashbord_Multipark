@@ -3,114 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cancelamentos - Ferramentas Multipark</title>
+    <title>Gestão de Cancelamentos - Ferramentas Multipark</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/pt.js"></script>
+
     <style>
-        /* Estilos base e da subaplicação (semelhantes a reservas.html e recolhas.html) */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            color: #333;
-            margin: 0;
-        }
-        .subapp-page-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding: 1rem;
-            box-sizing: border-box;
-        }
-        .subapp-main-content {
-            background-color: #f0f2f5;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            max-width: 1300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 1rem;
-            margin-bottom: 2rem;
-        }
-        .app-logo-styled {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #0A2B5C;
-            margin-bottom: 1.5rem;
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            letter-spacing: 0.5px;
-            width: 100%;
-        }
-        .app-logo-styled .logo-p-icon {
-            background-color: #0A2B5C; color: #fff; padding: 3px 9px; margin-right: 5px;
-            border-radius: 4px; font-family: 'Arial Black', Gadget, sans-serif;
-            font-size: 1.8rem; line-height: 1;
-        }
-        .subapp-header {
-            width: 100%; display: flex; justify-content: space-between; align-items: center;
-            padding: 1rem; background-color: #fff; border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; }
+        .subapp-page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 1rem; box-sizing: border-box; }
+        .subapp-main-content { background-color: #f0f2f5; padding: 1rem; border-radius: 0.5rem; width: 100%; max-width: 1600px; display: flex; flex-direction: column; align-items: center; margin-top: 1rem; margin-bottom: 2rem; }
+        .app-logo-styled { font-size: 1.75rem; font-weight: 700; color: #0A2B5C; margin-bottom: 1.5rem; text-align: center; display: flex; align-items: center; justify-content: center; letter-spacing: 0.5px; width: 100%; }
+        .app-logo-styled .logo-p-icon { background-color: #0A2B5C; color: #fff; padding: 3px 9px; margin-right: 5px; border-radius: 4px; font-family: 'Arial Black', Gadget, sans-serif; font-size: 1.8rem; line-height: 1; }
+        .subapp-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 1rem; background-color: #fff; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .subapp-title { font-size: 1.5rem; font-weight: 600; color: #0A2B5C; }
-        .subapp-section {
-            width: 100%; background-color: #fff; padding: 1.5rem;
-            border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem;
+        .subapp-section { width: 100%; background-color: #fff; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+        .subapp-section-title { font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; }
+        
+        .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; }
+        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; display: block;}
+        .filters-grid input, .filters-grid select, .file-input {
+            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem; background-color: #fff; width: 100%; box-sizing: border-box;
         }
-        .subapp-section-title {
-            font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 1rem;
-            padding-bottom: 0.5rem; border-bottom: 1px solid #eee;
-        }
-        .filters-grid, .actions-container {
-            display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; align-items: flex-end;
-        }
-        .filters-grid > div { display: flex; flex-direction: column; flex-grow: 1; }
-        .filters-grid label { font-size: 0.875rem; margin-bottom: 0.25rem; color: #555; }
-        .filters-grid input[type="text"], .filters-grid input[type="date"],
-        .filters-grid input[type="datetime-local"], .filters-grid select, .file-input {
-            padding: 0.6rem; border: 1px solid #ccc; border-radius: 0.25rem; font-size: 0.9rem;
-            background-color: #fff;
-        }
-        .action-button {
-            background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem;
-            border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer;
-        }
+        .action-button { background-color: #0d6efd; color: white; font-weight: 500; padding: 0.6rem 1.2rem; border-radius: 0.375rem; transition: background-color 0.2s; border: none; cursor: pointer; height: fit-content;}
         .action-button:hover { background-color: #0b5ed7; }
         .action-button.secondary { background-color: #6c757d; }
         .action-button.secondary:hover { background-color: #5a6268; }
+        .action-button.success { background-color: #198754; }
+        .action-button.success:hover { background-color: #157347; }
         .action-button.danger { background-color: #dc3545; }
         .action-button.danger:hover { background-color: #c82333; }
+
         .table-container { overflow-x: auto; margin-top: 1rem; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.85em; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 0.8em; white-space: nowrap; }
         th { background-color: #f8f9fa; font-weight: 600; color: #495057; }
-        .actions-cell button { margin-right: 5px; padding: 5px 8px; font-size:0.8em; }
+        .actions-cell button { margin-right: 4px; padding: 4px 6px; font-size:0.75em; }
 
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-card {
-            background-color: #fff0f0; /* Cor avermelhada para cancelamentos */
-            padding: 1.25rem; border-radius: 0.375rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #dc3545; /* Borda vermelha */
-        }
+        .stat-card { background-color: #fff0f0; padding: 1.25rem; border-radius: 0.375rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #dc3545; } /* Cor Vermelha para Cancelamentos */
         .stat-card h4 { font-weight: 600; color: #a71d2a; margin-bottom: 0.5rem; font-size: 0.95rem; }
         .stat-card p.stat-value { font-size: 1.75rem; font-weight: 700; color: #c82333; }
         .stat-card div.stat-subtext { font-size: 0.85rem; font-weight: normal; color: #555; }
-        .content-placeholder {
-            min-height: 150px; display: flex; align-items: center; justify-content: center;
-            border: 2px dashed #ddd; border-radius: 0.25rem; color: #777; text-align: center;
-            padding: 1rem; background-color: #f9f9f9;
-        }
+
         .hidden { display: none !important; }
-        .loader {
-            border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%;
-            width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto;
-        }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #0d6efd; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1050; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-backdrop.active { opacity: 1; visibility: visible; }
+        .modal-dialog { background-color: white; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 100%; max-width: 700px; transform: translateY(-20px); transition: transform 0.3s ease; max-height: 90vh; display: flex; flex-direction: column;}
+        .modal-backdrop.active .modal-dialog { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-body { overflow-y: auto; padding-right: 10px; }
+        .modal-body .form-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        .modal-body .form-grid-2-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+        .modal-body .form-grid label, .modal-body .form-group label { font-size: 0.8rem; margin-bottom: 0.15rem; display: block; font-weight: 500; }
+        .modal-body .form-grid input, .modal-body .form-grid select, .modal-body .form-grid textarea,
+        .modal-body .form-group input, .modal-body .form-group select, .modal-body .form-group textarea { 
+            font-size: 0.85rem; padding: 0.5rem; width: 100%; border: 1px solid #ccc; border-radius: 0.25rem; box-sizing: border-box;
+        }
+        .modal-body .form-group { margin-bottom: 1rem; }
+        .modal-footer { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 0.75rem; }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -126,15 +84,15 @@
             </header>
 
             <section class="subapp-section">
-                <h3 class="subapp-section-title">Importar Ficheiro de Cancelamentos</h3>
-                <div class="actions-container">
-                    <div>
-                        <label for="importCancelamentosFile" class="block mb-2 text-sm font-medium text-gray-700">Carregar ficheiro de cancelamentos (Excel/CSV):</label>
-                        <input type="file" id="importCancelamentosFile" class="file-input block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel">
+                <h3 class="subapp-section-title">Importar Ficheiro de Cancelamentos (Excel)</h3>
+                <div class="flex flex-col sm:flex-row gap-4 items-end">
+                    <div class="flex-grow">
+                        <label for="importCancelamentosFile" class="block mb-1 text-sm font-medium text-gray-700">Ficheiro (.xlsx):</label>
+                        <input type="file" id="importCancelamentosFile" class="file-input block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
                     </div>
-                    <button id="cancProcessarImportacaoBtn" class="action-button">Processar Ficheiro</button>
+                    <button id="cancProcessarImportacaoBtn" class="action-button success w-full sm:w-auto">Processar Ficheiro</button>
                 </div>
-                <div id="importacaoCancelamentosStatus" class="mt-4 text-sm text-gray-600"></div>
+                <div id="importacaoCancelamentosStatus" class="mt-3 text-sm"></div>
                 <div id="loadingCancelamentosImportSpinner" class="loader hidden"></div>
             </section>
 
@@ -142,62 +100,44 @@
                 <h3 class="subapp-section-title">Dashboard de Análise de Cancelamentos</h3>
                 <div class="filters-grid mb-6">
                     <div>
-                        <label for="cancDashboardFiltroDataInicio">Data Início (Cancelamento):</label>
-                        <input type="date" id="cancDashboardFiltroDataInicio">
+                        <label for="cancDashboardFiltroDataInicio">Data Cancel. De:</label>
+                        <input type="text" id="cancDashboardFiltroDataInicio" class="flatpickr-input" placeholder="DD/MM/AAAA">
                     </div>
                     <div>
-                        <label for="cancDashboardFiltroDataFim">Data Fim (Cancelamento):</label>
-                        <input type="date" id="cancDashboardFiltroDataFim">
+                        <label for="cancDashboardFiltroDataFim">Data Cancel. Até:</label>
+                        <input type="text" id="cancDashboardFiltroDataFim" class="flatpickr-input" placeholder="DD/MM/AAAA">
                     </div>
                     <div>
                         <label for="cancDashboardFiltroPeriodo">Período Rápido:</label>
                         <select id="cancDashboardFiltroPeriodo">
-                            <option value="personalizado">Personalizado</option>
                             <option value="hoje">Hoje</option>
                             <option value="semana_atual">Esta Semana</option>
                             <option value="mes_atual" selected>Este Mês</option>
                             <option value="ultimos_30dias">Últimos 30 Dias</option>
                             <option value="este_ano">Este Ano</option>
+                            <option value="personalizado">Personalizado</option>
                         </select>
                     </div>
                      <div>
                         <label for="cancDashboardFiltroMotivo">Motivo do Cancelamento:</label>
                         <select id="cancDashboardFiltroMotivo">
-                            <option value="">Todos</option>
-                            <option value="SEM_MOTIVO">Sem Motivo Especificado</option>
-                            {/* Outros motivos podem ser populados por JS ou definidos aqui */}
-                        </select>
+                            <option value="">Todos os Motivos</option>
+                            </select>
                     </div>
-                    <button id="cancAplicarFiltrosDashboardBtn" class="action-button">Analisar</button>
+                    <button id="cancAplicarFiltrosDashboardBtn" class="action-button self-end">Analisar</button>
                 </div>
 
                 <div id="cancelamentosDashboardStats" class="stats-grid">
-                    <div class="stat-card">
-                        <h4>Total de Cancelamentos</h4>
-                        <p id="statTotalCancelamentos" class="stat-value">0</p>
-                        <div id="statTotalCancelamentosPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>% Cancelamentos vs. Reservas</h4>
-                        <p id="statPercCancelamentos" class="stat-value">0%</p>
-                        <div id="statPercCancelamentosPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>Cancelamentos Sem Motivo</h4>
-                        <p id="statCancelamentosSemMotivo" class="stat-value">0</p>
-                        <div id="statCancelamentosSemMotivoPeriodo" class="stat-subtext">N/A</div>
-                    </div>
-                    <div class="stat-card">
-                        <h4>Valor Perdido Estimado</h4>
-                        <p id="statValorPerdidoCancelamentos" class="stat-value">0,00 €</p>
-                         <div id="statValorPerdidoCancelamentosPeriodo" class="stat-subtext">N/A</div>
-                    </div>
+                    <div class="stat-card"><h4>Total Cancelamentos</h4><p id="statTotalCancelamentos" class="stat-value">0</p><div id="statTotalCancelamentosPeriodo" class="stat-subtext">N/A</div></div>
+                    <div class="stat-card"><h4>% Cancel. vs. Total Reservas</h4><p id="statPercCancelamentos" class="stat-value">0%</p><div id="statPercCancelamentosPeriodo" class="stat-subtext">N/A</div></div>
+                    <div class="stat-card"><h4>Cancel. Sem Motivo</h4><p id="statCancelamentosSemMotivo" class="stat-value">0</p><div id="statCancelamentosSemMotivoPeriodo" class="stat-subtext">N/A</div></div>
+                    <div class="stat-card"><h4>Valor Perdido Estimado</h4><p id="statValorPerdidoCancelamentos" class="stat-value">0,00 €</p><div id="statValorPerdidoCancelamentosPeriodo" class="stat-subtext">N/A</div></div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="subapp-section p-4 rounded-lg shadow-md">
                         <h4 class="subapp-section-title text-center">Cancelamentos por Hora (<span id="cancDashboardDataHoraDisplay">selecione um dia</span>)</h4>
-                        <input type="date" id="cancDashboardDataHoraInput" class="w-full p-2 border rounded mb-2">
+                        <input type="text" id="cancDashboardDataHoraInput" class="flatpickr-input w-full p-2 border rounded mb-2" placeholder="DD/MM/AAAA">
                         <canvas id="chartCancelamentosPorHora" height="200"></canvas>
                     </div>
                     <div class="subapp-section p-4 rounded-lg shadow-md">
@@ -209,25 +149,23 @@
 
             <section class="subapp-section">
                 <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
-                    <h3 class="subapp-section-title !mb-0 flex-grow">Lista de Cancelamentos</h3>
+                    <h3 class="subapp-section-title !mb-0 flex-grow">Lista de Reservas Canceladas</h3>
                     <div class="actions-container !mb-0">
-                        <button id="cancExportarListaBtn" class="action-button secondary">Exportar Lista (CSV)</button>
-                         <button id="cancAbrirModalNovoBtn" class="action-button">Registar Cancelamento Manual</button>
+                        <button id="cancExportarListaBtn" class="action-button secondary">Exportar Lista</button>
+                         <button id="cancAbrirModalNovoBtn" class="action-button danger">Registar Cancelamento Manual</button>
                     </div>
                 </div>
                 <div class="filters-grid">
-                    <div><label for="cancFiltroBookingIdLista">Booking ID</label><input type="text" id="cancFiltroBookingIdLista" placeholder="ID da Reserva..."></div>
-                    <div><label for="cancFiltroMatriculaLista">Matrícula</label><input type="text" id="cancFiltroMatriculaLista" placeholder="AA-00-BB..."></div>
-                    <div><label for="cancFiltroDataCancelamentoLista">Data Cancelamento (a partir de)</label><input type="date" id="cancFiltroDataCancelamentoLista"></div>
+                    <div><label for="cancFiltroBookingIdLista">Booking ID / Alocation:</label><input type="text" id="cancFiltroBookingIdLista" placeholder="ID da Reserva..."></div>
+                    <div><label for="cancFiltroMatriculaLista">Matrícula:</label><input type="text" id="cancFiltroMatriculaLista" placeholder="AA-00-BB..."></div>
+                    <div><label for="cancFiltroDataCancelamentoLista">Data Cancelamento (a partir de):</label><input type="text" id="cancFiltroDataCancelamentoLista" class="flatpickr-input" placeholder="DD/MM/AAAA"></div>
                     <div>
-                        <label for="cancFiltroMotivoLista">Motivo</label>
+                        <label for="cancFiltroMotivoLista">Motivo:</label>
                         <select id="cancFiltroMotivoLista">
-                            <option value="">Todos</option>
-                            <option value="SEM_MOTIVO_FILTRO">Sem Motivo</option>
-                            {/* Outros motivos */}
-                        </select>
+                            <option value="">Todos os Motivos</option>
+                             </select>
                     </div>
-                    <button id="cancAplicarFiltrosListaBtn" class="action-button">Filtrar Lista</button>
+                    <button id="cancAplicarFiltrosListaBtn" class="action-button self-end">Filtrar Lista</button>
                 </div>
                 <div id="loadingCancelamentosTableSpinner" class="loader hidden"></div>
                 <div class="table-container">
@@ -236,73 +174,103 @@
                             <tr>
                                 <th>Booking ID</th>
                                 <th>Matrícula</th>
+                                <th>Alocation</th>
                                 <th>Cliente</th>
+                                <th>Data Prev. Entrada</th>
                                 <th>Data Cancelamento</th>
                                 <th>Motivo</th>
                                 <th>Parque</th>
-                                <th>Utilizador Cancel.</th>
+                                <th>Cancelado Por</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="cancelamentosTableBody"></tbody>
                     </table>
                 </div>
-                <p id="cancelamentosNenhumaMsg" class="content-placeholder hidden">Nenhum cancelamento encontrado com os filtros atuais.</p>
-                <div id="cancelamentosPaginacao" class="mt-4 flex justify-center"></div>
+                <p id="cancelamentosNenhumaMsg" class="text-center text-gray-500 py-4 hidden">Nenhuma reserva cancelada encontrada.</p>
+                <div class="flex justify-between items-center mt-4">
+                    <div>Total de Registos: <span id="cancelamentosTotalCount" class="font-semibold">0</span></div>
+                    <div id="cancelamentosPaginacao" class="flex gap-2"></div>
+                </div>
             </section>
         </div> 
     </div>
 
-    <div id="cancelamentoFormModal" class="form-modal-backdrop hidden">
-        <div class="form-modal-dialog">
-            <div class="form-modal-header">
-                <h5 class="form-modal-title" id="cancelamentoFormModalTitle">Registar Cancelamento</h5>
-                <button type="button" class="text-xl font-bold cancFecharModalBtn">&times;</button>
+    <div id="cancelamentoFormModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cancelamentoFormModalTitle">Registar Cancelamento Manual</h5>
+                <button type="button" class="text-2xl font-bold text-gray-500 hover:text-gray-700 cancFecharModalBtn">&times;</button>
             </div>
             <form id="cancelamentoForm">
-                <div class="form-modal-body">
-                    <input type="hidden" id="cancelamentoFormReservaId">
-                    <div class="form-group">
-                        <label for="cancelamentoFormBookingId">Booking ID da Reserva a Cancelar</label>
-                        <input type="text" id="cancelamentoFormBookingId" required placeholder="Insira o Booking ID da reserva original">
+                <div class="modal-body">
+                    <input type="hidden" id="cancelamentoFormReservaIdPk"> 
+                    <p class="text-sm text-gray-600 mb-3">Procure a reserva pelos campos abaixo. Após encontrar, confirme os dados e preencha os detalhes do cancelamento.</p>
+                    <div class="form-grid-2-cols mb-4">
+                        <div class="form-group">
+                            <label for="cancelamentoFormMatricula">Matrícula da Reserva:</label>
+                            <input type="text" id="cancelamentoFormMatricula" required placeholder="AA-00-BB">
+                        </div>
+                         <div class="form-group">
+                            <label for="cancelamentoFormAlocation">Alocation da Reserva:</label>
+                            <input type="text" id="cancelamentoFormAlocation" required placeholder="ID de Alocação">
+                        </div>
                     </div>
-                     <div class="form-group">
-                        <label for="cancelamentoFormMatricula">Ou Matrícula</label>
-                        <input type="text" id="cancelamentoFormMatricula" placeholder="AA-00-BB">
+                    <div class="form-group col-span-full mb-4">
+                         <button type="button" id="cancBuscarReservaBtn" class="action-button secondary text-sm w-full">Buscar Reserva para Cancelar</button>
                     </div>
-                     <div class="form-group">
-                        <label for="cancelamentoFormAlocation">E Alocation</label>
-                        <input type="text" id="cancelamentoFormAlocation" placeholder="Alocação">
-                    </div>
-                    <div id="dadosReservaOriginalInfo" class="p-3 mb-3 bg-blue-50 border border-blue-200 rounded text-sm hidden">
+                    
+                    <div id="dadosReservaOriginalInfo" class="p-3 my-3 bg-blue-50 border border-blue-200 rounded text-sm hidden">
+                        <h4 class="font-semibold mb-1">Reserva Encontrada:</h4>
+                        <p><strong>Booking ID:</strong> <span id="infoBookingIdCanc"></span></p>
                         <p><strong>Cliente:</strong> <span id="infoClienteCanc"></span></p>
-                        <p><strong>Datas:</strong> <span id="infoDatasCanc"></span></p>
+                        <p><strong>Datas Previstas (Entrada - Saída):</strong> <span id="infoDatasCanc"></span></p>
+                        <p><strong>Estado Atual:</strong> <span id="infoEstadoAtualCanc" class="font-bold"></span></p>
                     </div>
-                    <div class="form-group">
-                        <label for="cancelamentoFormData">Data do Cancelamento</label>
-                        <input type="datetime-local" id="cancelamentoFormData" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="cancelamentoFormMotivo">Motivo do Cancelamento</label>
-                        <textarea id="cancelamentoFormMotivo" rows="3" placeholder="Descreva o motivo..."></textarea>
-                    </div>
-                     <div class="form-group">
-                        <label for="cancelamentoFormQuemCancelou">Cancelado Por (Utilizador/Sistema)</label>
-                        <input type="text" id="cancelamentoFormQuemCancelou" placeholder="Nome do utilizador ou 'Sistema'">
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="cancelamentoFormData">Data/Hora do Cancelamento:</label>
+                            <input type="text" id="cancelamentoFormData" class="flatpickr-datetime" required placeholder="DD/MM/AAAA HH:MM">
+                        </div>
+                        <div class="form-group">
+                            <label for="cancelamentoFormMotivoSelect">Motivo do Cancelamento (Lista):</label>
+                            <select id="cancelamentoFormMotivoSelect">
+                                <option value="">Selecione um motivo ou escreva abaixo</option>
+                                <option value="OUTRO_MOTIVO_TEXTO">Outro (especificar no campo de texto)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="cancelamentoFormMotivoTexto">Motivo do Cancelamento (Texto - Obrigatório se "Outro" ou não listado):</label>
+                            <textarea id="cancelamentoFormMotivoTexto" rows="3" placeholder="Descreva o motivo do cancelamento aqui..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="cancelamentoFormQuemCancelou">Cancelado Por (Operador/Sistema):</label>
+                            <input type="text" id="cancelamentoFormQuemCancelou" placeholder="Nome do operador ou 'Sistema'">
+                        </div>
+                         <div class="form-group">
+                            <label for="cancelamentoFormTipo">Tipo de Cancelamento:</label>
+                            <select id="cancelamentoFormTipo">
+                                <option value="Cliente">Cliente</option>
+                                <option value="Operacional">Operacional</option>
+                                <option value="NoShow">No-Show</option>
+                                <option value="Outro">Outro</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-                <div class="form-modal-footer">
+                <div class="modal-footer">
                     <button type="button" class="action-button secondary cancFecharModalBtn">Fechar</button>
                     <button type="submit" class="action-button danger">Confirmar Cancelamento</button>
                 </div>
             </form>
+            <div id="cancelamentoFormStatus" class="mt-2 text-sm text-center"></div>
+            <div id="loadingModalSpinnerCancelamento" class="loader hidden"></div>
         </div>
     </div>
 
-                <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabaseClient.js"></script>
-<script src="js/auth_global.js"></script>
-<script src="js/cancelamentos.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="js/supabaseClient.js"></script> 
+    <script src="js/auth_global.js"></script>
+    <script src="js/cancelamentos_multipark.js"></script> 
 </body>
 </html>
