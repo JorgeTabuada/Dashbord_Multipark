@@ -1,8 +1,10 @@
-// js/app_principal.js - Lógica para index.html (Login, Dashboard e Navegação) (REVISTO v13 - Restauração de layout e funcionalidades)
+// js/app_principal.js - Lógica para index.html (Login, Dashboard e Navegação)
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("app_principal.js: DOMContentLoaded acionado.");
+    const scriptName = "AppPrincipal.js";
+    console.log(`${scriptName}: DOMContentLoaded acionado.`);
 
+    // Seletores de Elementos DOM para index.html
     const loginPageEl = document.getElementById('loginPagePrincipal');
     const dashboardPageEl = document.getElementById('dashboardPagePrincipal');
     const loginFormEl = document.getElementById('loginFormPrincipal');
@@ -10,19 +12,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const userNamePrincipalEl = document.getElementById('userNamePrincipal');
     const parkSelectorPrincipalEl = document.getElementById('parkSelectorPrincipal');
     const logoutButtonEl = document.getElementById('logoutButtonPrincipal');
-    const dashboardGridPrincipalEl = document.getElementById('dashboardGridPrincipal');
+    const dashboardGridPrincipalEl = document.getElementById('dashboardGridPrincipal'); // Grelha para os botões das sub-apps
+    
+    const messageModalEl = document.getElementById('messageModal');
+    const modalTitleEl = document.getElementById('modalTitle');
+    const modalMessageTextEl = document.getElementById('modalMessageText');
+    const modalCloseButtonEl = document.getElementById('modalCloseButton');
 
-    if (!loginPageEl) console.error("ERRO CRÍTICO app_principal: Elemento 'loginPagePrincipal' não encontrado!");
-    if (!dashboardPageEl) console.error("ERRO CRÍTICO app_principal: Elemento 'dashboardPagePrincipal' não encontrado!");
-    if (typeof window.getSupabaseClient !== 'function') console.error("ERRO CRÍTICO app_principal: Função getSupabaseClient não definida!");
+    // Validação inicial de elementos cruciais
+    if (!loginPageEl || !dashboardPageEl || !loginFormEl || !logoutButtonEl || !userNamePrincipalEl || !parkSelectorPrincipalEl || !dashboardGridPrincipalEl) {
+        console.error(`ERRO CRÍTICO (${scriptName}): Um ou mais elementos DOM principais do index.html não foram encontrados!`);
+        // Considerar mostrar uma mensagem de erro mais visível para o utilizador aqui
+        // document.body.innerHTML = "<p style='color:red; text-align:center; padding-top: 50px;'>Erro crítico na configuração da página principal. Contacte o suporte.</p>";
+        return; 
+    }
+    if (typeof window.getSupabaseClient !== 'function') {
+        console.error(`ERRO CRÍTICO (${scriptName}): Função getSupabaseClient não definida! Verifique se supabaseClient.js foi carregado antes deste script.`);
+        return;
+    }
+    if (typeof window.checkAuthStatus !== 'function' || typeof window.signInUser !== 'function' || typeof window.handleLogoutGlobal !== 'function') {
+        console.error(`ERRO CRÍTICO (${scriptName}): Uma ou mais funções globais de auth_global.js não estão definidas!`);
+        return;
+    }
 
-    // Mapeamento entre IDs das subaplicações e nomes reais dos ficheiros HTML
+    // Mapeamento de IDs de subaplicações para nomes de ficheiros HTML
     const fileNameMapping = {
         'reservas': 'reservas.html',
-        'recolhas': 'recolhas_v2.html',
-        'entregas': 'entregas_v2.html',
-        'cancelamentos': 'cancelamentos_v2.html',
-        'caixa_multipark': 'Caixa Multipark.html',
+        'recolhas': 'recolhas.html', // Ajustado de recolhas_v2.html para consistência, confirma o nome real
+        'entregas': 'entregas.html', // Ajustado de entregas_v2.html
+        'cancelamentos': 'cancelamentos.html', // Ajustado de cancelamentos_v2.html
+        'caixa_multipark': 'Caixa Multipark.html', // Mantém se for este o nome
         'fecho_caixa': 'fecho_caixa_v2.html',
         'confirmacao_caixa': 'confirmacao_caixa_v2.html',
         'perdidos_achados': 'perdidos_achados.html',
@@ -30,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'gestao_utilizadores': 'gestao_utilizadores.html',
         'gestao_parques': 'gestao_parques.html',
         'relatorios': 'relatorios.html',
-        'estatisticas': 'estatisticas.html',
+        'estatisticas': 'estatisticas.html', // Adicionado, se for uma app
         'configuracoes': 'configuracoes.html',
         'manutencao': 'manutencao.html',
         'gestao_veiculos': 'gestao_veiculos.html',
@@ -41,99 +60,118 @@ document.addEventListener('DOMContentLoaded', () => {
         'gestao_reclamacoes': 'gestao_reclamacoes.html',
         'gestao_eventos': 'gestao_eventos.html',
         'gestao_promocoes': 'gestao_promocoes.html',
-        'gestao_tarifas': 'gestao_tarifas.html'
+        'gestao_tarifas': 'gestao_tarifas.html',
+        // Adiciona outros mapeamentos se necessário
+        'produtividade_condutores': 'produtividade_condutores.html',
+        'comportamentos': 'comportamentos.html',
+        'mapa_ocupacao': 'mapa_ocupacao.html',
+        'bi_interno': 'bi_interno.html',
+        'horarios_ordenados': 'horarios_ordenados.html',
+        'acessos_alteracoes': 'gestao_utilizadores.html' // Já tinhas gestao_utilizadores
     };
 
-    // Definição das Subaplicações (lista completa conforme documento original)
+    // Definição das Subaplicações e suas categorias
     const subApplications = [
-        { id: 'reservas', name: 'Reservas', category: 'Operacional' },
-        { id: 'recolhas', name: 'Recolhas', category: 'Operacional' },
-        { id: 'entregas', name: 'Entregas', category: 'Operacional' },
-        { id: 'cancelamentos', name: 'Cancelamentos', category: 'Operacional' },
-        { id: 'caixa_multipark', name: 'Caixa Multipark', category: 'Operacional' },
-        { id: 'fecho_caixa', name: 'Fecho de Caixa', category: 'Operacional' },
-        { id: 'confirmacao_caixa', name: 'Confirmação de Caixa', category: 'Operacional' },
-        { id: 'perdidos_achados', name: 'Perdidos e Achados', category: 'Suporte' },
-        { id: 'formacao_apoio', name: 'Formação e Apoio', category: 'Suporte' },
-        { id: 'gestao_utilizadores', name: 'Gestão de Utilizadores', category: 'Administração' },
-        { id: 'gestao_parques', name: 'Gestão de Parques', category: 'Administração' },
-        { id: 'relatorios', name: 'Relatórios', category: 'Análise' },
-        { id: 'estatisticas', name: 'Estatísticas', category: 'Análise' },
-        { id: 'configuracoes', name: 'Configurações', category: 'Sistema' },
-        { id: 'manutencao', name: 'Manutenção', category: 'Sistema' },
-        { id: 'gestao_veiculos', name: 'Gestão de Veículos', category: 'Operacional' },
-        { id: 'gestao_clientes', name: 'Gestão de Clientes', category: 'Operacional' },
-        { id: 'gestao_contratos', name: 'Gestão de Contratos', category: 'Operacional' },
-        { id: 'gestao_faturas', name: 'Gestão de Faturas', category: 'Financeiro' },
-        { id: 'gestao_pagamentos', name: 'Gestão de Pagamentos', category: 'Financeiro' },
-        { id: 'gestao_reclamacoes', name: 'Gestão de Reclamações', category: 'Suporte' },
-        { id: 'gestao_eventos', name: 'Gestão de Eventos', category: 'Operacional' },
-        { id: 'gestao_promocoes', name: 'Gestão de Promoções', category: 'Marketing' },
-        { id: 'gestao_tarifas', name: 'Gestão de Tarifas', category: 'Financeiro' }
-    ];
-
-    // Lista completa de IDs de todas as subaplicações para facilitar a criação das listas de permissões
-    const allAppIds = subApplications.map(app => app.id);
-
-    // ##################################################################################
-    // # PERMISSÕES DE ACESSO ÀS SUBAPLICAÇÕES POR ROLE                               #
-    // # Simplificado para garantir acesso a todas as subaplicações disponíveis        #
-    // ##################################################################################
-    const permissoesPorRole = {
-        'super_admin': allAppIds, // Vê tudo
-        'super admin': allAppIds, // Vê tudo (versão com espaço)
-        'admin': allAppIds,
-        'supervisor': allAppIds,
-        'back_office': allAppIds,
-        'front_office': allAppIds,
-        'team_leader': allAppIds,
-        'user': allAppIds,
-        'operador_caixa': allAppIds,
-        'default': allAppIds // Todos os utilizadores veem todas as subaplicações disponíveis
-    };
-
-    window.showPagePrincipal = function(pageToShow) {
-        console.log("app_principal.js: showPagePrincipal chamada com:", pageToShow);
-        if (loginPageEl) loginPageEl.classList.add('hidden');
-        if (dashboardPageEl) dashboardPageEl.classList.add('hidden');
+        { id: 'reservas', name: 'Reservas', category: 'Operacional', icon: '📅' },
+        { id: 'recolhas', name: 'Recolhas', category: 'Operacional', icon: '🚚' },
+        { id: 'entregas', name: 'Entregas', category: 'Operacional', icon: '📤' },
+        { id: 'cancelamentos', name: 'Cancelamentos', category: 'Operacional', icon: '❌' },
+        { id: 'caixa_multipark', name: 'Caixa Multipark', category: 'Operacional', icon: '💰' },
+        { id: 'confirmacao_caixa', name: 'Confirmação de Caixa', category: 'Operacional', icon: '✔️' },
+        { id: 'gestao_veiculos', name: 'Gestão de Veículos', category: 'Operacional', icon: '🚗' },
+        { id: 'gestao_clientes', name: 'Gestão de Clientes', category: 'Operacional', icon: '👥' },
+        { id: 'gestao_contratos', name: 'Gestão de Contratos', category: 'Operacional', icon: '📜' },
+        { id: 'gestao_eventos', name: 'Gestão de Eventos', category: 'Operacional', icon: '🎉' },
         
-        if (pageToShow === 'login' && loginPageEl) {
-            loginPageEl.classList.remove('hidden');
-        } else if (pageToShow === 'dashboard' && dashboardPageEl) {
-            dashboardPageEl.classList.remove('hidden');
-        } else {
-            console.warn("showPagePrincipal: Página desconhecida ou elemento não encontrado:", pageToShow);
-            if(loginPageEl) loginPageEl.classList.remove('hidden');
+        { id: 'despesas', name: 'Despesas', category: 'Gestão', icon: '💸' },
+        { id: 'faturacao', name: 'Faturação', category: 'Financeiro', icon: '🧾' }, // Movido para Financeiro
+        { id: 'gestao_pagamentos', name: 'Gestão de Pagamentos', category: 'Financeiro', icon: '💳' },
+        { id: 'gestao_tarifas', name: 'Gestão de Tarifas', category: 'Financeiro', icon: '🏷️' },
+        { id: 'horarios_ordenados', name: 'Horários & Ordenados', category: 'Gestão', icon: '🕒' },
+        { id: 'projetos', name: 'Projetos', category: 'Gestão', icon: '🏗️' },
+        { id: 'tarefas', name: 'Tarefas', category: 'Gestão', icon: '📋' },
+
+        { id: 'relatorios', name: 'Relatórios', category: 'Análise', icon: '📊' },
+        { id: 'estatisticas', name: 'Estatísticas Gerais', category: 'Análise', icon: '📈' },
+        { id: 'produtividade_condutores', name: 'Produtividade Condutores', category: 'Análise', icon: '🧑‍✈️' },
+        { id: 'comportamentos', name: 'Comportamentos', category: 'Análise', icon: '🚦' },
+        { id: 'mapa_ocupacao', name: 'Mapa de Ocupação', category: 'Análise', icon: '🗺️' },
+        { id: 'bi_interno', name: 'BI Interno', category: 'Análise', icon: '💡' },
+        
+        { id: 'marketing', name: 'Marketing', category: 'Marketing', icon: '📢' },
+        { id: 'gestao_promocoes', name: 'Gestão de Promoções', category: 'Marketing', icon: '🎁' },
+
+        { id: 'perdidos_achados', name: 'Perdidos e Achados', category: 'Suporte', icon: '🔑' },
+        { id: 'formacao_apoio', name: 'Formação e Apoio', category: 'Suporte', icon: '🎓' },
+        { id: 'gestao_reclamacoes', name: 'Comentários & Reclamações', category: 'Suporte', icon: '🗣️' },
+        
+        { id: 'gestao_utilizadores', name: 'Gestão de Utilizadores', category: 'Administração', icon: '⚙️' },
+        { id: 'gestao_parques', name: 'Gestão de Parques', category: 'Administração', icon: '🅿️' },
+        { id: 'auditorias_internas', name: 'Auditorias Internas', category: 'Administração', icon: '🔍' },
+        // { id: 'acessos_alteracoes', name: 'Acessos e Alterações', category: 'Administração', icon: '🛡️' }, // Pode ser coberto por gestao_utilizadores ou logs
+        { id: 'configuracoes', name: 'Configurações Sistema', category: 'Sistema', icon: '🔧'},
+        { id: 'manutencao', name: 'Manutenção Sistema', category: 'Sistema', icon: '🛠️' }
+    ];
+    const orderedCategoryNames = ['Operacional', 'Gestão', 'Financeiro', 'Análise', 'Marketing', 'Suporte', 'Administração', 'Sistema'];
+
+
+    // Função para mostrar/esconder as secções principais de Login e Dashboard no index.html
+    // Esta função é chamada pelo auth_global.js ou localmente por este script.
+    window.showPagePrincipal = function(pageToShow) {
+        console.log(`${scriptName}: window.showPagePrincipal chamada com: ${pageToShow}`);
+        if (!loginPageEl || !dashboardPageEl) {
+            console.error(`${scriptName}: Elementos loginPagePrincipal ou dashboardPagePrincipal não encontrados.`);
+            return;
         }
-    }
+        loginPageEl.classList.add('hidden');
+        dashboardPageEl.classList.add('hidden');
+        
+        if (pageToShow === 'login') {
+            loginPageEl.classList.remove('hidden');
+            console.log(`${scriptName}: Mostrando página de LOGIN.`);
+        } else if (pageToShow === 'dashboard') {
+            dashboardPageEl.classList.remove('hidden');
+            console.log(`${scriptName}: Mostrando página de DASHBOARD.`);
+            // Assegura que o cabeçalho e os botões são atualizados ao mostrar o dashboard
+            window.updateDashboardHeader(); 
+            renderDashboardButtons();
+        } else {
+            console.warn(`${scriptName} (showPagePrincipal): Página desconhecida: ${pageToShow}. Mostrando login por defeito.`);
+            loginPageEl.classList.remove('hidden');
+        }
+    };
 
     function renderDashboardButtons() {
         if (!dashboardGridPrincipalEl) {
-            console.error("Elemento dashboardGridPrincipal não encontrado para renderizar botões.");
+            console.error(`${scriptName}: Elemento dashboardGridPrincipalEl não encontrado.`);
             return;
         }
-        dashboardGridPrincipalEl.innerHTML = ''; 
+        dashboardGridPrincipalEl.innerHTML = ''; // Limpa botões existentes
         const userProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
         const userRole = userProfile?.role || 'default';
 
-        console.log("Renderizando botões para o role:", userRole);
+        // TODO: Implementar lógica de permissões baseada em permissoesPorRole se necessário,
+        // ou mostrar todas as apps como está agora.
+        const appsVisiveis = subApplications; // Por agora, mostra todas
 
-        // Mostrar todas as subaplicações disponíveis, independentemente do role
-        const appsFiltradas = subApplications;
-
-        if (appsFiltradas.length === 0) {
-            dashboardGridPrincipalEl.innerHTML = '<p class="text-center text-gray-500 col-span-full">Não há subaplicações disponíveis.</p>';
+        if (appsVisiveis.length === 0) {
+            dashboardGridPrincipalEl.innerHTML = '<p class="text-center text-gray-500 col-span-full">Nenhuma subaplicação disponível para o seu perfil.</p>';
+            return;
         }
 
-        appsFiltradas.sort((a, b) => a.name.localeCompare(b.name)).forEach(app => {
+        appsVisiveis.sort((a, b) => a.name.localeCompare(b.name)).forEach(app => {
             const button = document.createElement('button');
-            button.className = 'subapp-button-principal';
+            button.className = 'subapp-button-principal'; // Usar a classe definida no teu style_principal.css
             button.dataset.appId = app.id;
-            button.innerHTML = `<span>${app.name.toUpperCase()}</span>`; 
+            // Adiciona ícone e nome
+            button.innerHTML = `
+                <span class="text-2xl mb-2">${app.icon || '📁'}</span>
+                <span>${app.name.toUpperCase()}</span>
+            `;
             
             button.addEventListener('click', () => {
-                // Usar o mapeamento para encontrar o nome correto do ficheiro HTML
                 const fileName = fileNameMapping[app.id] || `${app.id}.html`;
+                console.log(`${scriptName}: Navegando para ${fileName} (App ID: ${app.id})`);
                 window.location.href = fileName;
             });
             dashboardGridPrincipalEl.appendChild(button);
@@ -141,163 +179,132 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.updateDashboardHeader = async function() {
-        const userProfileData = JSON.parse(localStorage.getItem('userProfile') || '{}');
-        
-        let userName = 'Utilizador';
-        if (userProfileData) {
-            userName = userProfileData.full_name || userProfileData.username || userProfileData.email?.split('@')[0] || 'Utilizador';
+        const supabase = window.getSupabaseClient();
+        if (!supabase) {
+            console.error("updateDashboardHeader: Supabase client não disponível.");
+            if (userNamePrincipalEl) userNamePrincipalEl.textContent = 'UTILIZADOR';
+            return;
         }
-        
+
+        const userProfileData = JSON.parse(localStorage.getItem('userProfile') || '{}');
+        let userName = userProfileData.full_name || userProfileData.email?.split('@')[0] || 'Utilizador';
         if (userNamePrincipalEl) userNamePrincipalEl.textContent = userName.toUpperCase();
 
+        // Popular seletor de parques
         if (parkSelectorPrincipalEl) {
             try {
-                const supabase = window.getSupabaseClient ? window.getSupabaseClient() : null;
-                if (!supabase) {
-                    console.error("updateDashboardHeader: Supabase client não disponível.");
-                    return;
-                }
-                
-                // Verificar se a tabela 'parques' existe
-                const { data: parques, error } = await supabase.from('parques').select('id_pk, nome_parque, cidade').eq('ativo', true).order('nome_parque');
-                
+                const { data: parques, error } = await supabase
+                    .from('parques') // Nome da tua tabela de parques
+                    .select('id_pk, nome_parque, cidade') // Colunas que precisas
+                    .eq('ativo', true)
+                    .order('nome_parque');
+
+                parkSelectorPrincipalEl.innerHTML = ''; // Limpar opções existentes
                 if (error) {
-                    console.error("Erro ao carregar parques para o seletor:", error);
-                    // Adicionar opção padrão se não conseguir carregar parques
-                    parkSelectorPrincipalEl.innerHTML = '';
+                    console.error("Erro ao carregar parques:", error);
                     const defaultOption = document.createElement('option');
-                    defaultOption.value = "default";
-                    defaultOption.textContent = "PARQUE PADRÃO";
+                    defaultOption.value = ""; defaultOption.textContent = "Erro ao carregar parques";
                     parkSelectorPrincipalEl.appendChild(defaultOption);
                 } else if (parques && parques.length > 0) {
-                    parkSelectorPrincipalEl.innerHTML = ''; 
                     parques.forEach(parque => {
                         const option = document.createElement('option');
                         option.value = parque.id_pk; 
                         option.textContent = `${parque.nome_parque.toUpperCase()} (${parque.cidade || 'N/A'})`;
                         parkSelectorPrincipalEl.appendChild(option);
                     });
-                } else {
-                    // Nenhum parque encontrado ou tabela vazia
-                    parkSelectorPrincipalEl.innerHTML = '';
-                    const defaultOption = document.createElement('option');
-                    defaultOption.value = "default";
-                    defaultOption.textContent = "NENHUM PARQUE DISPONÍVEL";
-                    parkSelectorPrincipalEl.appendChild(defaultOption);
-                }
 
-                const storedParkId = localStorage.getItem('parqueSelecionadoMultiparkId');
-                const userAssociatedParkId = userProfileData?.parque_associado_id;
+                    // Lógica para definir o parque selecionado
+                    const storedParkId = localStorage.getItem('parqueSelecionadoMultiparkId');
+                    const userAssociatedParkId = userProfileData?.parque_id_principal; // Supondo que tens 'parque_id_principal' no perfil
 
-                if (storedParkId && parkSelectorPrincipalEl.querySelector(`option[value="${storedParkId}"]`)) {
-                    parkSelectorPrincipalEl.value = storedParkId;
-                } else if (userAssociatedParkId && parkSelectorPrincipalEl.querySelector(`option[value="${userAssociatedParkId}"]`)) {
-                    parkSelectorPrincipalEl.value = userAssociatedParkId;
-                    localStorage.setItem('parqueSelecionadoMultiparkId', userAssociatedParkId);
-                } else if (parkSelectorPrincipalEl.options.length > 0) {
-                    parkSelectorPrincipalEl.value = parkSelectorPrincipalEl.options[0].value;
-                    localStorage.setItem('parqueSelecionadoMultiparkId', parkSelectorPrincipalEl.options[0].value);
-                }
-                
-                // Adicionar opção "TODOS OS PARQUES" para super_admin
-                const existingAllParksOption = parkSelectorPrincipalEl.querySelector('option[value="todos"]');
-                const isSuperAdmin = userProfileData?.role === 'super_admin' || userProfileData?.role === 'super admin';
-                
-                if (isSuperAdmin) {
-                    if (!existingAllParksOption) {
-                        const allParksOption = document.createElement('option');
-                        allParksOption.value = "todos"; 
-                        allParksOption.textContent = "TODOS OS PARQUES";
-                        parkSelectorPrincipalEl.appendChild(allParksOption); 
+                    if (storedParkId && parkSelectorPrincipalEl.querySelector(`option[value="${storedParkId}"]`)) {
+                        parkSelectorPrincipalEl.value = storedParkId;
+                    } else if (userAssociatedParkId && parkSelectorPrincipalEl.querySelector(`option[value="${userAssociatedParkId}"]`)) {
+                        parkSelectorPrincipalEl.value = userAssociatedParkId;
+                        localStorage.setItem('parqueSelecionadoMultiparkId', userAssociatedParkId);
+                    } else { // Fallback para o primeiro da lista se nenhum estiver guardado/associado
+                        parkSelectorPrincipalEl.value = parques[0].id_pk;
+                        localStorage.setItem('parqueSelecionadoMultiparkId', parques[0].id_pk);
                     }
                 } else {
-                    if (existingAllParksOption) existingAllParksOption.remove();
-                }
-            } catch (e) {
-                console.error("Erro ao atualizar seletor de parques:", e);
-                // Garantir que há pelo menos uma opção no seletor
-                if (parkSelectorPrincipalEl.options.length === 0) {
                     const defaultOption = document.createElement('option');
-                    defaultOption.value = "default";
-                    defaultOption.textContent = "PARQUE PADRÃO";
+                    defaultOption.value = ""; defaultOption.textContent = "Nenhum parque disponível";
                     parkSelectorPrincipalEl.appendChild(defaultOption);
                 }
+            } catch (e) {
+                console.error("Exceção ao atualizar seletor de parques:", e);
+                 const defaultOption = document.createElement('option');
+                 defaultOption.value = ""; defaultOption.textContent = "Erro - parques indisponíveis";
+                 parkSelectorPrincipalEl.appendChild(defaultOption);
             }
         }
-    }
-
+    };
+    
     if (loginFormEl) {
         loginFormEl.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const email = document.getElementById('emailPrincipal').value;
-            const password = document.getElementById('passwordPrincipal').value;
-            
-            if (loginErrorMessageEl) {
-                loginErrorMessageEl.classList.add('hidden');
-                loginErrorMessageEl.textContent = '';
-            }
+            const emailInput = document.getElementById('emailPrincipal');
+            const passwordInput = document.getElementById('passwordPrincipal');
+            const email = emailInput ? emailInput.value : "";
+            const password = passwordInput ? passwordInput.value : "";
 
-            if (typeof window.signInUser === 'function') { 
-                const success = await window.signInUser(email, password);
-                if (success) {
-                    await window.updateDashboardHeader(); 
-                    renderDashboardButtons(); 
-                } else {
-                    if (loginErrorMessageEl) {
-                        loginErrorMessageEl.textContent = "Email ou palavra-passe inválidos. Tente novamente.";
-                        loginErrorMessageEl.classList.remove('hidden');
-                    }
-                }
-            } else {
-                console.error("Função signInUser não definida em auth_global.js.");
-                if (loginErrorMessageEl) {
-                    loginErrorMessageEl.textContent = "Erro no sistema de login. Contacte o suporte.";
-                    loginErrorMessageEl.classList.remove('hidden');
-                }
+            if (loginErrorMessageEl) loginErrorMessageEl.classList.add('hidden');
+            if (!email || !password) {
+                if (loginErrorMessageEl) { loginErrorMessageEl.textContent = "Email e Palavra-passe são obrigatórios."; loginErrorMessageEl.classList.remove('hidden'); }
+                return;
             }
+            
+            const success = await window.signInUser(email, password); // Chama signInUser de auth_global.js
+            if (!success && loginErrorMessageEl) {
+                loginErrorMessageEl.textContent = "Email ou palavra-passe inválidos.";
+                loginErrorMessageEl.classList.remove('hidden');
+            }
+            // A transição para o dashboard é agora gerida pelo onAuthStateChange em auth_global.js
+            // que chamará showPagePrincipal('dashboard') se o login for bem-sucedido.
         });
     }
 
     if (logoutButtonEl) {
         logoutButtonEl.addEventListener('click', async () => {
-            console.log("Botão de logout clicado");
-            if (typeof window.handleLogoutGlobal === 'function') { 
-                await window.handleLogoutGlobal();
-            } else {
-                console.error("Função handleLogoutGlobal não definida em auth_global.js.");
-                localStorage.clear(); 
-                if(typeof window.showPagePrincipal === 'function') window.showPagePrincipal('login');
-            }
-        });
-    }
-    
-    if (parkSelectorPrincipalEl) {
-        parkSelectorPrincipalEl.addEventListener('change', (event) => {
-            const selectedParkId = event.target.value;
-            localStorage.setItem('parqueSelecionadoMultiparkId', selectedParkId);
-            console.log("Parque selecionado (ID) alterado para:", selectedParkId);
-            const parkChangedEvent = new CustomEvent('parkChanged', { detail: { parqueId: selectedParkId } });
-            window.dispatchEvent(parkChangedEvent);
-            console.log("Evento parkChanged disparado.");
+            console.log(`${scriptName}: Botão de logout clicado.`);
+            await window.handleLogoutGlobal(); // handleLogoutGlobal de auth_global.js
         });
     }
 
-    async function initPrincipalPage() {
-        console.log("app_principal.js: initPrincipalPage chamada.");
-        if (typeof window.checkAuthStatus === 'function') { 
-            const isAuthenticated = await window.checkAuthStatus(); 
-            if (isAuthenticated) {
-                await window.updateDashboardHeader(); 
-                renderDashboardButtons(); 
-            }
-        } else {
-            console.error("initPrincipalPage: função checkAuthStatus não encontrada em auth_global.js!");
-            if(typeof window.showPagePrincipal === 'function') window.showPagePrincipal('login'); 
-        }
+    if (parkSelectorPrincipalEl) {
+        parkSelectorPrincipalEl.addEventListener('change', (event) => {
+            const selectedParkId = event.target.value;
+            const selectedParkName = event.target.options[event.target.selectedIndex].text;
+            localStorage.setItem('parqueSelecionadoMultiparkId', selectedParkId);
+            localStorage.setItem('parqueSelecionadoMultiparkNome', selectedParkName);
+            console.log(`${scriptName}: Parque selecionado (ID): ${selectedParkId}, Nome: ${selectedParkName}`);
+            window.dispatchEvent(new CustomEvent('parkChanged', { detail: { parqueId: selectedParkId, nomeParque: selectedParkName } }));
+        });
+    }
+
+    function showModalMessage(title, message) {
+        if(modalTitleEl) modalTitleEl.textContent = title;
+        if(modalMessageTextEl) modalMessageTextEl.textContent = message;
+        if(messageModalEl) messageModalEl.classList.remove('hidden');
+    }
+    if(modalCloseButtonEl) modalCloseButtonEl.addEventListener('click', () => {
+        if(messageModalEl) messageModalEl.classList.add('hidden');
+    });
+    if(messageModalEl) messageModalEl.addEventListener('click', (event) => { 
+        if (event.target === messageModalEl) {
+            if(messageModalEl) messageModalEl.classList.add('hidden');
+        } 
+    });
+    
+    // --- Inicialização da Aplicação Principal (index.html) ---
+    async function initAppPrincipal() {
+        console.log(`${scriptName}: initAppPrincipal - A chamar window.checkAuthStatus().`);
+        // A função checkAuthStatus (em auth_global.js) deve agora determinar o estado
+        // e, se estivermos no index.html (o que é o caso aqui), ela mesma (ou o onAuthStateChange)
+        // deve chamar window.showPagePrincipal com 'login' ou 'dashboard'.
+        await window.checkAuthStatus();
+        console.log(`${scriptName}: initAppPrincipal - Chamada a checkAuthStatus concluída.`);
     }
     
-    // Inicializar a página após um pequeno atraso para garantir que todos os scripts foram carregados
-    setTimeout(() => {
-        initPrincipalPage();
-    }, 100);
+    initAppPrincipal(); // Chama na carga do DOM
 });
