@@ -1,14 +1,57 @@
 // js/projetos.js - Lógica para a Subaplicação de Gestão de Projetos
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (typeof checkAuthStatus !== 'function' || typeof supabase === 'undefined') {
-        console.error("Supabase client ou auth_global.js não carregados para Projetos.");
+document.addEventListener('DOMContentLoaded', async () => {
+    // --- Verificação de Cliente Supabase ---
+    if (typeof window.getSupabaseClient !== 'function') {
+        console.error("ERRO CRÍTICO (projetos.js): getSupabaseClient não está definido.");
+        alert("Erro crítico na configuração da aplicação (Projetos). Contacte o suporte.");
         return;
     }
-    checkAuthStatus();
+    const supabase = window.getSupabaseClient();
+    if (!supabase) {
+        console.error("ERRO CRÍTICO (projetos.js): Cliente Supabase não disponível.");
+        alert("Erro crítico ao conectar com o sistema (Projetos). Contacte o suporte.");
+        return;
+    }
 
-    const currentUser = supabase.auth.user();
-    const userProfile = JSON.parse(localStorage.getItem('userProfile'));
+    let currentUser = null;
+    let userProfile = null;
+
+    try {
+        // Obter utilizador atual e perfil
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        
+        currentUser = user;
+        if (!currentUser) {
+            console.error("Utilizador não autenticado. Redirecionando para login...");
+            window.location.href = 'index.html';
+            return;
+        }
+
+        // Obter perfil do utilizador
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .single();
+        
+        if (profileError) throw profileError;
+        userProfile = profileData;
+        
+        // Verificar permissões baseadas no role
+        if (!userProfile) {
+            console.error("Perfil de utilizador não encontrado.");
+            alert("Erro ao carregar perfil de utilizador. Por favor, faça login novamente.");
+            window.location.href = 'index.html';
+            return;
+        }
+    } catch (error) {
+        console.error("Erro ao verificar autenticação:", error);
+        alert("Erro ao verificar credenciais. Por favor, faça login novamente.");
+        window.location.href = 'index.html';
+        return;
+    }
 
     // --- Seletores DOM ---
     const voltarDashboardBtnEl = document.getElementById('voltarDashboardBtnProjetos');
@@ -93,173 +136,219 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Funções Auxiliares ---
     function formatarData(dataISO) { return dataISO ? new Date(dataISO).toLocaleDateString('pt-PT') : 'N/A'; }
     function formatarMoeda(valor) { return parseFloat(valor || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' }); }
-    function mostrarSpinnerProj(show = true) { loadingProjetosSpinnerEl.style.display = show ? 'block' : 'none'; }
+    function mostrarSpinnerProj(show = true) { 
+        if (loadingProjetosSpinnerEl) {
+            loadingProjetosSpinnerEl.style.display = show ? 'block' : 'none'; 
+        }
+    }
     function calcularProgresso(tarefas) { // tarefas = [{estado: 'Concluída'}, ...]
         if (!tarefas || tarefas.length === 0) return 0;
         const concluidas = tarefas.filter(t => t.estado === 'Concluída').length;
         return Math.round((concluidas / tarefas.length) * 100);
     }
 
+    function getEstadoTarefaClassProj(estado) { // Renamed to avoid conflict if ever merged
+        if (estado === "Concluída") return "bg-green-100 text-green-700";
+        if (estado === "Em Progresso") return "bg-blue-100 text-blue-700";
+        if (estado === "Bloqueada" || estado === "Cancelada") return "bg-gray-100 text-gray-700 line-through";
+        if (estado === "Pendente") return "bg-yellow-100 text-yellow-700";
+        return "bg-gray-100 text-gray-700";
+    }
+
     // --- Carregar Dados Iniciais (Utilizadores, Parques, Tipos de Projeto) ---
     async function carregarDadosIniciaisProjetos() {
-        const { data: usersData, error: usersError } = await supabase.from('profiles').select('id, full_name, username, role');
-        if (usersError) console.error("Erro ao carregar utilizadores para projetos:", usersError);
-        else todosOsUsuariosSistemaProj = usersData || [];
+        try {
+            // Carregar utilizadores
+            const { data: usersData, error: usersError } = await supabase
+                .from('profiles')
+                .select('id, full_name, username, role');
+                
+            if (usersError) throw usersError;
+            todosOsUsuariosSistemaProj = usersData || [];
 
-        const { data: parquesData, error: parquesError } = await supabase.from('parques').select('id, nome');
-        if (parquesError) console.error("Erro ao carregar parques para projetos:", parquesError);
-        else listaParquesGlobProj = parquesData || [];
-        
-        // Carregar tipos de projeto distintos da própria tabela de projetos
-        const { data: tiposData, error: tiposError } = await supabase.rpc('get_distinct_tipos_projeto'); // Criar esta RPC
-        if (tiposError) console.error("Erro ao carregar tipos de projeto:", tiposError);
-        else tiposDeProjetoDistintos = tiposData ? tiposData.map(t => t.tipo_projeto) : [];
+            // Carregar parques
+            const { data: parquesData, error: parquesError } = await supabase
+                .from('parques')
+                .select('id, nome');
+                
+            if (parquesError) throw parquesError;
+            listaParquesGlobProj = parquesData || [];
+            
+            // Carregar tipos de projeto distintos
+            // Nota: Adaptado para usar consulta direta em vez de RPC
+            const { data: tiposData, error: tiposError } = await supabase
+                .from('projetos')
+                .select('tipo_projeto')
+                .not('tipo_projeto', 'is', null);
+                
+            if (tiposError) throw tiposError;
+            
+            // Extrair tipos distintos
+            const tiposSet = new Set();
+            tiposData?.forEach(item => {
+                if (item.tipo_projeto) {
+                    tiposSet.add(item.tipo_projeto);
+                }
+            });
+            tiposDeProjetoDistintos = Array.from(tiposSet);
 
-
-        popularSelectsProjetos();
+            popularSelectsProjetos();
+        } catch (error) {
+            console.error("Erro ao carregar dados iniciais para projetos:", error);
+            alert(`Erro ao carregar dados iniciais: ${error.message}`);
+        }
     }
 
     function popularSelectsProjetos() {
-        // Filtro de Utilizador (Responsável/Membro)
-        projetoFiltroUserEl.innerHTML = `
-            <option value="meus_associados">Meus Projetos</option>
-            <option value="todos_subordinados">Minha Equipa/Subordinados</option>
-            ${userProfile.role === 'super_admin' || userProfile.role === 'admin' ? '<option value="todos_geral">Todos os Projetos</option>' : ''}
-        `;
-        // Adicionar utilizadores específicos se necessário (para super_admin ver projetos de X)
-
-        // Select de Responsável Principal no Modal
-        projetoFormResponsavelPrincipalEl.innerHTML = '<option value="">Selecione Responsável</option>';
-        todosOsUsuariosSistemaProj.forEach(u => {
-            // Idealmente, filtrar por roles que podem ser responsáveis
-            const opt = document.createElement('option');
-            opt.value = u.id;
-            opt.textContent = u.full_name || u.username;
-            projetoFormResponsavelPrincipalEl.appendChild(opt);
-        });
-
-        // Select de Membros no Modal
-        projetoFormMembrosEl.innerHTML = ''; // Limpar
-        todosOsUsuariosSistemaProj.forEach(u => {
-            const opt = document.createElement('option');
-            opt.value = u.id;
-            opt.textContent = u.full_name || u.username;
-            projetoFormMembrosEl.appendChild(opt);
-        });
+        // Popular filtro de utilizador
+        if (projetoFiltroUserEl) {
+            projetoFiltroUserEl.innerHTML = `
+                <option value="meus_associados">Meus Projetos</option>
+                <option value="todos_subordinados">Minha Equipa/Subordinados</option>
+                ${userProfile.role === 'super_admin' || userProfile.role === 'admin' ? '<option value="todos_geral">Todos os Projetos</option>' : ''}
+            `;
+        }
         
-        // Select de Parque no Modal
-        projetoFormParqueEl.innerHTML = '<option value="">Nenhum</option>';
-        listaParquesGlobProj.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = p.nome;
-            projetoFormParqueEl.appendChild(opt);
-        });
-
-        // Filtro de Tipo de Projeto
-        projetoFiltroTipoEl.innerHTML = '<option value="">Todos</option>';
-        tiposDeProjetoDistintos.forEach(tipo => {
-            if(tipo) { // Ignorar nulos/vazios
+        // Popular select de responsável principal
+        if (projetoFormResponsavelPrincipalEl) {
+            projetoFormResponsavelPrincipalEl.innerHTML = '<option value="">Selecione Responsável</option>';
+            todosOsUsuariosSistemaProj.forEach(u => {
                 const opt = document.createElement('option');
-                opt.value = tipo;
-                opt.textContent = tipo;
-                projetoFiltroTipoEl.appendChild(opt);
-            }
-        });
+                opt.value = u.id;
+                opt.textContent = u.full_name || u.username;
+                projetoFormResponsavelPrincipalEl.appendChild(opt);
+            });
+        }
+        
+        // Popular select de membros
+        if (projetoFormMembrosEl) {
+            projetoFormMembrosEl.innerHTML = ''; 
+            todosOsUsuariosSistemaProj.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.full_name || u.username;
+                projetoFormMembrosEl.appendChild(opt);
+            });
+        }
+        
+        // Popular select de parque
+        if (projetoFormParqueEl) {
+            projetoFormParqueEl.innerHTML = '<option value="">Nenhum</option>';
+            listaParquesGlobProj.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.nome;
+                projetoFormParqueEl.appendChild(opt);
+            });
+        }
+        
+        // Popular filtro de tipo
+        if (projetoFiltroTipoEl) {
+            projetoFiltroTipoEl.innerHTML = '<option value="">Todos</option>';
+            tiposDeProjetoDistintos.forEach(tipo => {
+                if(tipo) { 
+                    const opt = document.createElement('option');
+                    opt.value = tipo;
+                    opt.textContent = tipo;
+                    projetoFiltroTipoEl.appendChild(opt);
+                }
+            });
+        }
     }
 
-    // --- Lógica de Projetos (CRUD e Visualização) ---
     async function carregarProjetos() {
-        mostrarSpinnerProj();
-        const filtroUser = projetoFiltroUserEl.value;
-        const estado = projetoFiltroEstadoEl.value;
-        const tipo = projetoFiltroTipoEl.value;
-        const prazoDe = projetoFiltroPrazoDeEl.value;
-        const prazoAte = projetoFiltroPrazoAteEl.value;
-
-        // Esta query é complexa devido às permissões e associações.
-        // Uma RPC no Supabase (`get_projetos_para_utilizador`) seria muito mais eficiente e segura.
-        // A RPC receberia currentUser.id e userProfile.role e os filtros.
-        // Por agora, uma simulação simplificada da lógica de permissão no cliente:
-
-        let query = supabase.from('projetos').select(`
-            id, nome_projeto, tipo_projeto, orcamento_previsto, data_inicio, data_prazo, estado_projeto,
-            responsavel:profiles!projetos_user_id_responsavel_principal_fkey (id, full_name, username),
-            membros:projeto_membros ( profiles (id, full_name) ),
-            tarefas (id, estado),
-            despesas (valor)
-        `, { count: 'exact' });
-
-        // Filtros básicos
-        if (estado) query = query.eq('estado_projeto', estado);
-        if (tipo) query = query.eq('tipo_projeto', tipo);
-        if (prazoDe) query = query.gte('data_prazo', prazoDe);
-        if (prazoAte) query = query.lte('data_prazo', prazoAte);
+        mostrarSpinnerProj(true);
         
-        // Filtro de permissão (MUITO SIMPLIFICADO - IDEALMENTE FEITO NO BACKEND COM RLS/RPC)
-        if (filtroUser === 'meus_associados') {
-            query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
-        } else if (filtroUser === 'todos_subordinados') {
-            // TODO: Obter lista de IDs de subordinados e adicionar ao filtro 'or'
-            // query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id},user_id_responsavel_principal.in.(${lista_ids_subordinados})`);
-             query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`); // Placeholder
-        } else if (filtroUser && filtroUser !== 'todos_geral') { // Ver projetos de um user específico (se permissão)
-            if (userProfile.role === 'super_admin' || userProfile.role === 'admin') { // Admins podem ver de outros
-                query = query.or(`user_id_responsavel_principal.eq.${filtroUser},membros.user_id_membro.eq.${filtroUser}`);
-            } else { // Se não é admin, só pode ver os seus ou da equipa, mesmo que selecione outro user
-                 query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
+        try {
+            const filtroUser = projetoFiltroUserEl ? projetoFiltroUserEl.value : 'meus_associados';
+            const estado = projetoFiltroEstadoEl ? projetoFiltroEstadoEl.value : '';
+            const tipo = projetoFiltroTipoEl ? projetoFiltroTipoEl.value : '';
+            const prazoDe = projetoFiltroPrazoDeEl ? projetoFiltroPrazoDeEl.value : '';
+            const prazoAte = projetoFiltroPrazoAteEl ? projetoFiltroPrazoAteEl.value : '';
+
+            let query = supabase.from('projetos').select(`
+                id, nome_projeto, tipo_projeto, orcamento_previsto, data_inicio, data_prazo, estado_projeto, descricao, parque_id,
+                responsavel:profiles!projetos_user_id_responsavel_principal_fkey (id, full_name, username),
+                membros:projeto_membros ( profiles (id, full_name) ),
+                tarefas (id, titulo, estado, data_prazo, user_id_atribuido_a, user_atribuido:profiles!tarefas_user_id_atribuido_a_fkey(full_name, username)),
+                despesas (valor)
+            `, { count: 'exact' });
+
+            if (estado) query = query.eq('estado_projeto', estado);
+            if (tipo) query = query.eq('tipo_projeto', tipo);
+            if (prazoDe) query = query.gte('data_prazo', prazoDe);
+            if (prazoAte) query = query.lte('data_prazo', prazoAte);
+            
+            // Filtrar por utilizador conforme permissões
+            if (filtroUser === 'meus_associados') {
+                query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
+            } else if (filtroUser === 'todos_subordinados') {
+                query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`); 
+            } else if (filtroUser && filtroUser !== 'todos_geral') { 
+                if (userProfile.role === 'super_admin' || userProfile.role === 'admin') { 
+                    query = query.or(`user_id_responsavel_principal.eq.${filtroUser},membros.user_id_membro.eq.${filtroUser}`);
+                } else { 
+                    query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
+                }
+            } else if (filtroUser === 'todos_geral' && userProfile.role !== 'super_admin' && userProfile.role !== 'admin') {
+                query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
             }
-        } else if (filtroUser === 'todos_geral' && userProfile.role !== 'super_admin' && userProfile.role !== 'admin') {
-            query = query.or(`user_id_responsavel_principal.eq.${currentUser.id},membros.user_id_membro.eq.${currentUser.id}`);
-        }
-        // Se super_admin e 'todos_geral', não aplica filtro de user
 
-
-        const offset = (paginaAtualProjetosLista - 1) * itensPorPaginaProjetosLista;
-        query = query.order('data_prazo', { ascending: true, nullsFirst: false })
-                     .order('created_at', { ascending: false })
-                     .range(offset, offset + itensPorPaginaProjetosLista - 1);
-        
-        const { data, error, count } = await query;
-        mostrarSpinnerProj(false);
-
-        if (error) {
+            const offset = (paginaAtualProjetosLista - 1) * itensPorPaginaProjetosLista;
+            query = query.order('data_prazo', { ascending: true, nullsFirst: false })
+                        .order('created_at', { ascending: false })
+                        .range(offset, offset + itensPorPaginaProjetosLista - 1);
+            
+            const { data, error, count } = await query;
+            
+            if (error) throw error;
+            
+            todosOsProjetos = (data || []).map(p => ({
+                ...p,
+                total_despesas: (p.despesas || []).reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0),
+                progresso_tarefas: calcularProgresso(p.tarefas || [])
+            }));
+            
+            renderizarVistaAtualProjetos();
+            renderPaginacaoProjetos(count);
+        } catch (error) {
             console.error("Erro ao carregar projetos:", error);
-            alert("Erro ao carregar projetos.");
-            return;
+            alert(`Erro ao carregar projetos: ${error.message}`);
+        } finally {
+            mostrarSpinnerProj(false);
         }
-        todosOsProjetos = (data || []).map(p => ({
-            ...p,
-            total_despesas: (p.despesas || []).reduce((sum, d) => sum + (d.valor || 0), 0),
-            progresso_tarefas: calcularProgresso(p.tarefas || [])
-        }));
-        
-        renderizarVistaAtualProjetos();
-        renderPaginacaoProjetos(count);
     }
 
     function renderizarVistaAtualProjetos() {
-        const modo = projetoViewModeEl.value;
-        [projetosViewListaEl, projetosViewKanbanEl, projetosViewCalendarioEl].forEach(v => v.classList.add('hidden'));
+        const modo = projetoViewModeEl ? projetoViewModeEl.value : 'lista';
+        
+        if (projetosViewListaEl) projetosViewListaEl.classList.add('hidden');
+        if (projetosViewKanbanEl) projetosViewKanbanEl.classList.add('hidden');
+        if (projetosViewCalendarioEl) projetosViewCalendarioEl.classList.add('hidden');
+        
         if (modo === 'lista') {
-            projetosViewListaEl.classList.remove('hidden');
+            if (projetosViewListaEl) projetosViewListaEl.classList.remove('hidden');
             renderTabelaProjetos();
         } else if (modo === 'kanban') {
-            projetosViewKanbanEl.classList.remove('hidden');
+            if (projetosViewKanbanEl) projetosViewKanbanEl.classList.remove('hidden');
             renderQuadroKanbanProjetos();
         } else if (modo === 'calendario') {
-            projetosViewCalendarioEl.classList.remove('hidden');
+            if (projetosViewCalendarioEl) projetosViewCalendarioEl.classList.remove('hidden');
             renderTimelineProjetos();
         }
     }
 
     function renderTabelaProjetos() {
+        if (!projetosTableBodyEl) return;
+        
         projetosTableBodyEl.innerHTML = '';
+        
         if (todosOsProjetos.length === 0) {
-            projetosListaNenhumaMsgEl.classList.remove('hidden');
+            if (projetosListaNenhumaMsgEl) projetosListaNenhumaMsgEl.classList.remove('hidden');
             return;
         }
-        projetosListaNenhumaMsgEl.classList.add('hidden');
+        
+        if (projetosListaNenhumaMsgEl) projetosListaNenhumaMsgEl.classList.add('hidden');
         const agora = new Date();
 
         todosOsProjetos.forEach(p => {
@@ -290,7 +379,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getEstadoProjetoClass(estado) {
-        // Similar a getEstadoClass de tarefas.js, adaptar para estados de projeto
         if (estado === 'Concluído') return 'bg-green-100 text-green-700';
         if (estado === 'Em Curso') return 'bg-blue-100 text-blue-700';
         if (estado === 'Suspenso' || estado === 'Cancelado') return 'bg-gray-100 text-gray-700';
@@ -298,309 +386,603 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'bg-gray-100 text-gray-700';
     }
 
-
     function renderQuadroKanbanProjetos() {
-        kanbanProjetosBoardEl.innerHTML = '';
-        for (const colKey in KANBAN_COLUNAS_PROJETOS) { KANBAN_COLUNAS_PROJETOS[colKey].projects = []; }
+        if (!kanbanProjetosBoardEl) return;
         
+        kanbanProjetosBoardEl.innerHTML = '';
+        
+        // Resetar colunas
+        for (const colKey in KANBAN_COLUNAS_PROJETOS) {
+            KANBAN_COLUNAS_PROJETOS[colKey].projects = [];
+        }
+        
+        // Distribuir projetos nas colunas
         todosOsProjetos.forEach(p => {
             if (KANBAN_COLUNAS_PROJETOS[p.estado_projeto]) {
                 KANBAN_COLUNAS_PROJETOS[p.estado_projeto].projects.push(p);
             } else if (KANBAN_COLUNAS_PROJETOS['Planeado']) {
-                KANBAN_COLUNAS_PROJETOS['Planeado'].projects.push(p); // Fallback
+                KANBAN_COLUNAS_PROJETOS['Planeado'].projects.push(p);
             }
         });
-
-        const agora = new Date();
+        
+        // Renderizar colunas
         for (const colKey in KANBAN_COLUNAS_PROJETOS) {
             const colunaData = KANBAN_COLUNAS_PROJETOS[colKey];
             const colunaDiv = document.createElement('div');
-            colunaDiv.id = colunaData.id;
             colunaDiv.className = 'kanban-column';
-            colunaDiv.innerHTML = `<h4 class="kanban-column-title">${colunaData.title} (${colunaData.projects.length})</h4>
-                                 <div class="kanban-cards-container" data-estado-coluna="${colKey}"></div>`;
+            colunaDiv.id = colunaData.id;
             
-            const cardsContainer = colunaDiv.querySelector('.kanban-cards-container');
-            colunaData.projects.sort((a,b) => (new Date(a.data_prazo) || 0) - (new Date(b.data_prazo) || 0) ).forEach(p => {
-                const card = document.createElement('div');
-                card.className = 'kanban-card';
-                card.dataset.projetoId = p.id; // Para drag & drop ou clique
+            colunaDiv.innerHTML = `
+                <div class="kanban-column-header">${colunaData.title} (${colunaData.projects.length})</div>
+                <div class="kanban-column-body" id="${colunaData.id}-body"></div>
+            `;
+            
+            kanbanProjetosBoardEl.appendChild(colunaDiv);
+            const colunaBodyEl = document.getElementById(`${colunaData.id}-body`);
+            
+            // Renderizar cartões de projeto
+            colunaData.projects.forEach(p => {
+                const agora = new Date();
                 const prazo = p.data_prazo ? new Date(p.data_prazo) : null;
                 const atrasado = prazo && prazo < agora && p.estado_projeto !== 'Concluído' && p.estado_projeto !== 'Cancelado';
-                if(atrasado) card.classList.add('overdue');
-
-                card.innerHTML = `
-                    <h5>${p.nome_projeto}</h5>
-                    <p class="text-xs">Resp: ${p.responsavel?.full_name || 'N/A'}</p>
-                    <p class="text-xs">Orçamento: ${formatarMoeda(p.orcamento_previsto)} | Despesas: ${formatarMoeda(p.total_despesas)}</p>
-                    <div class="progress-bar-container"><div class="progress-bar" style="width: ${p.progresso_tarefas}%;">${p.progresso_tarefas}%</div></div>
-                    <small class="prazo">Prazo: ${formatarData(p.data_prazo)} ${atrasado ? '(ATRASADO)' : ''}</small>
+                
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `kanban-card ${atrasado ? 'overdue' : ''}`;
+                cardDiv.dataset.id = p.id;
+                
+                cardDiv.innerHTML = `
+                    <div class="kanban-card-header">
+                        <h3 class="kanban-card-title">${p.nome_projeto}</h3>
+                        <span class="kanban-card-type">${p.tipo_projeto || 'Sem tipo'}</span>
+                    </div>
+                    <div class="kanban-card-body">
+                        <p class="kanban-card-resp">👤 ${p.responsavel?.full_name || p.responsavel?.username || 'N/A'}</p>
+                        <p class="kanban-card-date ${atrasado ? 'text-red-600 font-bold' : ''}">📅 ${formatarData(p.data_prazo)}</p>
+                        <div class="kanban-card-progress">
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" style="width: ${p.progresso_tarefas}%;">${p.progresso_tarefas}%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kanban-card-footer">
+                        <button class="kanban-card-btn proj-detalhes-btn" data-id="${p.id}">Detalhes</button>
+                        <button class="kanban-card-btn proj-editar-btn" data-id="${p.id}">Editar</button>
+                    </div>
                 `;
-                card.addEventListener('click', () => abrirModalDetalhesProjeto(p.id));
-                cardsContainer.appendChild(card);
+                
+                colunaBodyEl.appendChild(cardDiv);
             });
-            kanbanProjetosBoardEl.appendChild(colunaDiv);
         }
-        // TODO: setupKanbanDragAndDropProjetos(); (se quiser mover projetos entre colunas)
     }
 
     function renderTimelineProjetos() {
-        timelineProjetosContainerEl.innerHTML = '<p class="text-center">Vista de Timeline/Gantt (a implementar com FullCalendar ou similar).</p>';
-        // TODO: Inicializar e popular o FullCalendar com `todosOsProjetos`
-        // Eventos seriam os projetos, com 'start': p.data_inicio, 'end': p.data_prazo
-    }
-
-    function renderPaginacaoProjetos(totalItens) {
-        projetosListaPaginacaoEl.innerHTML = '';
-        if (!totalItens || totalItens <= itensPorPaginaProjetosLista) return;
-        const totalPaginas = Math.ceil(totalItens / itensPorPaginaProjetosLista);
-        for (let i = 1; i <= totalPaginas; i++) {
-            const btn = document.createElement('button');
-            btn.textContent = i;
-            btn.className = `action-button text-sm !p-2 mx-1 ${i === paginaAtualProjetosLista ? 'bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'}`;
-            btn.addEventListener('click', () => { paginaAtualProjetosLista = i; carregarProjetos(); });
-            projetosListaPaginacaoEl.appendChild(btn);
-        }
-    }
-    
-    // --- Modais (Formulário e Detalhes) ---
-    function abrirModalFormProjeto(projetoId = null) {
-        projetoFormEl.reset();
-        projetoFormIdEl.value = '';
-        // Limpar select de múltiplos membros
-        Array.from(projetoFormMembrosEl.options).forEach(opt => opt.selected = false);
-
-
-        if (projetoId) {
-            const projeto = todosOsProjetos.find(p => p.id === projetoId);
-            if (!projeto) { alert("Projeto não encontrado."); return; }
-            projetoFormModalTitleEl.textContent = 'Editar Projeto';
-            projetoFormIdEl.value = projeto.id;
-            projetoFormNomeEl.value = projeto.nome_projeto;
-            projetoFormTipoEl.value = projeto.tipo_projeto || '';
-            projetoFormResponsavelPrincipalEl.value = projeto.user_id_responsavel_principal || projeto.responsavel?.id || '';
-            projetoFormDataInicioEl.value = projeto.data_inicio ? projeto.data_inicio.split('T')[0] : '';
-            projetoFormDataPrazoEl.value = projeto.data_prazo ? projeto.data_prazo.split('T')[0] : '';
-            projetoFormOrcamentoEl.value = projeto.orcamento_previsto || '';
-            projetoFormEstadoModalEl.value = projeto.estado_projeto;
-            projetoFormDescricaoEl.value = projeto.descricao || '';
-            projetoFormParqueEl.value = projeto.parque_id || '';
-            
-            // Selecionar membros
-            if (projeto.membros) {
-                projeto.membros.forEach(membroAssoc => {
-                    const membroPerfil = membroAssoc.profiles; // A relação está em membroAssoc.profiles
-                    if (membroPerfil) {
-                         const option = projetoFormMembrosEl.querySelector(`option[value="${membroPerfil.id}"]`);
-                         if (option) option.selected = true;
-                    }
-                });
-            }
-
-        } else {
-            projetoFormModalTitleEl.textContent = 'Novo Projeto';
-            projetoFormEstadoModalEl.value = 'Planeado'; // Default
-            // Responsável principal pode ser o user atual por defeito
-            const selfOption = Array.from(projetoFormResponsavelPrincipalEl.options).find(opt => opt.value === currentUser.id);
-            if (selfOption) projetoFormResponsavelPrincipalEl.value = currentUser.id;
-        }
-        projetoFormModalEl.classList.add('active');
-    }
-
-    async function abrirModalDetalhesProjeto(projetoId) {
-        const projeto = todosOsProjetos.find(p => p.id === projetoId); // Usar dados já carregados
-        if (!projeto) {
-            // Se não estiver em todosOsProjetos (ex: clicado de um link externo), buscar do Supabase
-            // const {data, error} = await supabase.from('projetos').select(...).eq('id', projetoId).single(); ...
-            alert("Detalhes do projeto não encontrados localmente."); return;
-        }
+        if (!timelineProjetosContainerEl) return;
         
-        projetoDetalhesIdEl.value = projeto.id;
-        projetoDetalhesModalTitleEl.textContent = `Detalhes: ${projeto.nome_projeto}`;
-        detalheNomeProjetoEl.textContent = projeto.nome_projeto;
-        detalheTipoProjetoEl.textContent = projeto.tipo_projeto || 'N/A';
-        detalheResponsavelProjetoEl.textContent = projeto.responsavel?.full_name || projeto.responsavel?.username || 'N/A';
-        detalheEstadoProjetoEl.innerHTML = `<span class="px-2 py-1 text-xs font-semibold rounded-full ${getEstadoProjetoClass(projeto.estado_projeto)}">${projeto.estado_projeto}</span>`;
-        detalheDataInicioEl.textContent = formatarData(projeto.data_inicio);
-        detalheDataPrazoEl.textContent = formatarData(projeto.data_prazo);
-        detalheOrcamentoEl.textContent = formatarMoeda(projeto.orcamento_previsto);
-        detalheDescricaoProjetoEl.textContent = projeto.descricao || 'Sem descrição.';
-
-        // Calcular e mostrar despesas e saldo
-        // const { data: despesasDoProjeto, error: erroDespesas } = await supabase.from('despesas').select('valor').eq('projeto_id', projeto.id);
-        // const totalDespesasProjeto = erroDespesas ? 0 : (despesasDoProjeto || []).reduce((sum, d) => sum + d.valor, 0);
-        // Usar o total_despesas já calculado ao carregar projetos
-        detalheDespesasTotalEl.textContent = formatarMoeda(projeto.total_despesas);
-        detalheSaldoOrcamentoEl.textContent = formatarMoeda((projeto.orcamento_previsto || 0) - projeto.total_despesas);
-        if (((projeto.orcamento_previsto || 0) - projeto.total_despesas) < 0) {
-            detalheSaldoOrcamentoEl.classList.add('text-red-600');
-        } else {
-            detalheSaldoOrcamentoEl.classList.remove('text-red-600');
-        }
+        timelineProjetosContainerEl.innerHTML = '';
         
-        // Membros
-        detalheListaMembrosEl.innerHTML = '';
-        (projeto.membros || []).forEach(membroAssoc => {
-            const membro = membroAssoc.profiles;
-            if(membro) {
-                const li = document.createElement('li');
-                li.textContent = membro.full_name || membro.username;
-                detalheListaMembrosEl.appendChild(li);
-            }
-        });
-        if (detalheListaMembrosEl.children.length === 0) detalheListaMembrosEl.innerHTML = '<li>Nenhum membro atribuído.</li>';
-
-        // Tarefas (contagens e lista simplificada)
-        // const { data: tarefasDoProjeto, error: erroTarefas } = await supabase.from('tarefas').select('id, titulo, estado').eq('projeto_id', projeto.id);
-        // Usar as tarefas já carregadas com o projeto
-        const tarefasDoProjeto = projeto.tarefas || [];
-        detalheTarefasPendentesEl.textContent = tarefasDoProjeto.filter(t => t.estado === 'Pendente' || t.estado === 'Bloqueada').length;
-        detalheTarefasProgressoEl.textContent = tarefasDoProjeto.filter(t => t.estado === 'Em Progresso').length;
-        detalheTarefasConcluidasEl.textContent = tarefasDoProjeto.filter(t => t.estado === 'Concluída').length;
-        
-        detalheListaTarefasContainerEl.innerHTML = '<ul class="list-disc list-inside"></ul>';
-        const ulTarefas = detalheListaTarefasContainerEl.querySelector('ul');
-        if (tarefasDoProjeto.length > 0) {
-            tarefasDoProjeto.slice(0, 10).forEach(t => { // Mostrar as primeiras 10, por exemplo
-                const li = document.createElement('li');
-                li.innerHTML = `${t.titulo} <span class="text-xs px-1 py-0.5 rounded ${getEstadoClass(t.estado)}">${t.estado}</span>`;
-                ulTarefas.appendChild(li);
-            });
-            if(tarefasDoProjeto.length > 10) ulTarefas.innerHTML += '<li class="text-xs text-gray-500">... e mais.</li>';
-        } else {
-            ulTarefas.innerHTML = '<li class="text-xs text-gray-500">Nenhuma tarefa associada.</li>';
-        }
-
-        // Despesas (lista simplificada)
-        // Usar as despesas já carregadas com o projeto
-        const despesasDoProjeto = projeto.despesas || []; // Assumindo que 'despesas' foi selecionado no join
-        detalheListaDespesasContainerEl.innerHTML = '<ul class="list-disc list-inside"></ul>';
-        const ulDespesas = detalheListaDespesasContainerEl.querySelector('ul');
-        if (despesasDoProjeto.length > 0) {
-            despesasDoProjeto.slice(0,10).forEach(d => {
-                const li = document.createElement('li');
-                li.textContent = `${formatarMoeda(d.valor)} (a implementar ligação à despesa)`;
-                ulDespesas.appendChild(li);
-            });
-             if(despesasDoProjeto.length > 10) ulDespesas.innerHTML += '<li class="text-xs text-gray-500">... e mais.</li>';
-        } else {
-            ulDespesas.innerHTML = '<li class="text-xs text-gray-500">Nenhuma despesa associada.</li>';
-        }
-
-
-        projetoDetalhesModalEl.classList.add('active');
-    }
-
-
-    async function submeterFormProjeto(event) {
-        event.preventDefault();
-        const id = projetoFormIdEl.value;
-
-        const dadosProjeto = {
-            nome_projeto: projetoFormNomeEl.value,
-            tipo_projeto: projetoFormTipoEl.value || null,
-            user_id_responsavel_principal: projetoFormResponsavelPrincipalEl.value,
-            data_inicio: projetoFormDataInicioEl.value || null,
-            data_prazo: projetoFormDataPrazoEl.value || null,
-            orcamento_previsto: parseFloat(projetoFormOrcamentoEl.value) || null,
-            estado_projeto: projetoFormEstadoModalEl.value,
-            descricao: projetoFormDescricaoEl.value || null,
-            parque_id: projetoFormParqueEl.value || null,
-            updated_at: new Date().toISOString()
-        };
-        
-        const membrosSelecionadosIds = Array.from(projetoFormMembrosEl.selectedOptions).map(opt => opt.value);
-
-        mostrarSpinnerProj();
-        let projetoSalvo, erroSupabase;
-
-        if (id) { // Edição
-            const { data, error } = await supabase.from('projetos').update(dadosProjeto).eq('id', id).select().single();
-            projetoSalvo = data; erroSupabase = error;
-        } else { // Criação
-            dadosProjeto.user_id_criador = currentUser.id; // Adicionar quem criou
-            const { data, error } = await supabase.from('projetos').insert(dadosProjeto).select().single();
-            projetoSalvo = data; erroSupabase = error;
-        }
-
-        if (erroSupabase) {
-            mostrarSpinnerProj(false);
-            console.error("Erro ao guardar projeto:", erroSupabase);
-            alert(`Erro: ${erroSupabase.message}`);
+        if (todosOsProjetos.length === 0) {
+            timelineProjetosContainerEl.innerHTML = '<div class="timeline-empty">Nenhum projeto encontrado.</div>';
             return;
         }
-
-        // Gerir membros (apagar os antigos não selecionados, adicionar os novos)
-        if (projetoSalvo) {
-            // 1. Apagar todas as associações de membros existentes para este projeto
-            const { error: deleteError } = await supabase.from('projeto_membros').delete().eq('projeto_id', projetoSalvo.id);
-            if (deleteError) console.error("Erro ao limpar membros antigos:", deleteError);
-
-            // 2. Inserir os novos membros selecionados
-            if (membrosSelecionadosIds.length > 0) {
-                const membrosParaInserir = membrosSelecionadosIds.map(userId => ({
-                    projeto_id: projetoSalvo.id,
-                    user_id_membro: userId
-                    // role_no_projeto: 'Membro Equipa' // Default role
-                }));
-                const { error: insertMembrosError } = await supabase.from('projeto_membros').insert(membrosParaInserir);
-                if (insertMembrosError) console.error("Erro ao adicionar novos membros:", insertMembrosError);
-            }
-        }
         
-        mostrarSpinnerProj(false);
-        projetoFormModalEl.classList.remove('active');
-        await carregarProjetos(); // Recarrega a vista atual
-        await carregarDadosIniciaisProjetos(); // Para atualizar o filtro de tipo de projeto se um novo foi criado
+        // Ordenar projetos por data de início
+        const projetosOrdenados = [...todosOsProjetos].sort((a, b) => {
+            const dataA = a.data_inicio ? new Date(a.data_inicio) : new Date(0);
+            const dataB = b.data_inicio ? new Date(b.data_inicio) : new Date(0);
+            return dataA - dataB;
+        });
+        
+        // Criar timeline
+        const timelineEl = document.createElement('div');
+        timelineEl.className = 'timeline-container';
+        
+        projetosOrdenados.forEach(p => {
+            const dataInicio = p.data_inicio ? new Date(p.data_inicio) : null;
+            const dataPrazo = p.data_prazo ? new Date(p.data_prazo) : null;
+            const agora = new Date();
+            const atrasado = dataPrazo && dataPrazo < agora && p.estado_projeto !== 'Concluído' && p.estado_projeto !== 'Cancelado';
+            
+            const itemEl = document.createElement('div');
+            itemEl.className = `timeline-item ${atrasado ? 'timeline-item-overdue' : ''}`;
+            
+            itemEl.innerHTML = `
+                <div class="timeline-marker ${getEstadoTimelineClass(p.estado_projeto)}"></div>
+                <div class="timeline-content">
+                    <h3 class="timeline-title">${p.nome_projeto}</h3>
+                    <div class="timeline-dates">
+                        <span>Início: ${formatarData(p.data_inicio)}</span>
+                        <span class="${atrasado ? 'text-red-600 font-bold' : ''}">Prazo: ${formatarData(p.data_prazo)}</span>
+                    </div>
+                    <div class="timeline-info">
+                        <span class="timeline-type">${p.tipo_projeto || 'Sem tipo'}</span>
+                        <span class="timeline-resp">Resp: ${p.responsavel?.full_name || p.responsavel?.username || 'N/A'}</span>
+                    </div>
+                    <div class="timeline-progress">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${p.progresso_tarefas}%;">${p.progresso_tarefas}%</div>
+                        </div>
+                    </div>
+                    <div class="timeline-actions">
+                        <button class="timeline-btn proj-detalhes-btn" data-id="${p.id}">Detalhes</button>
+                        <button class="timeline-btn proj-editar-btn" data-id="${p.id}">Editar</button>
+                    </div>
+                </div>
+            `;
+            
+            timelineEl.appendChild(itemEl);
+        });
+        
+        timelineProjetosContainerEl.appendChild(timelineEl);
     }
 
+    function getEstadoTimelineClass(estado) {
+        if (estado === 'Concluído') return 'timeline-marker-completed';
+        if (estado === 'Em Curso') return 'timeline-marker-progress';
+        if (estado === 'Suspenso') return 'timeline-marker-suspended';
+        if (estado === 'Cancelado') return 'timeline-marker-canceled';
+        return 'timeline-marker-planned';
+    }
+
+    function renderPaginacaoProjetos(totalItems) {
+        if (!projetosListaPaginacaoEl) return;
+        
+        projetosListaPaginacaoEl.innerHTML = '';
+        
+        if (!totalItems || totalItems <= 0) return;
+        
+        const totalPaginas = Math.ceil(totalItems / itensPorPaginaProjetosLista);
+        if (totalPaginas <= 1) return;
+        
+        // Botão Anterior
+        const btnAnterior = document.createElement('button');
+        btnAnterior.className = `pagination-btn ${paginaAtualProjetosLista <= 1 ? 'disabled' : ''}`;
+        btnAnterior.textContent = '«';
+        btnAnterior.disabled = paginaAtualProjetosLista <= 1;
+        btnAnterior.addEventListener('click', () => {
+            if (paginaAtualProjetosLista > 1) {
+                paginaAtualProjetosLista--;
+                carregarProjetos();
+            }
+        });
+        projetosListaPaginacaoEl.appendChild(btnAnterior);
+        
+        // Páginas
+        const maxPagesToShow = 5;
+        let startPage = Math.max(1, paginaAtualProjetosLista - Math.floor(maxPagesToShow / 2));
+        let endPage = Math.min(totalPaginas, startPage + maxPagesToShow - 1);
+        
+        if (endPage - startPage + 1 < maxPagesToShow) {
+            startPage = Math.max(1, endPage - maxPagesToShow + 1);
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const btnPagina = document.createElement('button');
+            btnPagina.className = `pagination-btn ${i === paginaAtualProjetosLista ? 'active' : ''}`;
+            btnPagina.textContent = i;
+            btnPagina.addEventListener('click', () => {
+                if (i !== paginaAtualProjetosLista) {
+                    paginaAtualProjetosLista = i;
+                    carregarProjetos();
+                }
+            });
+            projetosListaPaginacaoEl.appendChild(btnPagina);
+        }
+        
+        // Botão Próximo
+        const btnProximo = document.createElement('button');
+        btnProximo.className = `pagination-btn ${paginaAtualProjetosLista >= totalPaginas ? 'disabled' : ''}`;
+        btnProximo.textContent = '»';
+        btnProximo.disabled = paginaAtualProjetosLista >= totalPaginas;
+        btnProximo.addEventListener('click', () => {
+            if (paginaAtualProjetosLista < totalPaginas) {
+                paginaAtualProjetosLista++;
+                carregarProjetos();
+            }
+        });
+        projetosListaPaginacaoEl.appendChild(btnProximo);
+    }
+
+    // --- Lógica de Formulário e CRUD ---
+    async function abrirFormularioProjeto(projetoId = null) {
+        if (!projetoFormModalEl) return;
+        
+        // Resetar formulário
+        projetoFormEl.reset();
+        projetoFormIdEl.value = '';
+        
+        if (projetoId) {
+            // Editar projeto existente
+            mostrarSpinnerProj(true);
+            
+            try {
+                const { data: projeto, error } = await supabase
+                    .from('projetos')
+                    .select(`
+                        *,
+                        responsavel:profiles!projetos_user_id_responsavel_principal_fkey (id, full_name, username),
+                        membros:projeto_membros (user_id_membro)
+                    `)
+                    .eq('id', projetoId)
+                    .single();
+                    
+                if (error) throw error;
+                
+                if (!projeto) {
+                    alert('Projeto não encontrado.');
+                    return;
+                }
+                
+                // Preencher formulário
+                projetoFormIdEl.value = projeto.id;
+                projetoFormNomeEl.value = projeto.nome_projeto || '';
+                projetoFormTipoEl.value = projeto.tipo_projeto || '';
+                projetoFormResponsavelPrincipalEl.value = projeto.user_id_responsavel_principal || '';
+                projetoFormDataInicioEl.value = projeto.data_inicio ? projeto.data_inicio.split('T')[0] : '';
+                projetoFormDataPrazoEl.value = projeto.data_prazo ? projeto.data_prazo.split('T')[0] : '';
+                projetoFormOrcamentoEl.value = projeto.orcamento_previsto || '';
+                projetoFormEstadoModalEl.value = projeto.estado_projeto || 'Planeado';
+                projetoFormDescricaoEl.value = projeto.descricao || '';
+                projetoFormParqueEl.value = projeto.parque_id || '';
+                
+                // Selecionar membros
+                if (projetoFormMembrosEl && projeto.membros) {
+                    const membroIds = projeto.membros.map(m => m.user_id_membro);
+                    Array.from(projetoFormMembrosEl.options).forEach(opt => {
+                        opt.selected = membroIds.includes(opt.value);
+                    });
+                }
+                
+                projetoFormModalTitleEl.textContent = 'Editar Projeto';
+            } catch (error) {
+                console.error("Erro ao carregar projeto para edição:", error);
+                alert(`Erro ao carregar projeto: ${error.message}`);
+            } finally {
+                mostrarSpinnerProj(false);
+            }
+        } else {
+            // Novo projeto
+            projetoFormModalTitleEl.textContent = 'Novo Projeto';
+            projetoFormResponsavelPrincipalEl.value = currentUser.id;
+            projetoFormEstadoModalEl.value = 'Planeado';
+            
+            // Data de início padrão = hoje
+            const hoje = new Date().toISOString().split('T')[0];
+            projetoFormDataInicioEl.value = hoje;
+        }
+        
+        // Abrir modal
+        projetoFormModalEl.classList.remove('hidden');
+    }
+
+    async function salvarProjeto(event) {
+        event.preventDefault();
+        
+        mostrarSpinnerProj(true);
+        
+        try {
+            const projetoId = projetoFormIdEl.value;
+            const isNovo = !projetoId;
+            
+            // Validar campos obrigatórios
+            if (!projetoFormNomeEl.value) {
+                alert('O nome do projeto é obrigatório.');
+                return;
+            }
+            
+            // Preparar dados do projeto
+            const projetoData = {
+                nome_projeto: projetoFormNomeEl.value,
+                tipo_projeto: projetoFormTipoEl.value,
+                user_id_responsavel_principal: projetoFormResponsavelPrincipalEl.value,
+                data_inicio: projetoFormDataInicioEl.value,
+                data_prazo: projetoFormDataPrazoEl.value,
+                orcamento_previsto: projetoFormOrcamentoEl.value ? parseFloat(projetoFormOrcamentoEl.value) : null,
+                estado_projeto: projetoFormEstadoModalEl.value,
+                descricao: projetoFormDescricaoEl.value,
+                parque_id: projetoFormParqueEl.value || null
+            };
+            
+            // Adicionar campos específicos para novo projeto
+            if (isNovo) {
+                projetoData.user_id_criador = currentUser.id;
+                projetoData.created_at = new Date().toISOString();
+            }
+            
+            // Atualizar campos de modificação
+            projetoData.updated_at = new Date().toISOString();
+            projetoData.user_id_ultima_modificacao = currentUser.id;
+            
+            // Salvar projeto
+            let resultado;
+            if (isNovo) {
+                resultado = await supabase.from('projetos').insert(projetoData).select();
+            } else {
+                resultado = await supabase.from('projetos').update(projetoData).eq('id', projetoId).select();
+            }
+            
+            if (resultado.error) throw resultado.error;
+            
+            const projetoSalvo = resultado.data[0];
+            
+            // Atualizar membros do projeto
+            if (projetoFormMembrosEl && projetoSalvo) {
+                // Obter membros selecionados
+                const membrosSelecionados = Array.from(projetoFormMembrosEl.selectedOptions).map(opt => opt.value);
+                
+                // Remover membros existentes
+                const { error: deleteError } = await supabase
+                    .from('projeto_membros')
+                    .delete()
+                    .eq('projeto_id', projetoSalvo.id);
+                    
+                if (deleteError) throw deleteError;
+                
+                // Adicionar novos membros
+                if (membrosSelecionados.length > 0) {
+                    const membrosDados = membrosSelecionados.map(userId => ({
+                        projeto_id: projetoSalvo.id,
+                        user_id_membro: userId,
+                        adicionado_por: currentUser.id,
+                        data_adicao: new Date().toISOString()
+                    }));
+                    
+                    const { error: insertError } = await supabase
+                        .from('projeto_membros')
+                        .insert(membrosDados);
+                        
+                    if (insertError) throw insertError;
+                }
+            }
+            
+            // Fechar modal e recarregar projetos
+            projetoFormModalEl.classList.add('hidden');
+            await carregarProjetos();
+            
+            alert(`Projeto ${isNovo ? 'criado' : 'atualizado'} com sucesso!`);
+        } catch (error) {
+            console.error("Erro ao salvar projeto:", error);
+            alert(`Erro ao salvar projeto: ${error.message}`);
+        } finally {
+            mostrarSpinnerProj(false);
+        }
+    }
+
+    async function abrirDetalhesProjeto(projetoId) {
+        if (!projetoDetalhesModalEl || !projetoId) return;
+        
+        mostrarSpinnerProj(true);
+        
+        try {
+            const { data: projeto, error } = await supabase
+                .from('projetos')
+                .select(`
+                    *,
+                    responsavel:profiles!projetos_user_id_responsavel_principal_fkey (id, full_name, username),
+                    criador:profiles!projetos_user_id_criador_fkey (id, full_name, username),
+                    membros:projeto_membros (
+                        profiles (id, full_name, username)
+                    ),
+                    tarefas (
+                        id, titulo, descricao, estado, prioridade, data_prazo,
+                        user_atribuido:profiles!tarefas_user_id_atribuido_a_fkey (id, full_name, username)
+                    ),
+                    despesas (
+                        id, descricao, valor, data_despesa, tipo_despesa,
+                        user:profiles!despesas_user_id_fkey (id, full_name, username)
+                    ),
+                    parque:parques (id, nome)
+                `)
+                .eq('id', projetoId)
+                .single();
+                
+            if (error) throw error;
+            
+            if (!projeto) {
+                alert('Projeto não encontrado.');
+                return;
+            }
+            
+            // Preencher detalhes do projeto
+            projetoDetalhesIdEl.value = projeto.id;
+            projetoDetalhesModalTitleEl.textContent = projeto.nome_projeto;
+            detalheNomeProjetoEl.textContent = projeto.nome_projeto;
+            detalheTipoProjetoEl.textContent = projeto.tipo_projeto || 'Não especificado';
+            detalheResponsavelProjetoEl.textContent = projeto.responsavel?.full_name || projeto.responsavel?.username || 'N/A';
+            detalheEstadoProjetoEl.innerHTML = `<span class="badge ${getEstadoProjetoClass(projeto.estado_projeto)}">${projeto.estado_projeto}</span>`;
+            detalheDataInicioEl.textContent = formatarData(projeto.data_inicio);
+            detalheDataPrazoEl.textContent = formatarData(projeto.data_prazo);
+            detalheOrcamentoEl.textContent = formatarMoeda(projeto.orcamento_previsto);
+            
+            // Calcular total de despesas
+            const totalDespesas = (projeto.despesas || []).reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0);
+            detalheDespesasTotalEl.textContent = formatarMoeda(totalDespesas);
+            
+            // Calcular saldo do orçamento
+            const saldoOrcamento = (parseFloat(projeto.orcamento_previsto) || 0) - totalDespesas;
+            detalheSaldoOrcamentoEl.textContent = formatarMoeda(saldoOrcamento);
+            detalheSaldoOrcamentoEl.className = saldoOrcamento < 0 ? 'text-red-600 font-bold' : 'text-green-600';
+            
+            detalheDescricaoProjetoEl.textContent = projeto.descricao || 'Sem descrição.';
+            
+            // Listar membros
+            detalheListaMembrosEl.innerHTML = '';
+            if (projeto.membros && projeto.membros.length > 0) {
+                projeto.membros.forEach(m => {
+                    const membroLi = document.createElement('li');
+                    membroLi.className = 'membro-item';
+                    membroLi.textContent = m.profiles?.full_name || m.profiles?.username || 'Membro desconhecido';
+                    detalheListaMembrosEl.appendChild(membroLi);
+                });
+            } else {
+                detalheListaMembrosEl.innerHTML = '<li>Nenhum membro adicional.</li>';
+            }
+            
+            // Contar tarefas por estado
+            const tarefasPendentes = (projeto.tarefas || []).filter(t => t.estado === 'Pendente').length;
+            const tarefasProgresso = (projeto.tarefas || []).filter(t => t.estado === 'Em Progresso').length;
+            const tarefasConcluidas = (projeto.tarefas || []).filter(t => t.estado === 'Concluída').length;
+            
+            detalheTarefasPendentesEl.textContent = tarefasPendentes;
+            detalheTarefasProgressoEl.textContent = tarefasProgresso;
+            detalheTarefasConcluidasEl.textContent = tarefasConcluidas;
+            
+            // Listar tarefas
+            detalheListaTarefasContainerEl.innerHTML = '';
+            if (projeto.tarefas && projeto.tarefas.length > 0) {
+                const tarefasTable = document.createElement('table');
+                tarefasTable.className = 'detalhe-tabela';
+                tarefasTable.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Título</th>
+                            <th>Responsável</th>
+                            <th>Estado</th>
+                            <th>Prazo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detalheTarefasTableBody"></tbody>
+                `;
+                detalheListaTarefasContainerEl.appendChild(tarefasTable);
+                
+                const tbody = document.getElementById('detalheTarefasTableBody');
+                projeto.tarefas.forEach(t => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${t.titulo}</td>
+                        <td>${t.user_atribuido?.full_name || t.user_atribuido?.username || 'N/A'}</td>
+                        <td><span class="badge ${getEstadoTarefaClassProj(t.estado)}">${t.estado}</span></td>
+                        <td>${formatarData(t.data_prazo)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                detalheListaTarefasContainerEl.innerHTML = '<p>Nenhuma tarefa associada a este projeto.</p>';
+            }
+            
+            // Listar despesas
+            detalheListaDespesasContainerEl.innerHTML = '';
+            if (projeto.despesas && projeto.despesas.length > 0) {
+                const despesasTable = document.createElement('table');
+                despesasTable.className = 'detalhe-tabela';
+                despesasTable.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Descrição</th>
+                            <th>Tipo</th>
+                            <th>Data</th>
+                            <th>Valor</th>
+                            <th>Registado por</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detalheDespesasTableBody"></tbody>
+                `;
+                detalheListaDespesasContainerEl.appendChild(despesasTable);
+                
+                const tbody = document.getElementById('detalheDespesasTableBody');
+                projeto.despesas.forEach(d => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${d.descricao || 'Sem descrição'}</td>
+                        <td>${d.tipo_despesa || 'Não categorizada'}</td>
+                        <td>${formatarData(d.data_despesa)}</td>
+                        <td>${formatarMoeda(d.valor)}</td>
+                        <td>${d.user?.full_name || d.user?.username || 'N/A'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                detalheListaDespesasContainerEl.innerHTML = '<p>Nenhuma despesa registada para este projeto.</p>';
+            }
+            
+            // Configurar botão de edição
+            if (projEditarDesdeDetalhesBtnEl) {
+                projEditarDesdeDetalhesBtnEl.dataset.id = projeto.id;
+            }
+            
+            // Abrir modal
+            projetoDetalhesModalEl.classList.remove('hidden');
+        } catch (error) {
+            console.error("Erro ao carregar detalhes do projeto:", error);
+            alert(`Erro ao carregar detalhes: ${error.message}`);
+        } finally {
+            mostrarSpinnerProj(false);
+        }
+    }
 
     // --- Event Listeners ---
-    if (voltarDashboardBtnEl) voltarDashboardBtnEl.addEventListener('click', () => { window.location.href = 'index.html'; });
-    if (projetoAplicarFiltrosBtnEl) projetoAplicarFiltrosBtnEl.addEventListener('click', () => { paginaAtualProjetosLista = 1; carregarProjetos(); });
-    if (projetoViewModeEl) projetoViewModeEl.addEventListener('change', renderizarVistaAtualProjetos);
-    if (projetoNovoBtnEl) projetoNovoBtnEl.addEventListener('click', () => abrirModalFormProjeto());
-    
-    projFecharFormModalBtns.forEach(btn => btn.addEventListener('click', () => projetoFormModalEl.classList.remove('active')));
-    if (projetoFormEl) projetoFormEl.addEventListener('submit', submeterFormProjeto);
-
-    projFecharDetalhesModalBtns.forEach(btn => btn.addEventListener('click', () => projetoDetalhesModalEl.classList.remove('active')));
-    if(projEditarDesdeDetalhesBtnEl) {
-        projEditarDesdeDetalhesBtnEl.addEventListener('click', () => {
-            const projetoId = projetoDetalhesIdEl.value;
-            if(projetoId) {
-                projetoDetalhesModalEl.classList.remove('active'); // Fechar detalhes
-                abrirModalFormProjeto(projetoId); // Abrir form de edição
-            }
+    // Botão voltar ao dashboard
+    if (voltarDashboardBtnEl) {
+        voltarDashboardBtnEl.addEventListener('click', () => {
+            window.location.href = 'index.html';
         });
     }
     
-    projetosTableBodyEl.addEventListener('click', (e) => {
-        const target = e.target.closest('button');
-        if (!target) return;
-        const id = target.dataset.id;
-        if (target.classList.contains('proj-editar-btn')) {
-            abrirModalFormProjeto(id);
-        } else if (target.classList.contains('proj-detalhes-btn')) {
-            abrirModalDetalhesProjeto(id);
-        }
-    });
-    // Adicionar listener para cliques nos cards do Kanban para abrir detalhes
-    kanbanProjetosBoardEl.addEventListener('click', (e) => {
-        const card = e.target.closest('.kanban-card');
-        if (card && card.dataset.projetoId) {
-            abrirModalDetalhesProjeto(card.dataset.projetoId);
-        }
-    });
-
-
-    // --- Inicialização ---
-    async function initProjetosPage() {
-        if (!userProfile) { alert("Perfil do utilizador não carregado."); return; }
-        await carregarDadosIniciaisProjetos();
-        await carregarProjetos();
-        console.log("Subaplicação de Projetos inicializada.");
+    // Filtros e mudança de vista
+    if (projetoAplicarFiltrosBtnEl) {
+        projetoAplicarFiltrosBtnEl.addEventListener('click', () => {
+            paginaAtualProjetosLista = 1;
+            carregarProjetos();
+        });
     }
-
+    
+    if (projetoViewModeEl) {
+        projetoViewModeEl.addEventListener('change', renderizarVistaAtualProjetos);
+    }
+    
+    // Botão novo projeto
+    if (projetoNovoBtnEl) {
+        projetoNovoBtnEl.addEventListener('click', () => abrirFormularioProjeto());
+    }
+    
+    // Formulário de projeto
+    if (projetoFormEl) {
+        projetoFormEl.addEventListener('submit', salvarProjeto);
+    }
+    
+    // Botões fechar modal
+    projFecharFormModalBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            projetoFormModalEl.classList.add('hidden');
+        });
+    });
+    
+    projFecharDetalhesModalBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            projetoDetalhesModalEl.classList.add('hidden');
+        });
+    });
+    
+    // Botões de edição e detalhes (delegação de eventos)
+    document.addEventListener('click', event => {
+        // Botões de detalhes
+        if (event.target.classList.contains('proj-detalhes-btn')) {
+            const projetoId = event.target.dataset.id;
+            if (projetoId) {
+                abrirDetalhesProjeto(projetoId);
+            }
+        }
+        
+        // Botões de edição
+        if (event.target.classList.contains('proj-editar-btn')) {
+            const projetoId = event.target.dataset.id;
+            if (projetoId) {
+                abrirFormularioProjeto(projetoId);
+            }
+        }
+    });
+    
+    // --- Inicialização da Página ---
+    async function initProjetosPage() {
+        try {
+            await carregarDadosIniciaisProjetos();
+            await carregarProjetos();
+            console.log("Subaplicação Projetos inicializada com sucesso.");
+        } catch (error) {
+            console.error("Erro ao inicializar página de projetos:", error);
+            alert(`Erro ao inicializar: ${error.message}`);
+        }
+    }
+    
+    // Iniciar a página
     initProjetosPage();
 });
