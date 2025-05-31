@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset básico */
+* {
+  box-sizing: border-box;
+}
+
+/* Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Variáveis CSS customizadas */
+:root {
+  --multipark-primary: #0ea5e9;
+  --multipark-secondary: #0369a1;
+  --multipark-success: #10b981;
+  --multipark-warning: #f59e0b;
+  --multipark-error: #ef4444;
+}
+
+/* Estilos base */
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  background-color: #f9fafb;
+  color: #111827;
+  line-height: 1.6;
+}
+
+/* Componentes customizados */
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+  
+  .status-online {
+    @apply bg-green-100 text-green-800 px-2 py-1 text-xs font-medium rounded-full;
+  }
+  
+  .status-offline {
+    @apply bg-red-100 text-red-800 px-2 py-1 text-xs font-medium rounded-full;
+  }
+  
+  .status-checking {
+    @apply bg-yellow-100 text-yellow-800 px-2 py-1 text-xs font-medium rounded-full;
+  }
+}
+
+/* Animações customizadas */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Responsive melhorias */
+@media (max-width: 640px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* Override para manter compatibilidade com HTML existente */
+.legacy-dashboard {
+  /* Manter estilos do dashboard HTML existente quando necessário */
+  font-family: inherit;
+}
