@@ -4,9 +4,27 @@ import { headers } from 'next/headers'
 import { syncReservationToSupabase, FirebaseReservation } from '@/lib/firebase-sync'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'demo-key'
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null
+
+function getSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
+
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
+  }
+
+  if (!supabase) {
+    throw new Error('Cliente Supabase não inicializado')
+  }
+
+  return supabase
+}
 
 // Token de segurança para validar webhooks
 const WEBHOOK_SECRET = process.env.FIREBASE_WEBHOOK_SECRET || 'your-webhook-secret-here'
@@ -27,25 +45,27 @@ export async function POST(request: NextRequest) {
     
     const body = await request.json()
     const { eventType, eventId, timestamp, data } = body
-    
+
     // Log do webhook recebido
     console.log('Webhook Firebase recebido:', { eventType, eventId, timestamp })
-    
+
+    const supabaseClient = getSupabaseClient()
+
     // Processar diferentes tipos de eventos Firebase
     switch (eventType) {
       case 'document.create':
       case 'document.update':
         return await handleDocumentChange(eventType, data, eventId)
-      
+
       case 'document.delete':
         return await handleDocumentDelete(data, eventId)
-      
+
       case 'collection.batch_write':
         return await handleBatchWrite(data, eventId)
-      
+
       default:
         // Log evento não processado
-        await supabase.from('sync_logs').insert({
+        await supabaseClient.from('sync_logs').insert({
           sync_type: 'firebase_webhook',
           table_name: 'unknown',
           record_id: eventId,
@@ -74,9 +94,11 @@ export async function POST(request: NextRequest) {
 
 // Lidar com criação/atualização de documentos
 async function handleDocumentChange(eventType: string, data: any, eventId: string) {
+  const supabaseClient = getSupabaseClient()
+
   try {
     const { path, before, after } = data
-    
+
     // Verificar se é um documento de cliente/reserva
     if (!path || !path.includes('/clients/')) {
       return NextResponse.json({
@@ -112,9 +134,9 @@ async function handleDocumentChange(eventType: string, data: any, eventId: strin
     
     // Sincronizar com Supabase
     const result = await syncReservationToSupabase(firebaseReservation)
-    
+
     // Log de sucesso
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: idClient,
@@ -134,9 +156,9 @@ async function handleDocumentChange(eventType: string, data: any, eventId: strin
     })
   } catch (error) {
     console.error(`Erro ao processar ${eventType}:`, error)
-    
+
     // Log do erro
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: eventId,
@@ -152,9 +174,11 @@ async function handleDocumentChange(eventType: string, data: any, eventId: strin
 
 // Lidar com exclusão de documentos
 async function handleDocumentDelete(data: any, eventId: string) {
+  const supabaseClient = getSupabaseClient()
+
   try {
     const { path, before } = data
-    
+
     if (!path || !path.includes('/clients/')) {
       return NextResponse.json({
         success: true,
@@ -168,9 +192,9 @@ async function handleDocumentDelete(data: any, eventId: string) {
     if (!idClient) {
       throw new Error('ID do cliente não encontrado no path')
     }
-    
+
     // Marcar reserva como cancelada no Supabase ao invés de excluir
-    const { data: updatedReservation, error } = await supabase
+    const { data: updatedReservation, error } = await supabaseClient
       .from('reservations')
       .update({
         status: 'cancelado',
@@ -185,10 +209,10 @@ async function handleDocumentDelete(data: any, eventId: string) {
     if (error) {
       throw error
     }
-    
+
     // Criar entrada no histórico
     if (updatedReservation && updatedReservation[0]) {
-      await supabase.from('reservation_history').insert({
+      await supabaseClient.from('reservation_history').insert({
         reservation_firebase_id: idClient,
         action_timestamp: new Date().toISOString(),
         action_user: 'Firebase Webhook',
@@ -196,9 +220,9 @@ async function handleDocumentDelete(data: any, eventId: string) {
         reservation_data: updatedReservation[0]
       })
     }
-    
+
     // Log de sucesso
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: idClient,
@@ -218,9 +242,9 @@ async function handleDocumentDelete(data: any, eventId: string) {
     })
   } catch (error) {
     console.error('Erro ao processar exclusão:', error)
-    
+
     // Log do erro
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: eventId,
@@ -236,9 +260,11 @@ async function handleDocumentDelete(data: any, eventId: string) {
 
 // Lidar com escritas em lote
 async function handleBatchWrite(data: any, eventId: string) {
+  const supabaseClient = getSupabaseClient()
+
   try {
     const { writes } = data
-    
+
     if (!Array.isArray(writes)) {
       throw new Error('Dados de batch write inválidos')
     }
@@ -282,9 +308,9 @@ async function handleBatchWrite(data: any, eventId: string) {
         })
       }
     }
-    
+
     // Log do resultado do batch
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: eventId,
@@ -305,9 +331,9 @@ async function handleBatchWrite(data: any, eventId: string) {
     })
   } catch (error) {
     console.error('Erro ao processar batch write:', error)
-    
+
     // Log do erro
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_webhook',
       table_name: 'reservations',
       record_id: eventId,

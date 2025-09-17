@@ -8,9 +8,27 @@ import {
 } from './firebase-sync'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'demo-key'
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null
+
+function getSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
+
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
+  }
+
+  if (!supabase) {
+    throw new Error('Cliente Supabase não inicializado')
+  }
+
+  return supabase
+}
 
 export class SyncScheduler {
   private intervalId: NodeJS.Timeout | null = null
@@ -64,8 +82,10 @@ export class SyncScheduler {
   async performSync() {
     if (!this.isRunning) return
 
+    const supabaseClient = getSupabaseClient()
+
     console.log('Iniciando ciclo de sincronização...')
-    
+
     try {
       // 1. Sincronizar do Firebase para Supabase
       await this.syncFromFirebaseToSupabase()
@@ -84,9 +104,9 @@ export class SyncScheduler {
       
     } catch (error) {
       console.error('Erro no ciclo de sincronização:', error)
-      
+
       // Log do erro
-      await supabase.from('sync_logs').insert({
+      await supabaseClient.from('sync_logs').insert({
         sync_type: 'scheduler',
         table_name: 'system',
         record_id: 'scheduler',
@@ -100,8 +120,10 @@ export class SyncScheduler {
   // Sincronizar mudanças recentes do Firebase para Supabase
   private async syncFromFirebaseToSupabase() {
     try {
+      const supabaseClient = getSupabaseClient()
+
       console.log('Sincronizando Firebase → Supabase...')
-      
+
       // Obter configuração de cidades e marcas
       const citiesAndBrands = await firebaseClient.getAllCitiesAndBrands()
       
@@ -142,9 +164,9 @@ export class SyncScheduler {
       }
       
       console.log(`Firebase → Supabase: ${totalSynced} sincronizadas, ${totalErrors} erros`)
-      
+
       // Log do resultado
-      await supabase.from('sync_logs').insert({
+      await supabaseClient.from('sync_logs').insert({
         sync_type: 'scheduler_firebase_to_supabase',
         table_name: 'reservations',
         record_id: 'batch',
@@ -165,8 +187,10 @@ export class SyncScheduler {
   // Sincronizar mudanças pendentes do Supabase para Firebase
   private async syncFromSupabaseToFirebase() {
     try {
+      const supabaseClient = getSupabaseClient()
+
       console.log('Sincronizando Supabase → Firebase...')
-      
+
       // Obter reservas que precisam ser sincronizadas
       const pendingReservations = await getReservationsToSync()
       
@@ -195,21 +219,21 @@ export class SyncScheduler {
           
         } catch (error) {
           console.error(`Erro ao sincronizar ${reservation.firebase_id} para Firebase:`, error)
-          
+
           // Marcar como erro
-          await supabase
+          await supabaseClient
             .from('reservations')
             .update({ sync_status: 'error' })
             .eq('firebase_id', reservation.firebase_id)
-          
+
           totalErrors++
         }
       }
       
       console.log(`Supabase → Firebase: ${totalSynced} sincronizadas, ${totalErrors} erros`)
-      
+
       // Log do resultado
-      await supabase.from('sync_logs').insert({
+      await supabaseClient.from('sync_logs').insert({
         sync_type: 'scheduler_supabase_to_firebase',
         table_name: 'reservations',
         record_id: 'batch',
