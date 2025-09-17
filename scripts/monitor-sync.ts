@@ -46,10 +46,27 @@ export async function checkSyncProgress() {
 // Verificar dados no Supabase
 export async function validateSupabaseData() {
   const { createClient } = await import('@supabase/supabase-js')
-  
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const missing = [] as string[]
+
+    if (!supabaseUrl) {
+      missing.push('NEXT_PUBLIC_SUPABASE_URL')
+    }
+
+    if (!supabaseAnonKey) {
+      missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    }
+
+    throw new Error(`Credenciais Supabase em falta: ${missing.join(', ')}`)
+  }
+
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    supabaseUrl,
+    supabaseAnonKey
   )
   
   // Buscar algumas reservas para validar

@@ -40,7 +40,7 @@ npm install @supabase/supabase-js
 
 # Configurar variáveis de ambiente
 export SUPABASE_URL="https://ioftqsvjqwjeprsckeym.supabase.co"
-export SUPABASE_ANON_KEY="sua-chave-aqui"
+export SUPABASE_CLIENT_ANON_KEY="sua-chave-aqui"
 ```
 
 ## 📦 Ficheiros do Sistema
@@ -247,7 +247,7 @@ console.log(metricas);
 
 ```env
 SUPABASE_URL=https://ioftqsvjqwjeprsckeym.supabase.co
-SUPABASE_ANON_KEY=sua-chave-aqui
+SUPABASE_CLIENT_ANON_KEY=sua-chave-aqui
 ELU_API_ENABLED=true
 ELU_API_URL=https://api-elu.exemplo.com
 ELU_API_KEY=chave-api-elu

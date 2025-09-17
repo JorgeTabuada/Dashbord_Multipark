@@ -2,9 +2,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'demo-key'
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null
+
+function getSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
+
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
+  }
+
+  if (!supabase) {
+    throw new Error('Cliente Supabase não inicializado')
+  }
+
+  return supabase
+}
 
 // Interface para dados que vão para o Firebase
 interface FirebaseUpdateData {
@@ -31,15 +49,17 @@ async function handleReservationUpdate(data: any) {
       { status: 400 }
     )
   }
-  
+
+  const supabaseClient = getSupabaseClient()
+
   try {
     // Buscar dados completos da reserva no Supabase
-    const { data: reservation, error: fetchError } = await supabase
+    const { data: reservation, error: fetchError } = await supabaseClient
       .from('reservas')
       .select('*')
       .eq('booking_id', data.firebase_id) // Mudado de firebase_id para booking_id
       .single()
-    
+
     if (fetchError || !reservation) {
       return NextResponse.json(
         { error: 'Reserva não encontrada no Supabase' },
@@ -53,18 +73,18 @@ async function handleReservationUpdate(data: any) {
     // Aqui você faria a chamada HTTP para o sistema Firebase
     // Por agora, vamos simular o sucesso
     const firebaseResult = await sendToFirebase(firebaseData)
-    
+
     // Atualizar status de sync no Supabase
-    await supabase
+    await supabaseClient
       .from('reservas')
       .update({
         sync_status: 'synced',
         updated_at_db: new Date().toISOString()
       })
       .eq('booking_id', data.firebase_id) // Mudado de firebase_id para booking_id
-    
+
     // Log da operação
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'supabase_to_firebase',
       table_name: 'reservations',
       record_id: data.firebase_id,
@@ -72,7 +92,7 @@ async function handleReservationUpdate(data: any) {
       success: true,
       sync_data: { supabase_data: reservation, firebase_data: firebaseData }
     })
-    
+
     return NextResponse.json({
       success: true,
       message: 'Reserva sincronizada com Firebase com sucesso',
@@ -80,7 +100,7 @@ async function handleReservationUpdate(data: any) {
     })
   } catch (error) {
     // Log do erro
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'supabase_to_firebase',
       table_name: 'reservations',
       record_id: data.firebase_id,
@@ -136,17 +156,19 @@ async function handleBatchUpdates(data: any[]) {
 // Função para lidar com mudanças de status
 async function handleStatusChange(data: any) {
   const { firebase_id, new_status, user_id, notes } = data
-  
+
   if (!firebase_id || !new_status) {
     return NextResponse.json(
       { error: 'firebase_id e new_status são obrigatórios' },
       { status: 400 }
     )
   }
-  
+
+  const supabaseClient = getSupabaseClient()
+
   try {
     // Atualizar status no Supabase
-    const { data: updatedReservation, error: updateError } = await supabase
+    const { data: updatedReservation, error: updateError } = await supabaseClient
       .from('reservations')
       .update({
         status: new_status,
@@ -162,9 +184,9 @@ async function handleStatusChange(data: any) {
     if (updateError) {
       throw updateError
     }
-    
+
     // Criar entrada no histórico
-    await supabase.from('reservation_history').insert({
+    await supabaseClient.from('reservation_history').insert({
       reservation_firebase_id: firebase_id,
       action_timestamp: new Date().toISOString(),
       action_user: user_id,
@@ -175,13 +197,13 @@ async function handleStatusChange(data: any) {
     // Sincronizar com Firebase imediatamente
     const firebaseData = transformSupabaseToFirebaseFormat(updatedReservation)
     await sendToFirebase(firebaseData)
-    
+
     // Marcar como sincronizado
-    await supabase
+    await supabaseClient
       .from('reservations')
       .update({ sync_status: 'synced' })
       .eq('firebase_id', firebase_id)
-    
+
     return NextResponse.json({
       success: true,
       message: 'Status atualizado e sincronizado com sucesso',
@@ -189,13 +211,13 @@ async function handleStatusChange(data: any) {
     })
   } catch (error) {
     console.error('Erro ao atualizar status:', error)
-    
+
     // Marcar como erro de sincronização
-    await supabase
+    await supabaseClient
       .from('reservations')
       .update({ sync_status: 'error' })
       .eq('firebase_id', firebase_id)
-    
+
     throw error
   }
 }
@@ -296,27 +318,40 @@ async function sendToFirebase(data: FirebaseUpdateData): Promise<any> {
 
 // GET - Obter estatísticas das reservas no Supabase
 export async function GET(request: NextRequest) {
-  // Verificar se estamos em modo demo
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY === 'demo-key') {
+  // Verificar se as credenciais Supabase estão configuradas
+  if (!supabase) {
+    const missingCredentials = []
+
+    if (!supabaseUrl) {
+      missingCredentials.push('NEXT_PUBLIC_SUPABASE_URL')
+    }
+
+    if (!supabaseServiceKey) {
+      missingCredentials.push('SUPABASE_SERVICE_ROLE_KEY')
+    }
+
     return NextResponse.json({
       success: true,
       data: [],
       count: 0,
-      message: 'Modo demo - Configure as credenciais Supabase em .env.local'
+      message: 'Credenciais Supabase em falta. No painel do Supabase vá a Project Settings → API e copie a URL do projeto e a Service Role key para o ficheiro .env.local (NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY).',
+      missingCredentials
     })
   }
+
+  const supabaseClient = getSupabaseClient()
 
   try {
     const { searchParams } = new URL(request.url)
     const limit = Math.min(parseInt(searchParams.get('limit') || '1000'), 50000)
-    
+
     // Buscar total count primeiro
-    const { count: totalCount } = await supabase
+    const { count: totalCount } = await supabaseClient
       .from('reservas')
       .select('*', { count: 'exact', head: true })
 
     // Só mostrar reservas mais recentes (só leitura)
-    const { data: recentReservations, error } = await supabase
+    const { data: recentReservations, error } = await supabaseClient
       .from('reservas')
       .select('*')
       .order('updated_at_db', { ascending: false })

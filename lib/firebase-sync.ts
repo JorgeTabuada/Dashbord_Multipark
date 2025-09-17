@@ -1,11 +1,29 @@
 // Funções de sincronização com Firebase
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'demo-key'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 
 // Cliente Supabase com privilégios de service role
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null
+
+function getSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
+
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
+  }
+
+  if (!supabase) {
+    throw new Error('Cliente Supabase não inicializado')
+  }
+
+  return supabase
+}
 
 export interface FirebaseReservation {
   idClient: string
@@ -227,11 +245,13 @@ export function transformFirebaseToSupabase(firebaseData: FirebaseReservation): 
 
 // Função para sincronizar uma reserva do Firebase para Supabase
 export async function syncReservationToSupabase(firebaseData: FirebaseReservation) {
+  const supabaseClient = getSupabaseClient()
+
   try {
     const supabaseData = transformFirebaseToSupabase(firebaseData)
-    
+
     // Verificar se a reserva já existe
-    const { data: existing, error: checkError } = await supabase
+    const { data: existing, error: checkError } = await supabaseClient
       .from('reservations')
       .select('id, firebase_last_sync')
       .eq('firebase_id', firebaseData.idClient)
@@ -244,14 +264,14 @@ export async function syncReservationToSupabase(firebaseData: FirebaseReservatio
     let result
     if (existing) {
       // Atualizar reserva existente
-      result = await supabase
+      result = await supabaseClient
         .from('reservations')
         .update(supabaseData)
         .eq('firebase_id', firebaseData.idClient)
         .select()
     } else {
       // Criar nova reserva
-      result = await supabase
+      result = await supabaseClient
         .from('reservations')
         .insert(supabaseData)
         .select()
@@ -262,7 +282,7 @@ export async function syncReservationToSupabase(firebaseData: FirebaseReservatio
     }
     
     // Log da sincronização
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_to_supabase',
       table_name: 'reservations',
       record_id: firebaseData.idClient,
@@ -270,13 +290,13 @@ export async function syncReservationToSupabase(firebaseData: FirebaseReservatio
       success: true,
       sync_data: { firebase_data: firebaseData, supabase_data: supabaseData }
     })
-    
+
     return result.data?.[0]
   } catch (error) {
     console.error('Erro ao sincronizar reserva para Supabase:', error)
-    
+
     // Log do erro
-    await supabase.from('sync_logs').insert({
+    await supabaseClient.from('sync_logs').insert({
       sync_type: 'firebase_to_supabase',
       table_name: 'reservations',
       record_id: firebaseData.idClient,
@@ -399,7 +419,9 @@ function mapSupabaseStatusToFirebase(supabaseStatus: string): string {
 
 // Função para obter reservas que precisam ser sincronizadas
 export async function getReservationsToSync() {
-  const { data, error } = await supabase
+  const supabaseClient = getSupabaseClient()
+
+  const { data, error } = await supabaseClient
     .from('reservations')
     .select('*')
     .in('sync_status', ['pending', 'error'])
@@ -414,7 +436,9 @@ export async function getReservationsToSync() {
 
 // Função para marcar reserva como sincronizada
 export async function markReservationAsSynced(firebaseId: string) {
-  const { error } = await supabase
+  const supabaseClient = getSupabaseClient()
+
+  const { error } = await supabaseClient
     .from('reservations')
     .update({
       sync_status: 'synced',
@@ -429,26 +453,28 @@ export async function markReservationAsSynced(firebaseId: string) {
 
 // Função para obter estatísticas de sincronização
 export async function getSyncStats() {
-  const { data: totalReservations } = await supabase
+  const supabaseClient = getSupabaseClient()
+
+  const { data: totalReservations } = await supabaseClient
     .from('reservations')
     .select('count(*)', { count: 'exact' })
-  
-  const { data: syncedReservations } = await supabase
+
+  const { data: syncedReservations } = await supabaseClient
     .from('reservations')
     .select('count(*)', { count: 'exact' })
     .eq('sync_status', 'synced')
-  
-  const { data: pendingReservations } = await supabase
+
+  const { data: pendingReservations } = await supabaseClient
     .from('reservations')
     .select('count(*)', { count: 'exact' })
     .eq('sync_status', 'pending')
-  
-  const { data: errorReservations } = await supabase
+
+  const { data: errorReservations } = await supabaseClient
     .from('reservations')
     .select('count(*)', { count: 'exact' })
     .eq('sync_status', 'error')
-  
-  const { data: recentSyncLogs } = await supabase
+
+  const { data: recentSyncLogs } = await supabaseClient
     .from('sync_logs')
     .select('*')
     .order('created_at', { ascending: false })

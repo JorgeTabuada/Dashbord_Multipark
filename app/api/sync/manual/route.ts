@@ -4,13 +4,50 @@ import { firebaseClient } from '@/lib/firebase-client'
 import { syncReservationToSupabase } from '@/lib/firebase-sync'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'demo-key'
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null
+
+function getSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
+
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
+  }
+
+  if (!supabase) {
+    throw new Error('Cliente Supabase não inicializado')
+  }
+
+  return supabase
+}
 
 // POST - Sincronização manual
 export async function POST(request: NextRequest) {
   try {
+    if (!supabase) {
+      const missingCredentials = []
+
+      if (!supabaseUrl) {
+        missingCredentials.push('NEXT_PUBLIC_SUPABASE_URL')
+      }
+
+      if (!supabaseServiceKey) {
+        missingCredentials.push('SUPABASE_SERVICE_ROLE_KEY')
+      }
+
+      return NextResponse.json({
+        success: false,
+        error: 'Credenciais Supabase não configuradas',
+        message: 'Configure NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env.local com os valores disponíveis em Project Settings → API do painel do Supabase.',
+        missingCredentials
+      }, { status: 500 })
+    }
+
     const body = await request.json()
     const { action, city, brand, limit = 10 } = body
     
@@ -205,11 +242,21 @@ export async function POST(request: NextRequest) {
 // GET - Status da conexão
 export async function GET() {
   try {
+    if (!supabase) {
+      return NextResponse.json({
+        success: false,
+        error: 'Credenciais Supabase não configuradas',
+        message: 'Configure SUPABASE_SERVICE_ROLE_KEY em .env.local com a Service Role key disponível em Project Settings → API no painel do Supabase.'
+      }, { status: 500 })
+    }
+
     // Testar conexões
     const firebaseConnected = await firebaseClient.testConnection()
-    
+
     // Contar dados no Supabase
-    const { count } = await supabase
+    const supabaseClient = getSupabaseClient()
+
+    const { count } = await supabaseClient
       .from('reservations')
       .select('*', { count: 'exact', head: true })
     

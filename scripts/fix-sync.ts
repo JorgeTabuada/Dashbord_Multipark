@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://ioftqsvjqwjeprsckeym.supabase.co'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || ''
 
 async function fixSyncTables() {
   if (!supabaseServiceKey) {
