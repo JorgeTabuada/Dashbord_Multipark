@@ -361,3 +361,6 @@ export async function GET() {
     }
   })
 }
+
+// Exportar a classe para uso em outros módulos
+export { MassSyncService }
