@@ -391,9 +391,7 @@ export default function AcessosAlteracoesPage() {
                 Voltar
               </Button>
               <h1 className="text-xl font-semibold text-gray-900">Acessos e Alterações</h1>
-              <span className="text-sm text-gray-500">
-                Parque: {user?.selectedPark?.toUpperCase()}
-              </span>
+
             </div>
           </div>
         </div>
