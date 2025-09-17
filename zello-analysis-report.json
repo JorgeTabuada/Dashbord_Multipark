@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-09-16T22:55:39.724Z",
+  "network": "airpark",
+  "analysis_results": {
+    "today_messages": 100,
+    "yesterday_messages": 50,
+    "available_endpoints": [
+      "/user/list",
+      "/channel/list",
+      "/history/location",
+      "/history/events",
+      "/settings",
+      "/network/info"
+    ]
+  }
+}

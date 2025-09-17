@@ -1,0 +1,39 @@
+{
+  "name": "dashboard-multipark",
+  "version": "1.0.0",
+  "description": "Sistema de integração Dashboard Multipark com Supabase e tracking GPS",
+  "main": "dashboard-multipark-main.js",
+  "scripts": {
+    "start": "node dashboard-multipark-main.js",
+    "dev": "nodemon dashboard-multipark-main.js",
+    "test": "node --test",
+    "sync-elu": "node scripts/sync-elu.js",
+    "monitor": "node scripts/monitor-realtime.js"
+  },
+  "keywords": [
+    "multipark",
+    "dashboard",
+    "supabase",
+    "gps",
+    "tracking",
+    "parking"
+  ],
+  "author": "Jorge Tabuada <jorgetabuada@airpark.pt>",
+  "license": "Private",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.1",
+    "force": "^0.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seu-usuario/v0-new-project-4b-main.git"
+  }
+}

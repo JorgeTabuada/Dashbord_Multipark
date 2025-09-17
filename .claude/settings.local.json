@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/init)",
+      "Bash(npm run dev:*)",
+      "Read(//c/Users/jorge/OneDrive/Documentos/Nova Admin/Ferramenta/Dashbord_Multipark-main/**)",
+      "Bash(mkdir:*)",
+      "Bash(npm run build:*)",
+      "Read(//c/Users/jorge/OneDrive/Documentos/Nova Admin/Ferramenta/Nova versao/Para tratar/**)",
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//c/Users/jorge/Downloads/v0-new-project-4b/v0-new-project-4b/**)",
+      "Bash(node:*)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-09-16T23:01:49.415Z",
+  "statistics": {
+    "totalMessages": 50,
+    "withTranscription": 49,
+    "withAllocation": 28,
+    "detectionRate": "57.1%"
+  },
+  "topAllocations": [
+    {
+      "number": "22431",
+      "count": 28,
+      "conductors": [
+        "Extra 424"
+      ]
+    }
+  ],
+  "conductorSummary": [
+    {
+      "conductor": "Extra 424",
+      "totalAllocations": 1,
+      "allocations": [
+        "22431"
+      ]
+    }
+  ]
+}

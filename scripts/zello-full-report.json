@@ -1,0 +1,2489 @@
+{
+  "metadata": {
+    "generated_at": "2025-09-16T23:00:43.560Z",
+    "network": "airpark",
+    "period": {
+      "from": "2025-09-16T23:00:11.000Z",
+      "to": "2025-09-16T23:00:26.000Z"
+    }
+  },
+  "statistics": {
+    "total_messages": 50,
+    "messages_with_transcription": 49,
+    "total_users": 17,
+    "total_duration_minutes": 3352,
+    "avg_confidence": 73.1851020408163
+  },
+  "messages": [
+    {
+      "id": "2284994",
+      "timestamp": "2025-09-16T23:00:11.000Z",
+      "sender": "Extra 521",
+      "sender_full_name": "Extra 521 * Mateus",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4560,
+      "transcription": "Vincigo, centi, sessenta, três, três, dois, coberto para o central.",
+      "transcription_confidence": "54.55",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "Extra 430"
+      ],
+      "media_key": "2509e108628ff8579ed3846d63a0cbc2bf0e288162cbcde11ecb4fa5a06162aa"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": null,
+      "transcription_confidence": "0.00",
+      "transcription_accurate": false,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284995",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "sender": "Extra 423",
+      "sender_full_name": "Extra 423 * Jailson",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 4080,
+      "transcription": "Colocação 151, sempre entrega.",
+      "transcription_confidence": "74.46",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 424",
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509269e3869f0398e2fcc1f9ae9b91f31220b463bce921c48dac69adadcb902"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    },
+    {
+      "id": "2284996",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "sender": "Extra 424",
+      "sender_full_name": "Extra 424 * Rufina",
+      "recipient": "Multipark Comunicação",
+      "channel": "Multipark Comunicação",
+      "duration_seconds": 3960,
+      "transcription": "A locação 22431 a entrar no terminal.",
+      "transcription_confidence": "72.94",
+      "transcription_accurate": true,
+      "channel_users": [
+        "Extra 425",
+        "Extra 511",
+        "Diogo Viegas",
+        "Cristian Ramires",
+        "Extra 418",
+        "Extra 423",
+        "Extra 513",
+        "Extra 507",
+        "extra 521",
+        "Extra 430"
+      ],
+      "media_key": "2509eaa4e8799d866f16a87c54329f31b89d81c95e685d0d0326ace592ad37ff"
+    }
+  ],
+  "users": [
+    {
+      "username": "Cristian Ramires",
+      "full_name": "515 Cristian Ramires",
+      "first_seen": "2025-09-16T22:58:20.000Z",
+      "last_seen": "2025-09-16T14:09:45.000Z",
+      "message_count": 229,
+      "total_duration": 787560,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Extra 424",
+        "Cesar",
+        "Diogo Viegas"
+      ],
+      "avg_message_duration": 3439
+    },
+    {
+      "username": "Extra 507",
+      "full_name": "Extra 507 * Vander",
+      "first_seen": "2025-09-16T22:48:40.000Z",
+      "last_seen": "2025-09-16T13:42:46.000Z",
+      "message_count": 137,
+      "total_duration": 266100,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Cristian Ramires"
+      ],
+      "avg_message_duration": 1942
+    },
+    {
+      "username": "Diogo Viegas",
+      "full_name": "442 Diogo Viegas",
+      "first_seen": "2025-09-16T22:57:37.000Z",
+      "last_seen": "2025-09-16T14:17:25.000Z",
+      "message_count": 113,
+      "total_duration": 438360,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Cristian Ramires",
+        "Extra 424"
+      ],
+      "avg_message_duration": 3879
+    },
+    {
+      "username": "Extra 424",
+      "full_name": "Extra 424 * Rufina",
+      "first_seen": "2025-09-16T23:00:26.000Z",
+      "last_seen": "2025-09-16T13:42:24.000Z",
+      "message_count": 80,
+      "total_duration": 318540,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Extra 513",
+        "Cristian Ramires",
+        "Diogo Viegas"
+      ],
+      "avg_message_duration": 3982
+    },
+    {
+      "username": "Luis Tercitano",
+      "full_name": "Luis Tercitano",
+      "first_seen": "2025-09-16T17:03:00.000Z",
+      "last_seen": "2025-09-16T13:32:22.000Z",
+      "message_count": 76,
+      "total_duration": 189600,
+      "channels_used": [
+        "Diogo Viegas",
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 2495
+    },
+    {
+      "username": "Extra 512",
+      "full_name": "Extra 512 * Mariana",
+      "first_seen": "2025-09-16T20:37:03.000Z",
+      "last_seen": "2025-09-16T14:19:54.000Z",
+      "message_count": 56,
+      "total_duration": 230220,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 4111
+    },
+    {
+      "username": "Extra 430",
+      "full_name": "Extra 430 * Aisha",
+      "first_seen": "2025-09-16T22:57:01.000Z",
+      "last_seen": "2025-09-16T13:39:50.000Z",
+      "message_count": 53,
+      "total_duration": 158460,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Cristian Ramires"
+      ],
+      "avg_message_duration": 2990
+    },
+    {
+      "username": "Extra 521",
+      "full_name": "Extra 521 * Mateus",
+      "first_seen": "2025-09-16T23:00:11.000Z",
+      "last_seen": "2025-09-16T16:10:01.000Z",
+      "message_count": 51,
+      "total_duration": 153240,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Cristian Ramires"
+      ],
+      "avg_message_duration": 3005
+    },
+    {
+      "username": "Extra 511",
+      "full_name": "Extra 511 *",
+      "first_seen": "2025-09-16T22:40:25.000Z",
+      "last_seen": "2025-09-16T14:07:20.000Z",
+      "message_count": 49,
+      "total_duration": 167940,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Cristian Ramires"
+      ],
+      "avg_message_duration": 3427
+    },
+    {
+      "username": "Extra 435",
+      "full_name": "Extra 435 * Rosário",
+      "first_seen": "2025-09-16T19:41:17.000Z",
+      "last_seen": "2025-09-16T14:23:44.000Z",
+      "message_count": 41,
+      "total_duration": 115620,
+      "channels_used": [
+        "Multipark Comunicação",
+        "Diogo Viegas"
+      ],
+      "avg_message_duration": 2820
+    },
+    {
+      "username": "Extra 423",
+      "full_name": "Extra 423 * Jailson",
+      "first_seen": "2025-09-16T23:00:19.000Z",
+      "last_seen": "2025-09-16T13:32:07.000Z",
+      "message_count": 34,
+      "total_duration": 88740,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 2610
+    },
+    {
+      "username": "Extra 513",
+      "full_name": "Extra 513 * Rian",
+      "first_seen": "2025-09-16T19:02:23.000Z",
+      "last_seen": "2025-09-16T15:09:31.000Z",
+      "message_count": 33,
+      "total_duration": 93120,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 2822
+    },
+    {
+      "username": "Extra 418",
+      "full_name": "Extra 418 *",
+      "first_seen": "2025-09-16T22:49:09.000Z",
+      "last_seen": "2025-09-16T20:28:00.000Z",
+      "message_count": 20,
+      "total_duration": 61320,
+      "channels_used": [
+        "Extra 424",
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 3066
+    },
+    {
+      "username": "Extra 425",
+      "full_name": "Extra 425 * Nicolai",
+      "first_seen": "2025-09-16T22:42:00.000Z",
+      "last_seen": "2025-09-16T13:41:26.000Z",
+      "message_count": 18,
+      "total_duration": 77400,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 4300
+    },
+    {
+      "username": "Maxwell Jose",
+      "full_name": "519 Maxwell Jose",
+      "first_seen": "2025-09-16T14:45:28.000Z",
+      "last_seen": "2025-09-16T13:41:01.000Z",
+      "message_count": 5,
+      "total_duration": 8640,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 1728
+    },
+    {
+      "username": "Cesar",
+      "full_name": "420 Cesar Costa",
+      "first_seen": "2025-09-16T20:13:05.000Z",
+      "last_seen": "2025-09-16T20:12:47.000Z",
+      "message_count": 3,
+      "total_duration": 8340,
+      "channels_used": [
+        "Cristian Ramires"
+      ],
+      "avg_message_duration": 2780
+    },
+    {
+      "username": "Extra 427",
+      "full_name": "Extra 427 * Ricardo",
+      "first_seen": "2025-09-16T13:39:59.000Z",
+      "last_seen": "2025-09-16T13:36:34.000Z",
+      "message_count": 2,
+      "total_duration": 7440,
+      "channels_used": [
+        "Multipark Comunicação"
+      ],
+      "avg_message_duration": 3720
+    }
+  ],
+  "patterns": {
+    "hourly_distribution": {
+      "0": 50
+    },
+    "daily_distribution": {
+      "quarta-feira": 50
+    },
+    "user_interactions": {
+      "Extra 521 -> Multipark Comunicação": 1,
+      "Extra 423 -> Multipark Comunicação": 21,
+      "Extra 424 -> Multipark Comunicação": 28
+    },
+    "channel_activity": {
+      "Multipark Comunicação": 50
+    },
+    "transcription_keywords": {
+      "22431": 28,
+      "vincigo,": 1,
+      "centi,": 1,
+      "sessenta,": 1,
+      "três,": 2,
+      "dois,": 1,
+      "coberto": 1,
+      "para": 1,
+      "central.": 1,
+      "colocação": 20,
+      "151,": 20,
+      "sempre": 20,
+      "entrega.": 20,
+      "locação": 28,
+      "entrar": 28,
+      "terminal.": 28
+    },
+    "emergency_patterns": [],
+    "top_keywords": [
+      {
+        "word": "22431",
+        "count": 28
+      },
+      {
+        "word": "locação",
+        "count": 28
+      },
+      {
+        "word": "entrar",
+        "count": 28
+      },
+      {
+        "word": "terminal.",
+        "count": 28
+      },
+      {
+        "word": "colocação",
+        "count": 20
+      },
+      {
+        "word": "151,",
+        "count": 20
+      },
+      {
+        "word": "sempre",
+        "count": 20
+      },
+      {
+        "word": "entrega.",
+        "count": 20
+      },
+      {
+        "word": "três,",
+        "count": 2
+      },
+      {
+        "word": "vincigo,",
+        "count": 1
+      },
+      {
+        "word": "centi,",
+        "count": 1
+      },
+      {
+        "word": "sessenta,",
+        "count": 1
+      },
+      {
+        "word": "dois,",
+        "count": 1
+      },
+      {
+        "word": "coberto",
+        "count": 1
+      },
+      {
+        "word": "para",
+        "count": 1
+      },
+      {
+        "word": "central.",
+        "count": 1
+      }
+    ]
+  },
+  "incidents": [
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284994",
+      "sender": "Extra 521",
+      "timestamp": "2025-09-16T23:00:11.000Z",
+      "duration": 4560,
+      "details": "Comunicação excepcionalmente longa: 76 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284994",
+      "sender": "Extra 521",
+      "timestamp": "2025-09-16T23:00:11.000Z",
+      "details": "Comunicação fora de horário às 00:00:11"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "missing_transcription",
+      "severity": "info",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Mensagem de voz sem transcrição disponível"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "duration": 4080,
+      "details": "Comunicação excepcionalmente longa: 68 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284995",
+      "sender": "Extra 423",
+      "timestamp": "2025-09-16T23:00:19.000Z",
+      "details": "Comunicação fora de horário às 00:00:19"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    },
+    {
+      "type": "long_communication",
+      "severity": "medium",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "duration": 3960,
+      "details": "Comunicação excepcionalmente longa: 66 minutos"
+    },
+    {
+      "type": "after_hours_communication",
+      "severity": "low",
+      "message_id": "2284996",
+      "sender": "Extra 424",
+      "timestamp": "2025-09-16T23:00:26.000Z",
+      "details": "Comunicação fora de horário às 00:00:26"
+    }
+  ],
+  "top_insights": {
+    "most_active_users": [
+      {
+        "name": "515 Cristian Ramires",
+        "messages": 229
+      },
+      {
+        "name": "Extra 507 * Vander",
+        "messages": 137
+      },
+      {
+        "name": "442 Diogo Viegas",
+        "messages": 113
+      },
+      {
+        "name": "Extra 424 * Rufina",
+        "messages": 80
+      },
+      {
+        "name": "Luis Tercitano",
+        "messages": 76
+      }
+    ],
+    "peak_hours": [
+      {
+        "hour": "0:00",
+        "messages": 50
+      }
+    ],
+    "emergency_messages": 0,
+    "transcription_quality": {
+      "high_confidence": 0,
+      "medium_confidence": 49,
+      "low_confidence": 0,
+      "no_transcription": 1
+    }
+  }
+}
