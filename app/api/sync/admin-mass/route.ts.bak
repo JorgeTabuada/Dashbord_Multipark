@@ -4,17 +4,9 @@ import { getFirestore } from 'firebase-admin/firestore'
 import { createClient } from '@supabase/supabase-js'
 
 // Configuração Supabase
-// Inicialização condicional do Supabase para evitar erros durante o build
-function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Configuração Supabase incompleta")
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 // Inicializar Firebase Admin
 let adminApp: any = null
