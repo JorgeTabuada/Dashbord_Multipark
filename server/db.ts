@@ -2434,6 +2434,114 @@ export async function deleteAnnualReport(id: number) {
   await db.delete(annualReports).where(eq(annualReports.id, id));
 }
 
+export async function getAnnualBreakdown(year: number, projectId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const VAT_RATE = 0.23;
+
+  // Resolve project hierarchy
+  let projectIds: number[] | undefined;
+  if (projectId) projectIds = await resolveProjectIds(projectId);
+
+  // 1. Revenue: bookings with checkout in the year
+  const revConds: any[] = [
+    gte(multiparkBookings.checkOut, new Date(`${year}-01-01`)),
+    lte(multiparkBookings.checkOut, new Date(`${year}-12-31T23:59:59`)),
+    isNotNull(multiparkBookings.checkOut),
+  ];
+  if (projectIds) revConds.push(inArray(multiparkBookings.projectId, projectIds));
+
+  const revenueRows = await db
+    .select({
+      month: sql<number>`MONTH(${multiparkBookings.checkOut})`,
+      total: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...revConds))
+    .groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
+
+  // 2. Expenses (paid) in the year
+  const expConds: any[] = [
+    eq(expenses.status, "paid"),
+    isNotNull(expenses.paidAt),
+    gte(expenses.paidAt, new Date(`${year}-01-01`)),
+    lte(expenses.paidAt, new Date(`${year}-12-31T23:59:59`)),
+  ];
+  if (projectIds) expConds.push(inArray(expenses.projectId, projectIds));
+
+  const expenseRows = await db
+    .select({
+      month: sql<number>`MONTH(${expenses.paidAt})`,
+      total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)`,
+    })
+    .from(expenses)
+    .where(and(...expConds))
+    .groupBy(sql`MONTH(${expenses.paidAt})`);
+
+  // 3. Payroll per month (salaries + taxes)
+  // TSU employer rate in Portugal: 23.75%
+  const TSU_EMPLOYER = 0.2375;
+  const payrollByMonth: Record<number, { salaries: number; employerTax: number }> = {};
+  for (let m = 1; m <= 12; m++) {
+    try {
+      const payroll = await getPayrollData(year, m);
+      // Filter by project if needed
+      const filtered = projectIds
+        ? payroll.filter(p => p.projectId && projectIds!.includes(p.projectId))
+        : payroll;
+      const totalSalaries = filtered.reduce((s, p) => s + p.totalPayment, 0);
+      const totalEmployerTax = filtered.reduce((s, p) => {
+        // TSU only on base salary + overtime, not meal allowance
+        const taxableBase = p.isExtra ? p.extraPayment : (p.baseSalary + p.overtimePayment + p.nightPayment + p.weekendPayment);
+        return s + taxableBase * TSU_EMPLOYER;
+      }, 0);
+      payrollByMonth[m] = { salaries: Math.round(totalSalaries * 100) / 100, employerTax: Math.round(totalEmployerTax * 100) / 100 };
+    } catch {
+      payrollByMonth[m] = { salaries: 0, employerTax: 0 };
+    }
+  }
+
+  // Build monthly breakdown
+  const revMap = new Map(revenueRows.map(r => [Number(r.month), Number(r.total)]));
+  const expMap = new Map(expenseRows.map(e => [Number(e.month), Number(e.total)]));
+
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const revenueWithVat = revMap.get(m) ?? 0;
+    const expensesWithVat = expMap.get(m) ?? 0;
+    const salaries = payrollByMonth[m]?.salaries ?? 0;
+    const employerTax = payrollByMonth[m]?.employerTax ?? 0;
+
+    const vatRevenue = Math.round(revenueWithVat * VAT_RATE / (1 + VAT_RATE) * 100) / 100;
+    const vatExpenses = Math.round(expensesWithVat * VAT_RATE / (1 + VAT_RATE) * 100) / 100;
+    const vatToPay = Math.round((vatRevenue - vatExpenses) * 100) / 100;
+
+    const revenueNoVat = Math.round((revenueWithVat - vatRevenue) * 100) / 100;
+    const expensesNoVat = Math.round((expensesWithVat - vatExpenses) * 100) / 100;
+
+    const totalCosts = expensesNoVat + salaries + employerTax;
+    const profit = Math.round((revenueNoVat - totalCosts) * 100) / 100;
+
+    months.push({
+      month: m,
+      revenueWithVat,
+      revenueNoVat,
+      vatRevenue,
+      expensesWithVat,
+      expensesNoVat,
+      vatExpenses,
+      vatToPay,
+      salaries,
+      employerTax,
+      totalCosts,
+      profit,
+    });
+  }
+
+  return months;
+}
+
 export async function generateAnnualSummary(year: number, projectId?: number, splitPartner: number = 60) {
   const db = await getDb(); if (!db) return [];
   // Get all invoices for the year (Faturação)

@@ -221,6 +221,7 @@ import {
   updateAnnualReport,
   deleteAnnualReport,
   generateAnnualSummary,
+  getAnnualBreakdown,
   // MultiPark
   getMultiparkBookings,
   getMultiparkBookingByExternalId,
@@ -3421,6 +3422,11 @@ export const appRouter = router({
       year: z.number().optional(),
       projectId: z.number().optional(),
     }).optional()).query(({ input }) => getAnnualReports(input)),
+
+    breakdown: protectedProcedure.input(z.object({
+      year: z.number(),
+      projectId: z.number().optional(),
+    })).query(({ input }) => getAnnualBreakdown(input.year, input.projectId)),
 
     generate: protectedProcedure.input(z.object({
       year: z.number(),
