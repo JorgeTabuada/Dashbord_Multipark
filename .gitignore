@@ -115,5 +115,4 @@ temp/
 
 .vercel
 
-# Vercel bundled API
-api/*.js
+# Vercel bundled API — keep api/index.js tracked for serverless detection
