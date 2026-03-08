@@ -1,0 +1,20 @@
+CREATE TABLE `google_reviews` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`reviewerName` varchar(200) NOT NULL,
+	`reviewerEmail` varchar(320),
+	`rating` int NOT NULL,
+	`reviewText` text,
+	`reviewDate` timestamp,
+	`projectId` int,
+	`vehiclePlate` varchar(20),
+	`aiResponse` text,
+	`aiResponseApproved` boolean DEFAULT false,
+	`respondedAt` timestamp,
+	`respondedBy` int,
+	`complaintId` int,
+	`status` enum('pending_response','ai_responded','manually_responded','converted_complaint','dismissed') NOT NULL DEFAULT 'pending_response',
+	`createdById` int,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `google_reviews_id` PRIMARY KEY(`id`)
+);

@@ -1,0 +1,20 @@
+CREATE TABLE `booking_history` (
+  `id` int AUTO_INCREMENT PRIMARY KEY,
+  `historyId` varchar(128) NOT NULL,
+  `bookingId` varchar(128) NOT NULL,
+  `changeType` varchar(128) NOT NULL,
+  `userName` varchar(128),
+  `userLastName` varchar(128),
+  `userEmail` varchar(320),
+  `remarks` text,
+  `actionDate` timestamp,
+  `parkName` varchar(128),
+  `licensePlate` varchar(32),
+  `bookingStatus` varchar(64),
+  `importedAt` timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  INDEX `bh_booking_idx` (`bookingId`),
+  INDEX `bh_plate_idx` (`licensePlate`),
+  INDEX `bh_user_idx` (`userName`),
+  INDEX `bh_type_idx` (`changeType`),
+  UNIQUE INDEX `bh_historyId_unique` (`historyId`)
+);

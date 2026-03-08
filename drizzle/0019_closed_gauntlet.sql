@@ -1,0 +1,1 @@
+ALTER TABLE `employees` ADD `mealAllowancePerDay` decimal(6,2);

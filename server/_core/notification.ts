@@ -1,0 +1,135 @@
+import { TRPCError } from "@trpc/server";
+import { createTransport, type Transporter } from "nodemailer";
+
+export type NotificationPayload = {
+  title: string;
+  content: string;
+};
+
+const TITLE_MAX_LENGTH = 1200;
+const CONTENT_MAX_LENGTH = 20000;
+
+const trimValue = (value: string): string => value.trim();
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+let _transporter: Transporter | null = null;
+
+function getTransporter(): Transporter | null {
+  if (_transporter) return _transporter;
+
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    console.warn("[Notification] SMTP not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)");
+    return null;
+  }
+
+  _transporter = createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  return _transporter;
+}
+
+const validatePayload = (input: NotificationPayload): NotificationPayload => {
+  if (!isNonEmptyString(input.title)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification title is required.",
+    });
+  }
+  if (!isNonEmptyString(input.content)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification content is required.",
+    });
+  }
+
+  const title = trimValue(input.title);
+  const content = trimValue(input.content);
+
+  if (title.length > TITLE_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`,
+    });
+  }
+
+  if (content.length > CONTENT_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`,
+    });
+  }
+
+  return { title, content };
+};
+
+/**
+ * Send a notification email to the project owner.
+ */
+export async function notifyOwner(
+  payload: NotificationPayload
+): Promise<boolean> {
+  const { title, content } = validatePayload(payload);
+
+  const transporter = getTransporter();
+  const ownerEmail = process.env.OWNER_EMAIL;
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+
+  if (!transporter || !ownerEmail) {
+    console.log(`[Notification] ${title}: ${content}`);
+    return true;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `"Dashboard Multipark" <${fromEmail}>`,
+      to: ownerEmail,
+      subject: `[Dashboard Multipark] ${title}`,
+      text: content,
+      html: `<h2>${title}</h2><p>${content.replace(/\n/g, "<br>")}</p>`,
+    });
+    return true;
+  } catch (error) {
+    console.warn("[Notification] Failed to send email:", error);
+    return false;
+  }
+}
+
+/**
+ * Send an email to any recipient.
+ */
+export async function sendEmail(options: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+}): Promise<boolean> {
+  const transporter = getTransporter();
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+
+  if (!transporter) {
+    console.warn("[Email] SMTP not configured, cannot send email");
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `"Dashboard Multipark" <${fromEmail}>`,
+      ...options,
+    });
+    return true;
+  } catch (error) {
+    console.warn("[Email] Failed to send:", error);
+    return false;
+  }
+}

@@ -1,0 +1,1061 @@
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
+import { useState, useMemo, useRef } from "react";
+import {
+  AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
+  ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Shield,
+  BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil, FileSpreadsheet
+} from "lucide-react";
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+  new: { label: "Novo", color: "bg-blue-100 text-blue-800 border-blue-200", icon: AlertCircle },
+  analyzing: { label: "Em Análise", color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: Hourglass },
+  waiting_client: { label: "Aguarda Cliente", color: "bg-purple-100 text-purple-800 border-purple-200", icon: Clock },
+  resolved: { label: "Resolvido", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle2 },
+  closed: { label: "Fechado", color: "bg-gray-100 text-gray-800 border-gray-200", icon: XCircle },
+};
+
+const TYPE_CONFIG: Record<string, { label: string; emoji: string }> = {
+  damage: { label: "Danos", emoji: "💥" },
+  dirt: { label: "Sujidade", emoji: "🧽" },
+  delay: { label: "Atraso", emoji: "⏰" },
+  overcharge: { label: "Valor Incorreto", emoji: "💰" },
+  staff: { label: "Funcionário", emoji: "👤" },
+  other: { label: "Outro", emoji: "📋" },
+};
+
+const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
+  low: { label: "Baixa", color: "bg-slate-100 text-slate-700" },
+  medium: { label: "Média", color: "bg-blue-100 text-blue-700" },
+  high: { label: "Alta", color: "bg-orange-100 text-orange-700" },
+  urgent: { label: "Urgente", color: "bg-red-100 text-red-700" },
+};
+
+const KANBAN_COLUMNS = ["new", "analyzing", "waiting_client", "resolved", "closed"] as const;
+
+export default function ComplaintsPage() {
+  const { user } = useAuth();
+  const [view, setView] = useState<"kanban" | "detail">("kanban");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [, setFilterProject] = useState<string>("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [filterType, setFilterType] = useState<string>("all");
+
+  return (
+    <>
+      {view === "kanban" ? (
+        <KanbanView
+          user={user}
+          filterType={filterType}
+          setFilterType={setFilterType}
+          onSelect={(id: number) => { setSelectedId(id); setView("detail"); }}
+          onNew={() => setShowCreate(true)}
+        />
+      ) : selectedId ? (
+        <DetailView
+          id={selectedId}
+          user={user}
+          onBack={() => { setView("kanban"); setSelectedId(null); }}
+        />
+      ) : null}
+      {showCreate && <CreateDialog user={user} onClose={() => setShowCreate(false)} />}
+    </>
+  );
+}
+
+// ─── KANBAN VIEW ──────────────────────────────────────────────────────────────
+
+function KanbanView({ user, filterType, setFilterType, onSelect, onNew }: any) {
+  const globalFilters = useGlobalFilters();
+  const complaintsQueryInput = useMemo(() => {
+    const input: any = {};
+    if (filterType !== "all") input.type = filterType;
+    if (globalFilters.projectId !== undefined) input.projectId = globalFilters.projectId;
+    return input;
+  }, [filterType, globalFilters.projectId]);
+  const { data: complaints = [], isLoading } = trpc.complaints.list.useQuery(complaintsQueryInput);
+  const { data: stats } = trpc.complaints.stats.useQuery();
+  const updateMut = trpc.complaints.update.useMutation();
+  const importMut = trpc.lostFound.importBookingHistory.useMutation();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const utils = trpc.useUtils();
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1];
+      try {
+        const result = await importMut.mutateAsync({ fileBase64: base64, filename: file.name });
+        toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
+      } catch (err: any) {
+        toast.error(`Erro: ${err.message}`);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const grouped = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    KANBAN_COLUMNS.forEach(s => map[s] = []);
+    complaints.forEach((c: any) => {
+      if (map[c.complaintStatus]) map[c.complaintStatus].push(c);
+    });
+    return map;
+  }, [complaints]);
+
+  const moveCard = async (id: number, newStatus: string) => {
+    try {
+      await updateMut.mutateAsync({ id, status: newStatus as any });
+      utils.complaints.list.invalidate();
+      utils.complaints.stats.invalidate();
+      toast.success("Estado atualizado");
+    } catch { toast.error("Erro ao mover"); }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-muted-foreground">Gestão de tickets e reclamações de clientes</p>
+        </div>
+        <div className="flex gap-2">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
+          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importMut.isPending}>
+            <Upload className="w-4 h-4 mr-2" />
+            {importMut.isPending ? "A importar..." : "Importar Histórico"}
+          </Button>
+          <Button onClick={onNew}><Plus className="w-4 h-4 mr-2" /> Nova Reclamação</Button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          {[
+            { label: "Total", value: stats.total, icon: BarChart3, color: "text-foreground" },
+            { label: "Novos", value: stats.new, icon: AlertCircle, color: "text-blue-600" },
+            { label: "Em Análise", value: stats.analyzing, icon: Hourglass, color: "text-yellow-600" },
+            { label: "Aguarda Cliente", value: stats.waitingClient, icon: Clock, color: "text-purple-600" },
+            { label: "Resolvidos", value: stats.resolved, icon: CheckCircle2, color: "text-green-600" },
+            { label: "Fechados", value: stats.closed, icon: XCircle, color: "text-gray-600" },
+            { label: "Em Atraso", value: stats.overdue, icon: AlertTriangle, color: "text-red-600" },
+          ].map(s => (
+            <Card key={s.label} className="p-3">
+              <div className="flex items-center gap-2">
+                <s.icon className={`w-4 h-4 ${s.color}`} />
+                <span className="text-xs text-muted-foreground">{s.label}</span>
+              </div>
+              <p className={`text-xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Type Tabs */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          variant={filterType === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilterType("all")}
+        >
+          Todos
+        </Button>
+        {Object.entries(TYPE_CONFIG).map(([k, v]) => (
+          <Button
+            key={k}
+            variant={filterType === k ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterType(k)}
+          >
+            {v.emoji} {v.label}
+          </Button>
+        ))}
+      </div>
+
+      {/* Kanban Board */}
+      {isLoading ? (
+        <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {KANBAN_COLUMNS.map(status => {
+            const cfg = STATUS_CONFIG[status];
+            const items = grouped[status] || [];
+            return (
+              <div key={status} className="space-y-3">
+                <div className={`flex items-center gap-2 p-2 rounded-lg ${cfg.color} border`}>
+                  <cfg.icon className="w-4 h-4" />
+                  <span className="font-medium text-sm">{cfg.label}</span>
+                  <Badge variant="secondary" className="ml-auto text-xs">{items.length}</Badge>
+                </div>
+                <ScrollArea className="max-h-[60vh]">
+                  <div className="space-y-2 pr-2">
+                    {items.map((c: any) => (
+                      <ComplaintCard
+                        key={c.id}
+                        complaint={c}
+                        onSelect={() => onSelect(c.id)}
+                        onMove={moveCard}
+                        currentStatus={status}
+                      />
+                    ))}
+                    {items.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-8">Sem tickets</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComplaintCard({ complaint: c, onSelect, onMove, currentStatus }: any) {
+  const isOverdue = c.slaDeadline && new Date(c.slaDeadline) < new Date() && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed";
+  const colIdx = KANBAN_COLUMNS.indexOf(currentStatus);
+  const canMoveLeft = colIdx > 0;
+  const canMoveRight = colIdx < KANBAN_COLUMNS.length - 1;
+
+  return (
+    <Card className={`cursor-pointer hover:shadow-md transition-shadow ${isOverdue ? "border-red-400 border-2" : ""}`}>
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">{TYPE_CONFIG[c.complaintType]?.emoji}</span>
+            <span className="font-medium text-sm line-clamp-1" onClick={onSelect}>{c.title}</span>
+          </div>
+          <Badge className={`text-[10px] ${PRIORITY_CONFIG[c.complaintPriority]?.color}`}>
+            {PRIORITY_CONFIG[c.complaintPriority]?.label}
+          </Badge>
+        </div>
+
+        {c.vehiclePlate && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Car className="w-3 h-3" /> {c.vehiclePlate}
+          </div>
+        )}
+
+        {c.clientName && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <User className="w-3 h-3" /> {c.clientName}
+          </div>
+        )}
+
+        {isOverdue && (
+          <div className="flex items-center gap-1 text-xs text-red-600 font-medium">
+            <AlertTriangle className="w-3 h-3" /> SLA ultrapassado
+          </div>
+        )}
+
+        {c.slaDeadline && !isOverdue && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed" && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="w-3 h-3" /> Prazo: {new Date(c.slaDeadline).toLocaleDateString("pt-PT")}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[10px] text-muted-foreground">#{c.id}</span>
+          <div className="flex gap-1">
+            {canMoveLeft && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMove(c.id, KANBAN_COLUMNS[colIdx - 1]); }}>
+                <ChevronLeft className="w-3 h-3" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onSelect}>
+              <Eye className="w-3 h-3" />
+            </Button>
+            {canMoveRight && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMove(c.id, KANBAN_COLUMNS[colIdx + 1]); }}>
+                <ChevronRight className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── DETAIL VIEW ──────────────────────────────────────────────────────────────
+
+const CHANGE_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  CREATED: { label: "Criada", color: "bg-blue-100 text-blue-800" },
+  CHECKING_IN: { label: "A fazer check-in", color: "bg-cyan-100 text-cyan-800" },
+  CHECK_IN: { label: "Check-in", color: "bg-green-100 text-green-800" },
+  MOVEMENT: { label: "Movimento", color: "bg-amber-100 text-amber-800" },
+  PENDING_CHECKOUT: { label: "Pend. Check-out", color: "bg-purple-100 text-purple-800" },
+  CHECKING_OUT: { label: "A fazer check-out", color: "bg-indigo-100 text-indigo-800" },
+  CHECK_OUT: { label: "Check-out", color: "bg-violet-100 text-violet-800" },
+  ocorrencia: { label: "Ocorrência", color: "bg-red-100 text-red-800" },
+};
+
+function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () => void }) {
+  const { data, isLoading } = trpc.complaints.getById.useQuery({ id });
+  const { data: vehicleHistory } = trpc.complaints.vehicleHistory.useQuery(
+    { vehicleId: data?.complaint?.vehicleId ?? 0 },
+    { enabled: !!data?.complaint?.vehicleId }
+  );
+  const { data: bookingHist = [] } = trpc.lostFound.bookingHistory.useQuery(
+    {
+      bookingId: data?.complaint?.reservationRef || undefined,
+      plate: !data?.complaint?.reservationRef ? (data?.complaint?.vehiclePlate || undefined) : undefined,
+    },
+    { enabled: !!(data?.complaint?.reservationRef || data?.complaint?.vehiclePlate) }
+  );
+  const { data: vehicles = [] } = trpc.operational.vehicles.list.useQuery();
+  const { data: employees = [] } = trpc.rh.list.useQuery();
+  const updateMut = trpc.complaints.update.useMutation();
+  const addMsgMut = trpc.complaints.addMessage.useMutation();
+  const uploadPhotoMut = trpc.complaints.uploadPhoto.useMutation();
+  const deletePhotoMut = trpc.complaints.deletePhoto.useMutation();
+  const utils = trpc.useUtils();
+
+  const importHistMut = trpc.lostFound.importBookingHistory.useMutation();
+  const histFileRef = useRef<HTMLInputElement>(null);
+
+  const [newMsg, setNewMsg] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>(null);
+
+  if (isLoading || !data) return <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+
+  const c = data.complaint;
+  const isOverdue = c.slaDeadline && new Date(c.slaDeadline) < new Date() && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed";
+  const drivers = c.driversInvolved ? JSON.parse(c.driversInvolved) : [];
+
+  const startEditing = () => {
+    setEditForm({
+      title: c.title || "",
+      description: c.description || "",
+      type: c.complaintType || "damage",
+      priority: c.complaintPriority || "medium",
+      clientName: c.clientName || "",
+      clientEmail: c.clientEmail || "",
+      clientPhone: c.clientPhone || "",
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      await updateMut.mutateAsync({
+        id,
+        title: editForm.title,
+        description: editForm.description || undefined,
+        type: editForm.type as any,
+        priority: editForm.priority as any,
+        clientName: editForm.clientName || undefined,
+        clientEmail: editForm.clientEmail || undefined,
+        clientPhone: editForm.clientPhone || undefined,
+      });
+      utils.complaints.getById.invalidate({ id });
+      utils.complaints.list.invalidate();
+      setIsEditing(false);
+      toast.success("Reclamação atualizada");
+    } catch { toast.error("Erro ao atualizar"); }
+  };
+
+  const handleStatusChange = async (status: string) => {
+    await updateMut.mutateAsync({ id, status: status as any });
+    utils.complaints.getById.invalidate({ id });
+    utils.complaints.list.invalidate();
+    utils.complaints.stats.invalidate();
+    toast.success("Estado atualizado");
+  };
+
+  const handleSendMsg = async () => {
+    if (!newMsg.trim()) return;
+    await addMsgMut.mutateAsync({ complaintId: id, message: newMsg, isInternal });
+    setNewMsg("");
+    utils.complaints.getById.invalidate({ id });
+    toast.success("Mensagem adicionada");
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1];
+      await uploadPhotoMut.mutateAsync({ complaintId: id, base64, filename: file.name });
+      utils.complaints.getById.invalidate({ id });
+      toast.success("Foto carregada");
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Voltar</Button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{TYPE_CONFIG[c.complaintType]?.emoji}</span>
+            <h1 className="text-xl font-bold">{c.title}</h1>
+            <Badge className={STATUS_CONFIG[c.complaintStatus]?.color}>{STATUS_CONFIG[c.complaintStatus]?.label}</Badge>
+            <Badge className={PRIORITY_CONFIG[c.complaintPriority]?.color}>{PRIORITY_CONFIG[c.complaintPriority]?.label}</Badge>
+            {isOverdue && <Badge className="bg-red-100 text-red-800">SLA Ultrapassado</Badge>}
+          </div>
+          <p className="text-sm text-muted-foreground">Ticket #{c.id} — Criado em {new Date(c.createdAt).toLocaleDateString("pt-PT")}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={startEditing}><Pencil className="w-4 h-4 mr-1" /> Editar</Button>
+        <Select value={c.complaintStatus} onValueChange={handleStatusChange}>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+              <SelectItem key={k} value={k}>{v.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Details */}
+        <div className="lg:col-span-2 space-y-4">
+          <Tabs defaultValue="details">
+            <TabsList>
+              <TabsTrigger value="details">Detalhes</TabsTrigger>
+              <TabsTrigger value="messages">Mensagens ({data.messages.length})</TabsTrigger>
+              <TabsTrigger value="photos">Fotos ({data.photos.length})</TabsTrigger>
+              {c.vehicleId && <TabsTrigger value="vehicle">Viatura</TabsTrigger>}
+              <TabsTrigger value="booking-history">Histórico ({bookingHist.length})</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="details" className="space-y-4 mt-4">
+              {c.description && (
+                <Card>
+                  <CardHeader><CardTitle className="text-sm">Descrição</CardTitle></CardHeader>
+                  <CardContent><p className="text-sm whitespace-pre-wrap">{c.description}</p></CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardHeader><CardTitle className="text-sm">Dados da Reserva</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-muted-foreground">Ref. Reserva:</span> <span className="font-medium">{c.reservationRef || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Início:</span> <span className="font-medium">{c.reservationStart ? new Date(c.reservationStart).toLocaleDateString("pt-PT") : "—"}</span></div>
+                  <div><span className="text-muted-foreground">Fim:</span> <span className="font-medium">{c.reservationEnd ? new Date(c.reservationEnd).toLocaleDateString("pt-PT") : "—"}</span></div>
+                  <div><span className="text-muted-foreground">Matrícula:</span> <span className="font-medium">{c.vehiclePlate || "—"}</span></div>
+                </CardContent>
+              </Card>
+              {drivers.length > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="text-sm">Condutores Envolvidos</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {drivers.map((d: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-sm p-2 bg-muted rounded">
+                          <User className="w-4 h-4" />
+                          <span className="font-medium">{d.name}</span>
+                          {d.date && <span className="text-muted-foreground">— {d.date}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="messages" className="mt-4">
+              <Card>
+                <CardContent className="p-4 space-y-4">
+                  <ScrollArea className="max-h-[400px]">
+                    <div className="space-y-3">
+                      {data.messages.map((m: any) => (
+                        <div key={m.id} className={`p-3 rounded-lg text-sm ${m.isInternal ? "bg-amber-50 border border-amber-200" : "bg-muted"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium">{m.authorName}</span>
+                            {m.isInternal && <Badge variant="outline" className="text-[10px] text-amber-700">Nota Interna</Badge>}
+                            <span className="text-xs text-muted-foreground ml-auto">{new Date(m.createdAt).toLocaleString("pt-PT")}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap">{m.message}</p>
+                        </div>
+                      ))}
+                      {data.messages.length === 0 && <p className="text-center text-muted-foreground py-8">Sem mensagens</p>}
+                    </div>
+                  </ScrollArea>
+                  <Separator />
+                  <div className="space-y-2">
+                    <Textarea placeholder="Escrever mensagem..." value={newMsg} onChange={e => setNewMsg(e.target.value)} rows={3} />
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} className="rounded" />
+                        <Shield className="w-4 h-4 text-amber-600" /> Nota interna (não visível ao cliente)
+                      </label>
+                      <Button onClick={handleSendMsg} disabled={!newMsg.trim() || addMsgMut.isPending}>
+                        <Send className="w-4 h-4 mr-2" /> Enviar
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="photos" className="mt-4">
+              <Card>
+                <CardContent className="p-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {data.photos.map((p: any) => (
+                      <div key={p.id} className="relative group">
+                        <img src={p.url} alt={p.label || "Foto"} className="w-full h-40 object-cover rounded-lg" />
+                        {p.label && <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">{p.label}</span>}
+                        <Button
+                          variant="destructive" size="icon"
+                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={async () => {
+                            await deletePhotoMut.mutateAsync({ id: p.id });
+                            utils.complaints.getById.invalidate({ id });
+                            toast.success("Foto eliminada");
+                          }}
+                        ><Trash2 className="w-3 h-3" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Button variant="outline" asChild><span><Upload className="w-4 h-4 mr-2" /> Carregar Foto</span></Button>
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  </label>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {c.vehicleId && (
+              <TabsContent value="vehicle" className="mt-4">
+                <Card>
+                  <CardHeader><CardTitle className="text-sm">Histórico da Viatura — {c.vehiclePlate}</CardTitle></CardHeader>
+                  <CardContent>
+                    {vehicleHistory && vehicleHistory.length > 0 ? (
+                      <div className="space-y-2">
+                        {vehicleHistory.map((h: any, i: number) => (
+                          <div key={i} className="flex items-center gap-3 text-sm p-2 bg-muted rounded">
+                            <Car className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium">{h.driverName || "Desconhecido"}</span>
+                            <span className="text-muted-foreground">
+                              {new Date(h.startTime).toLocaleString("pt-PT")}
+                              {h.endTime && ` → ${new Date(h.endTime).toLocaleString("pt-PT")}`}
+                            </span>
+                            {h.startKm && <span className="text-xs text-muted-foreground ml-auto">{h.startKm} km</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">Sem histórico de movimentos para esta viatura.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            <TabsContent value="booking-history" className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Clock className="w-4 h-4" /> Quem mexeu no carro {c.reservationRef ? `— Reserva ${c.reservationRef}` : ""}
+                      </CardTitle>
+                      <div>
+                        <input ref={histFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = async () => {
+                            const base64 = (reader.result as string).split(",")[1];
+                            try {
+                              const result = await importHistMut.mutateAsync({ fileBase64: base64, filename: file.name });
+                              toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
+                              utils.lostFound.bookingHistory.invalidate();
+                            } catch (err: any) {
+                              toast.error(`Erro: ${err.message}`);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                          e.target.value = "";
+                        }} />
+                        <Button variant="outline" size="sm" onClick={() => histFileRef.current?.click()} disabled={importHistMut.isPending}>
+                          <FileSpreadsheet className="w-4 h-4 mr-1" />
+                          {importHistMut.isPending ? "A importar..." : "Importar Excel"}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {bookingHist.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sem histórico importado para esta reserva. Clica em "Importar Excel" para carregar o ficheiro do backoffice.</p>
+                    ) : (
+                      <div className="relative pl-6 space-y-0">
+                        {bookingHist.map((h: any, i: number) => {
+                          const cfg = CHANGE_TYPE_CONFIG[h.changeType] || { label: h.changeType, color: "bg-gray-100 text-gray-800" };
+                          return (
+                            <div key={h.id} className="relative pb-4">
+                              {i < bookingHist.length - 1 && (
+                                <div className="absolute left-[-16px] top-3 bottom-0 w-px bg-border" />
+                              )}
+                              <div className="absolute left-[-20px] top-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-background" />
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className={cfg.color}>{cfg.label}</Badge>
+                                    <span className="font-medium text-sm">{h.userName ? `${h.userName} ${h.userLastName || ""}`.trim() : "Sistema"}</span>
+                                  </div>
+                                  {h.parkName && <p className="text-xs text-muted-foreground mt-1">Parque: {h.parkName}</p>}
+                                  {h.remarks && <p className="text-xs text-muted-foreground">{h.remarks}</p>}
+                                </div>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {h.actionDate ? new Date(h.actionDate).toLocaleString("pt-PT") : "—"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Right: Client + SLA info */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Cliente</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div><span className="text-muted-foreground">Nome:</span> <span className="font-medium">{c.clientName || "—"}</span></div>
+              <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{c.clientEmail || "—"}</span></div>
+              <div><span className="text-muted-foreground">Telefone:</span> <span className="font-medium">{c.clientPhone || "—"}</span></div>
+            </CardContent>
+          </Card>
+
+          {/* Edit Dialog */}
+          <Dialog open={isEditing} onOpenChange={setIsEditing}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader><DialogTitle>Editar Reclamação</DialogTitle></DialogHeader>
+              {editForm && (
+                <div className="space-y-4">
+                  <div><Label>Título</Label><Input value={editForm.title} onChange={e => setEditForm((f: any) => ({ ...f, title: e.target.value }))} /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Tipo</Label>
+                      <Select value={editForm.type} onValueChange={v => setEditForm((f: any) => ({ ...f, type: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(TYPE_CONFIG).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v.emoji} {v.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Prioridade</Label>
+                      <Select value={editForm.priority} onValueChange={v => setEditForm((f: any) => ({ ...f, priority: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div><Label>Descrição</Label><Textarea value={editForm.description} onChange={e => setEditForm((f: any) => ({ ...f, description: e.target.value }))} rows={3} /></div>
+                  <Separator />
+                  <div><Label>Nome do Cliente</Label><Input value={editForm.clientName} onChange={e => setEditForm((f: any) => ({ ...f, clientName: e.target.value }))} /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><Label>Email</Label><Input value={editForm.clientEmail} onChange={e => setEditForm((f: any) => ({ ...f, clientEmail: e.target.value }))} /></div>
+                    <div><Label>Telefone</Label><Input value={editForm.clientPhone} onChange={e => setEditForm((f: any) => ({ ...f, clientPhone: e.target.value }))} /></div>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button>
+                <Button onClick={handleSaveEdit} disabled={updateMut.isPending}>Guardar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm">SLA</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {c.slaDeadline ? (
+                <>
+                  <div className={`flex items-center gap-2 ${isOverdue ? "text-red-600 font-bold" : "text-foreground"}`}>
+                    <Clock className="w-4 h-4" />
+                    Prazo: {new Date(c.slaDeadline).toLocaleString("pt-PT")}
+                  </div>
+                  {isOverdue && <p className="text-red-600 text-xs">O prazo de resposta foi ultrapassado!</p>}
+                </>
+              ) : (
+                <p className="text-muted-foreground">Sem prazo definido</p>
+              )}
+              {c.resolvedAt && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Resolvido em: {new Date(c.resolvedAt).toLocaleString("pt-PT")}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Tipo</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{TYPE_CONFIG[c.complaintType]?.emoji}</span>
+                <span className="font-medium">{TYPE_CONFIG[c.complaintType]?.label}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CREATE DIALOG ────────────────────────────────────────────────────────────
+
+function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
+  const { data: vehicles = [] } = trpc.operational.vehicles.list.useQuery();
+  const { data: emps = [] } = trpc.rh.list.useQuery();
+  const { data: projs = [] } = trpc.projects.list.useQuery();
+  const createMut = trpc.complaints.create.useMutation();
+  const importHistMut = trpc.lostFound.importBookingHistory.useMutation();
+  const histFileRef = useRef<HTMLInputElement>(null);
+  const utils = trpc.useUtils();
+
+  const [historyImported, setHistoryImported] = useState<{ imported: number; skipped: number } | null>(null);
+  const [form, setForm] = useState({
+    title: "", description: "", type: "damage" as string, priority: "medium" as string,
+    clientName: "", clientEmail: "", clientPhone: "", reservationRef: "",
+    reservationStart: "", reservationEnd: "",
+    vehicleId: "", vehiclePlate: "", slaHours: "48",
+    projectId: "", assignedToId: "",
+  });
+
+  // Booking search
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const { data: foundBookings = [] } = trpc.complaints.searchBooking.useQuery(
+    { search: bookingSearch },
+    { enabled: bookingSearch.length >= 2 }
+  );
+  const detailsQuery = trpc.complaints.fetchBookingDetails;
+
+  const fillFromBooking = async (b: any) => {
+    // First fill what we have from local DB
+    setForm(f => ({
+      ...f,
+      reservationRef: b.bookingNumber || b.externalId || f.reservationRef,
+      reservationStart: b.checkIn ? b.checkIn.slice(0, 10) : f.reservationStart,
+      reservationEnd: b.checkOut ? b.checkOut.slice(0, 10) : f.reservationEnd,
+      projectId: b.projectId ? String(b.projectId) : f.projectId,
+      clientName: [b.clientFirstName, b.clientLastName].filter(Boolean).join(" ") || f.clientName,
+      clientEmail: b.clientEmail || f.clientEmail,
+      clientPhone: b.clientPhone || f.clientPhone,
+      vehiclePlate: b.licensePlate || f.vehiclePlate,
+    }));
+
+    // Then try to fetch full details from API (has client data + vehicle)
+    if (b.externalId) {
+      setLoadingDetails(true);
+      try {
+        const details = await utils.complaints.fetchBookingDetails.fetch({ externalId: b.externalId });
+        if (details) {
+          const client = details.customer || details.client;
+          setForm(f => ({
+            ...f,
+            clientName: [client?.firstName, client?.lastName].filter(Boolean).join(" ") || f.clientName,
+            clientEmail: client?.email || f.clientEmail,
+            clientPhone: client?.phoneNumber || f.clientPhone,
+            vehiclePlate: details.vehicle?.licensePlate || f.vehiclePlate,
+            title: f.title || `Reclamação — ${details.vehicle?.licensePlate || ""} — ${b.bookingNumber || ""}`.trim(),
+          }));
+        }
+      } catch { /* API might not return details for all bookings */ }
+      setLoadingDetails(false);
+    }
+
+    toast.success("Dados da reserva preenchidos");
+  };
+
+  // Email upload parser
+  const handleEmailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+
+    // Parse email headers and body
+    const fromMatch = text.match(/^From:\s*(.+)$/im);
+    const subjectMatch = text.match(/^Subject:\s*(.+)$/im);
+    const dateMatch = text.match(/^Date:\s*(.+)$/im);
+
+    // Extract email address from From header
+    const emailMatch = fromMatch?.[1]?.match(/<([^>]+)>/) || fromMatch?.[1]?.match(/([\w.+-]+@[\w.-]+)/);
+    const nameMatch = fromMatch?.[1]?.match(/^"?([^"<]+)"?\s*</);
+
+    // Extract body (after empty line separating headers from body)
+    const bodyStart = text.indexOf("\n\n");
+    let body = bodyStart > 0 ? text.slice(bodyStart + 2).trim() : "";
+    // Strip HTML if present
+    if (body.includes("<html") || body.includes("<HTML")) {
+      body = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+    }
+    // Truncate long bodies
+    if (body.length > 2000) body = body.slice(0, 2000) + "...";
+
+    // Look for plate patterns in body (AA-00-BB, AA00BB, 00-AA-00)
+    const plateMatch = body.match(/\b([A-Z]{2}[-\s]?\d{2}[-\s]?[A-Z]{2}|\d{2}[-\s]?[A-Z]{2}[-\s]?\d{2}|[A-Z]{2}[-\s]?\d{2}[-\s]?\d{2})\b/i);
+    // Look for booking number patterns
+    const bookingMatch = body.match(/(?:reserva|booking|nº|ref)[:\s#]*(\d{4,6})/i);
+
+    setForm(f => ({
+      ...f,
+      clientEmail: emailMatch?.[1] || f.clientEmail,
+      clientName: nameMatch?.[1]?.trim() || f.clientName,
+      title: f.title || subjectMatch?.[1]?.trim() || "",
+      description: body ? (f.description ? f.description + "\n\n--- Email ---\n" + body : body) : f.description,
+      vehiclePlate: plateMatch?.[1]?.toUpperCase() || f.vehiclePlate,
+      reservationRef: bookingMatch?.[1] || f.reservationRef,
+    }));
+
+    // If we found a booking number, also search for it
+    if (bookingMatch?.[1]) {
+      setBookingSearch(bookingMatch[1]);
+    }
+
+    toast.success("Email importado — verifica os dados");
+    e.target.value = "";
+  };
+
+  const employees = emps.map((e: any) => e.employee ?? e);
+
+  const handleVehicleChange = (val: string) => {
+    const v = vehicles.find((v: any) => String(v.id) === val);
+    setForm(f => ({ ...f, vehicleId: val, vehiclePlate: v?.plate || "" }));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.title) { toast.error("Título obrigatório"); return; }
+    try {
+      await createMut.mutateAsync({
+        title: form.title,
+        description: form.description || undefined,
+        type: form.type as any,
+        priority: form.priority as any,
+        clientName: form.clientName || undefined,
+        clientEmail: form.clientEmail || undefined,
+        clientPhone: form.clientPhone || undefined,
+        reservationRef: form.reservationRef || undefined,
+        reservationStart: form.reservationStart || undefined,
+        reservationEnd: form.reservationEnd || undefined,
+        vehicleId: form.vehicleId ? Number(form.vehicleId) : undefined,
+        vehiclePlate: form.vehiclePlate || undefined,
+        slaHours: form.slaHours ? Number(form.slaHours) : undefined,
+        projectId: form.projectId ? Number(form.projectId) : undefined,
+        assignedToId: form.assignedToId ? Number(form.assignedToId) : undefined,
+      });
+      utils.complaints.list.invalidate();
+      utils.complaints.stats.invalidate();
+      toast.success("Reclamação criada");
+      onClose();
+    } catch { toast.error("Erro ao criar reclamação"); }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Nova Reclamação</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Email import */}
+          <div className="col-span-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-amber-700 dark:text-amber-300 font-medium">Importar email do cliente</Label>
+                <p className="text-xs text-muted-foreground">Carrega o ficheiro .eml ou .txt — preenche automaticamente nome, email, assunto, matrícula e nº reserva</p>
+              </div>
+              <label>
+                <input type="file" accept=".eml,.txt,.msg" className="hidden" onChange={handleEmailUpload} />
+                <Button variant="outline" size="sm" asChild><span><Upload className="w-4 h-4 mr-1" />Carregar Email</span></Button>
+              </label>
+            </div>
+          </div>
+
+          {/* Booking search */}
+          <div className="col-span-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200">
+            <Label className="text-blue-700 dark:text-blue-300 font-medium">Buscar reserva (nº reserva, matrícula, email, nome)</Label>
+            <div className="flex items-center gap-2 mt-1">
+              <Input
+                placeholder="Ex: 15413 ou AA-00-BB ou nome..."
+                value={bookingSearch}
+                onChange={e => setBookingSearch(e.target.value)}
+                className="flex-1"
+              />
+              {loadingDetails && <span className="text-xs text-muted-foreground animate-pulse">A carregar detalhes...</span>}
+            </div>
+            {foundBookings.length > 0 && (
+              <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                {foundBookings.map((b: any) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between p-2 bg-white dark:bg-gray-900 rounded border cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                    onClick={() => fillFromBooking(b)}
+                  >
+                    <div className="text-sm">
+                      <span className="font-mono font-medium">#{b.bookingNumber}</span>
+                      {b.licensePlate && <span className="font-mono ml-2">{b.licensePlate}</span>}
+                      {(b.clientFirstName || b.clientLastName) && <span className="text-muted-foreground ml-2">{b.clientFirstName} {b.clientLastName}</span>}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {b.parkName} {b.city && !b.parkName?.includes(b.city) ? b.city : ""}
+                      {b.checkIn && <span className="ml-2">{new Date(b.checkIn).toLocaleDateString("pt-PT")}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {bookingSearch.length >= 2 && foundBookings.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">Nenhuma reserva encontrada</p>
+            )}
+          </div>
+
+          <div className="col-span-2">
+            <Label>Título *</Label>
+            <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Descrição breve da reclamação" />
+          </div>
+          <div>
+            <Label>Tipo</Label>
+            <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(TYPE_CONFIG).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.emoji} {v.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Prioridade</Label>
+            <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-2">
+            <Label>Descrição</Label>
+            <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
+          </div>
+          <Separator className="col-span-2" />
+          <div><Label>Nome do Cliente</Label><Input value={form.clientName} onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))} /></div>
+          <div><Label>Email</Label><Input type="email" value={form.clientEmail} onChange={e => setForm(f => ({ ...f, clientEmail: e.target.value }))} /></div>
+          <div><Label>Telefone</Label><Input value={form.clientPhone} onChange={e => setForm(f => ({ ...f, clientPhone: e.target.value }))} /></div>
+          <div><Label>Ref. Reserva</Label><Input value={form.reservationRef} onChange={e => setForm(f => ({ ...f, reservationRef: e.target.value }))} /></div>
+          <div><Label>Matrícula</Label><Input value={form.vehiclePlate} onChange={e => setForm(f => ({ ...f, vehiclePlate: e.target.value }))} /></div>
+          <div><Label>Início Reserva</Label><Input type="date" value={form.reservationStart} onChange={e => setForm(f => ({ ...f, reservationStart: e.target.value }))} /></div>
+          <div><Label>Fim Reserva</Label><Input type="date" value={form.reservationEnd} onChange={e => setForm(f => ({ ...f, reservationEnd: e.target.value }))} /></div>
+          <Separator className="col-span-2" />
+          <div>
+            <Label>Viatura (interna)</Label>
+            <Select value={form.vehicleId} onValueChange={handleVehicleChange}>
+              <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+              <SelectContent>
+                {vehicles.map((v: any) => (
+                  <SelectItem key={v.id} value={String(v.id)}>{v.plate} — {v.brand} {v.model}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Projeto</Label>
+            <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Selecionar projeto" /></SelectTrigger>
+              <SelectContent>
+                {projs.map((p: any) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Atribuir a</Label>
+            <Select value={form.assignedToId} onValueChange={v => setForm(f => ({ ...f, assignedToId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+              <SelectContent>
+                {employees.map((e: any) => (
+                  <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Prazo SLA (horas)</Label>
+            <Input type="number" value={form.slaHours} onChange={e => setForm(f => ({ ...f, slaHours: e.target.value }))} />
+          </div>
+          {/* Booking history upload */}
+          <div className="col-span-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-green-700 dark:text-green-300 font-medium">Histórico da reserva (Excel)</Label>
+                <p className="text-xs text-muted-foreground">Importa o ficheiro Excel do backoffice com o histórico de quem mexeu no carro</p>
+              </div>
+              <label>
+                <input ref={histFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = async () => {
+                    const base64 = (reader.result as string).split(",")[1];
+                    try {
+                      const result = await importHistMut.mutateAsync({ fileBase64: base64, filename: file.name });
+                      setHistoryImported({ imported: result.imported, skipped: result.skipped });
+                      toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
+                    } catch (err: any) {
+                      toast.error(`Erro: ${err.message}`);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }} />
+                <Button variant="outline" size="sm" asChild disabled={importHistMut.isPending}>
+                  <span><FileSpreadsheet className="w-4 h-4 mr-1" />{importHistMut.isPending ? "A importar..." : "Importar Excel"}</span>
+                </Button>
+              </label>
+            </div>
+            {historyImported && (
+              <p className="text-xs text-green-700 mt-1">{historyImported.imported} registos importados, {historyImported.skipped} duplicados ignorados</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSubmit} disabled={createMut.isPending}>
+            {createMut.isPending ? "A criar..." : "Criar Reclamação"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

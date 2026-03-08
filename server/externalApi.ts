@@ -1,0 +1,355 @@
+/**
+ * External REST API endpoints for device integration (Zilo GPS, radios, etc.)
+ * Authentication via X-API-Key header
+ */
+import { Router, Request, Response, NextFunction } from "express";
+import { eq, and } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import { apiKeys, vehicles, speedAlerts, vehicleMovements, radioTranscriptions } from "../drizzle/schema";
+import { notifyOwner } from "./_core/notification";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { invokeLLM } from "./_core/llm";
+import {
+  getVehicles,
+  getAllEmployees,
+  createSpeedAlert,
+  createVehicleMovement,
+  createRadioTranscription,
+  logActivity,
+  createGoogleReview,
+  createIncident,
+  getReviewBySourceEmailId,
+  getIncidentBySourceEmailId,
+  updateGoogleReview,
+} from "./db";
+
+let _db: ReturnType<typeof drizzle> | null = null;
+async function getDb() {
+  if (!_db && process.env.DATABASE_URL) {
+    _db = drizzle(process.env.DATABASE_URL);
+  }
+  return _db;
+}
+
+// ─── API KEY MIDDLEWARE ──────────────────────────────────────────────────────
+
+async function validateApiKey(req: Request, res: Response, next: NextFunction) {
+  const key = req.headers["x-api-key"] as string;
+  if (!key) {
+    res.status(401).json({ error: "Missing X-API-Key header" });
+    return;
+  }
+  const db = await getDb();
+  if (!db) {
+    res.status(500).json({ error: "Database unavailable" });
+    return;
+  }
+  const result = await db.select().from(apiKeys).where(and(eq(apiKeys.apiKey, key), eq(apiKeys.active, true))).limit(1);
+  if (result.length === 0) {
+    res.status(403).json({ error: "Invalid or inactive API key" });
+    return;
+  }
+  // Update last used
+  await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, result[0].id));
+  (req as any).apiKeyInfo = result[0];
+  next();
+}
+
+// ─── ROUTER ──────────────────────────────────────────────────────────────────
+
+export function createExternalApiRouter(): Router {
+  const r = Router();
+  r.use(validateApiKey);
+
+  // ─── GET /api/external/vehicles ────────────────────────────────────────────
+  r.get("/vehicles", async (_req: Request, res: Response) => {
+    try {
+      const list = await getVehicles();
+      res.json({ success: true, data: list.map((v: any) => ({ id: v.id, plate: v.plate, brand: v.brand, model: v.model, status: v.status, projectId: v.projectId })) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── GET /api/external/employees ───────────────────────────────────────────
+  r.get("/employees", async (_req: Request, res: Response) => {
+    try {
+      const list = await getAllEmployees();
+      res.json({ success: true, data: list.map((e: any) => ({ id: e.employee.id, fullName: e.employee.fullName, position: e.employee.position, status: e.employee.status })) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── POST /api/external/speed-alert ────────────────────────────────────────
+  // Body: { vehicleId OR plate, speed, speedLimit, latitude?, longitude?, roadName?, employeeId? }
+  r.post("/speed-alert", async (req: Request, res: Response) => {
+    try {
+      const { vehicleId, plate, speed, speedLimit, latitude, longitude, roadName, employeeId } = req.body;
+
+      if (!speed || !speedLimit) {
+        res.status(400).json({ error: "speed and speedLimit are required" });
+        return;
+      }
+
+      // Resolve vehicle by plate if vehicleId not provided
+      let resolvedVehicleId = vehicleId;
+      if (!resolvedVehicleId && plate) {
+        const db = await getDb();
+        if (db) {
+          const veh = await db.select().from(vehicles).where(eq(vehicles.plate, plate)).limit(1);
+          if (veh.length > 0) resolvedVehicleId = veh[0].id;
+        }
+      }
+      if (!resolvedVehicleId) {
+        res.status(400).json({ error: "vehicleId or valid plate is required" });
+        return;
+      }
+
+      const id = await createSpeedAlert({
+        vehicleId: resolvedVehicleId,
+        employeeId: employeeId ?? null,
+        speed: Number(speed),
+        speedLimit: Number(speedLimit),
+        latitude: latitude ? String(latitude) : null,
+        longitude: longitude ? String(longitude) : null,
+        roadName: roadName ?? null,
+      });
+
+      // Notify super admin
+      const plateLabel = plate || `Viatura #${resolvedVehicleId}`;
+      await notifyOwner({
+        title: "⚠️ Alerta de Velocidade (GPS)",
+        content: `${plateLabel} a ${speed} km/h (limite: ${speedLimit} km/h)${roadName ? " em " + roadName : ""}. Excesso: +${speed - speedLimit} km/h.`,
+      });
+
+      await logActivity({ userId: 0, action: "create", entity: "speed_alert", entityId: id, details: `[API] ${speed}km/h (limite ${speedLimit}km/h) - ${plateLabel}` });
+
+      res.json({ success: true, id, message: "Speed alert registered and admin notified" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── POST /api/external/vehicle-movement ───────────────────────────────────
+  // Body: { vehicleId OR plate, employeeId, type: "pickup"|"return", kmReading?, latitude?, longitude?, notes? }
+  r.post("/vehicle-movement", async (req: Request, res: Response) => {
+    try {
+      const { vehicleId, plate, employeeId, type, kmReading, latitude, longitude, notes } = req.body;
+
+      if (!employeeId || !type) {
+        res.status(400).json({ error: "employeeId and type (pickup/return) are required" });
+        return;
+      }
+
+      let resolvedVehicleId = vehicleId;
+      if (!resolvedVehicleId && plate) {
+        const db = await getDb();
+        if (db) {
+          const veh = await db.select().from(vehicles).where(eq(vehicles.plate, plate)).limit(1);
+          if (veh.length > 0) resolvedVehicleId = veh[0].id;
+        }
+      }
+      if (!resolvedVehicleId) {
+        res.status(400).json({ error: "vehicleId or valid plate is required" });
+        return;
+      }
+
+      const id = await createVehicleMovement({
+        vehicleId: resolvedVehicleId,
+        employeeId: Number(employeeId),
+        type,
+        kmReading: kmReading ? Number(kmReading) : null,
+        latitude: latitude ? String(latitude) : null,
+        longitude: longitude ? String(longitude) : null,
+        notes: notes ?? null,
+      });
+
+      await logActivity({ userId: 0, action: "create", entity: "vehicle_movement", entityId: id, details: `[API] ${type} viatura ${plate || "#" + resolvedVehicleId}` });
+
+      res.json({ success: true, id, message: "Vehicle movement registered" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── POST /api/external/radio-upload ───────────────────────────────────────
+  // Body: { audioUrl, employeeId?, vehicleId?, duration? }
+  r.post("/radio-upload", async (req: Request, res: Response) => {
+    try {
+      const { audioUrl, employeeId, vehicleId, duration } = req.body;
+
+      if (!audioUrl) {
+        res.status(400).json({ error: "audioUrl is required" });
+        return;
+      }
+
+      // Transcribe
+      const result = await transcribeAudio({ audioUrl, language: "pt" });
+      if ("error" in result) {
+        res.status(500).json({ error: `Transcription failed: ${result.error}` });
+        return;
+      }
+
+      // Generate summary with LLM
+      let summaryText = "";
+      try {
+        const summary = await invokeLLM({
+          messages: [
+            { role: "system", content: "Resume a seguinte transcrição de rádio em 1-2 frases curtas em português. Foca nos pontos operacionais relevantes." },
+            { role: "user", content: result.text },
+          ],
+        });
+        summaryText = typeof summary.choices[0].message.content === "string" ? summary.choices[0].message.content : "";
+      } catch {
+        summaryText = "";
+      }
+
+      const id = await createRadioTranscription({
+        audioUrl,
+        transcription: result.text,
+        summary: summaryText,
+        employeeId: employeeId ? Number(employeeId) : null,
+        vehicleId: vehicleId ? Number(vehicleId) : null,
+        duration: duration ? Number(duration) : null,
+        transcribedAt: new Date(),
+        createdById: null,
+      });
+
+      await logActivity({ userId: 0, action: "create", entity: "radio_transcription", entityId: id, details: `[API] Transcrição automática` });
+
+      res.json({ success: true, id, transcription: result.text, summary: summaryText });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── GET /api/external/docs ────────────────────────────────────────────────
+  r.get("/docs", (_req: Request, res: Response) => {
+    res.json({
+      title: "Dashboard Multipark External API",
+      version: "1.0",
+      auth: "Header X-API-Key required on all endpoints",
+      endpoints: [
+        {
+          method: "GET", path: "/api/external/vehicles",
+          description: "Listar todas as viaturas",
+          response: "{ success, data: [{ id, plate, brand, model, status, projectId }] }",
+        },
+        {
+          method: "GET", path: "/api/external/employees",
+          description: "Listar todos os colaboradores",
+          response: "{ success, data: [{ id, fullName, position, status }] }",
+        },
+        {
+          method: "POST", path: "/api/external/speed-alert",
+          description: "Registar alerta de velocidade (ex: GPS Zilo)",
+          body: "{ vehicleId? | plate?, speed, speedLimit, latitude?, longitude?, roadName?, employeeId? }",
+          response: "{ success, id }",
+          notes: "Pode enviar vehicleId ou plate. Notifica automaticamente o Super Admin.",
+        },
+        {
+          method: "POST", path: "/api/external/vehicle-movement",
+          description: "Registar movimento de viatura (recolha/devolução)",
+          body: "{ vehicleId? | plate?, employeeId, type: 'pickup'|'return', kmReading?, latitude?, longitude?, notes? }",
+          response: "{ success, id }",
+        },
+        {
+          method: "POST", path: "/api/external/radio-upload",
+          description: "Enviar áudio de rádio para transcrição automática",
+          body: "{ audioUrl, employeeId?, vehicleId?, duration? }",
+          response: "{ success, id, transcription, summary }",
+          notes: "O áudio é transcrito via Whisper e resumido com IA.",
+        },
+      ],
+    });
+  });
+
+  // ─── GMAIL IMPORT (receives pre-parsed data from external scheduled task) ─
+  r.post("/gmail-import", validateApiKey, async (req: Request, res: Response) => {
+    try {
+      const { occurrences, reviews } = req.body;
+      const result = { reviewsImported: 0, reviewsSkipped: 0, incidentsImported: 0, incidentsSkipped: 0, details: [] as string[], errors: [] as string[] };
+
+      // Import occurrences
+      if (Array.isArray(occurrences)) {
+        for (const occ of occurrences) {
+          try {
+            if (occ.sourceEmailId) {
+              const existing = await getIncidentBySourceEmailId(occ.sourceEmailId);
+              if (existing) { result.incidentsSkipped++; continue; }
+            }
+            const now = new Date();
+            const weekNum = Math.ceil((now.getDate() + new Date(now.getFullYear(), now.getMonth(), 1).getDay()) / 7);
+            await createIncident({
+              incidentType: occ.incidentType || "outro",
+              severity: occ.severity || "medium",
+              description: occ.description || "",
+              vehiclePlate: occ.vehiclePlate || undefined,
+              status: "open",
+              weekNumber: weekNum,
+              yearNumber: now.getFullYear(),
+              sourceEmailId: occ.sourceEmailId || undefined,
+              aiClassification: occ.aiClassification || undefined,
+              gpsLatitude: occ.gpsLatitude || undefined,
+              gpsLongitude: occ.gpsLongitude || undefined,
+              reservationLink: occ.reservationLink || undefined,
+              importedAt: now,
+            });
+            result.incidentsImported++;
+            result.details.push(`Ocorr\u00eancia: ${occ.description?.substring(0, 60) || "sem descri\u00e7\u00e3o"}`);
+          } catch (e: any) {
+            result.errors.push(`Erro ocorr\u00eancia: ${e.message}`);
+          }
+        }
+      }
+
+      // Import reviews
+      if (Array.isArray(reviews)) {
+        for (const rev of reviews) {
+          try {
+            if (rev.sourceEmailId) {
+              const existing = await getReviewBySourceEmailId(rev.sourceEmailId);
+              if (existing) { result.reviewsSkipped++; continue; }
+            }
+            const id = await createGoogleReview({
+              reviewerName: rev.reviewerName || "An\u00f3nimo",
+              rating: rev.rating || 5,
+              reviewText: rev.reviewText || "",
+              reviewDate: new Date(),
+              status: "pending_response",
+              sourceEmailId: rev.sourceEmailId || undefined,
+              importedAt: new Date(),
+            });
+            // Generate AI response if we have LLM access
+            if (id && rev.aiResponse) {
+              await updateGoogleReview(id, { aiResponse: rev.aiResponse, status: "ai_responded" });
+            } else if (id) {
+              try {
+                const llmResp = await invokeLLM({
+                  messages: [
+                    { role: "system", content: "\u00c9s o gestor de atendimento ao cliente de um parque de estacionamento premium. Responde a avalia\u00e7\u00f5es do Google de forma natural, calorosa e profissional em portugu\u00eas. M\u00e1ximo 3 frases." },
+                    { role: "user", content: `Avalia\u00e7\u00e3o de ${rev.rating} estrelas de ${rev.reviewerName}: "${rev.reviewText}". Gera uma resposta.` },
+                  ],
+                });
+                const aiText = typeof llmResp.choices[0].message.content === "string" ? llmResp.choices[0].message.content : "";
+                if (aiText) await updateGoogleReview(id, { aiResponse: aiText, status: "ai_responded" });
+              } catch { /* LLM optional */ }
+            }
+            result.reviewsImported++;
+            result.details.push(`Cr\u00edtica: ${rev.rating}\u2605 de ${rev.reviewerName}`);
+          } catch (e: any) {
+            result.errors.push(`Erro review: ${e.message}`);
+          }
+        }
+      }
+
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("[GmailImport] Error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  return r;
+}

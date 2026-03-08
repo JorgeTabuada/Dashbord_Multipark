@@ -1,0 +1,3810 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import * as XLSX from "xlsx";
+import { COOKIE_NAME } from "@shared/const";
+import { getSessionCookieOptions } from "./_core/cookies";
+import { systemRouter } from "./_core/systemRouter";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { invokeLLM } from "./_core/llm";
+import { notifyOwner } from "./_core/notification";
+import { storagePut } from "./storage";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import {
+  upsertUser,
+  getUserByOpenId,
+  getAllUsers,
+  updateUserRole,
+  createManualUser,
+  updateUser,
+  toggleUserActive,
+  getUserById,
+  getSuperAdmins,
+  getProjects,
+  getProjectById,
+  createProject,
+  updateProject,
+  deleteProject,
+  moveProject,
+  getProjectEmployees,
+  getEmployeeProjects,
+  assignEmployeeToProject,
+  removeEmployeeFromProject,
+  getTasks,
+  getTaskById,
+  createTask,
+  updateTask,
+  deleteTask,
+  getTaskStats,
+  getAllCategories,
+  createCategory,
+  seedDefaultCategories,
+  getExpenses,
+  getExpenseById,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+  getExpenseStats,
+  getUpcomingPayments,
+  getOverdueExpenses,
+  markOverdueExpenses,
+  logActivity,
+  getActivityLogs,
+  // RH
+  getAllEmployees,
+  getEmployeeById,
+  createEmployee,
+  updateEmployee,
+  deleteEmployee,
+  getEmployeeDocuments,
+  createEmployeeDocument,
+  createEmployeeDocumentsBatch,
+  deleteEmployeeDocument,
+  getDocumentChecklistForEmployee,
+  getAllEmployeesDocumentStatus,
+  getEmployeeSchedules,
+  upsertSchedule,
+  getTimeRecords,
+  createTimeRecord,
+  getMonthlyHours,
+  getExtraRates,
+  seedExtraRates,
+  updateExtraRate,
+  getHRStats,
+  // Marketing
+  getCampaigns,
+  getCampaignById,
+  createCampaign,
+  updateCampaign,
+  deleteCampaign,
+  getCampaignStats,
+  getAllDailyStats,
+  importDailyStats,
+  deleteDailyStat,
+  getMarketingExpenses,
+  createMarketingExpense,
+  updateMarketingExpense,
+  deleteMarketingExpense,
+  getMarketingDashboardStats,
+  getBookingRevenueByProject,
+  getCampaignByNameAndPlatform,
+  getExistingStatsForCampaignAndDateRange,
+  // Operacional
+  getVehicles,
+  getVehicleById,
+  createVehicle,
+  updateVehicle,
+  deleteVehicle,
+  getVehicleMovements,
+  createVehicleMovement,
+  getSpeedAlerts,
+  createSpeedAlert,
+  acknowledgeSpeedAlert,
+  getRadioTranscriptions,
+  createRadioTranscription,
+  getOperationalStats,
+  getVehicleDriverHistory,
+  // API Keys
+  getApiKeys,
+  createApiKey,
+  toggleApiKey,
+  deleteApiKey,
+  // Reclamações
+  getComplaints,
+  getComplaintById,
+  createComplaint,
+  updateComplaint,
+  deleteComplaint,
+  getComplaintMessages,
+  addComplaintMessage,
+  getComplaintPhotos,
+  addComplaintPhoto,
+  deleteComplaintPhoto,
+  getComplaintStats,
+  // Google Reviews
+  createGoogleReview,
+  getGoogleReviews,
+  getGoogleReviewById,
+  updateGoogleReview,
+  getGoogleReviewStats,
+  searchClientHistory,
+  // Formação e Apoio
+  getTrainingCategories,
+  createTrainingCategory,
+  deleteTrainingCategory,
+  getTrainingVideos,
+  createTrainingVideo,
+  deleteTrainingVideo,
+  getTrainingManuals,
+  createTrainingManual,
+  updateTrainingManual,
+  deleteTrainingManual,
+  getFAQs,
+  createFAQ,
+  updateFAQ,
+  deleteFAQ,
+  getQuizQuestions,
+  createQuizQuestion,
+  deleteQuizQuestion,
+  saveQuizAttempt,
+  getQuizRanking,
+  getCareerExams,
+  createCareerExam,
+  getCareerExamQuestions,
+  createCareerExamQuestion,
+  saveCareerExamAttempt,
+  getCareerExamAttempts,
+  deleteCareerExam,
+  // Perdidos e Achados
+  createLostFoundItem,
+  getLostFoundItems,
+  getLostFoundItemById,
+  updateLostFoundItem,
+  deleteLostFoundItem,
+  addLostFoundPhoto,
+  getLostFoundPhotos,
+  addLostFoundMessage,
+  getLostFoundMessages,
+  getLostFoundDriverRanking,
+  importBookingHistory,
+  getBookingHistoryByBookingId,
+  getBookingHistoryByPlate,
+  searchBookingHistory,
+  getBookingHistoryDriverStats,
+  getBookingHistoryCrossReference,
+  // Incidents
+  createIncident,
+  getIncidents,
+  getIncidentById,
+  updateIncident,
+  deleteIncident,
+  getIncidentStats,
+  getIncidentsByEmployee,
+  // Performance Evaluations
+  createPerformanceEvaluation,
+  getPerformanceEvaluations,
+  updatePerformanceEvaluation,
+  deletePerformanceEvaluation,
+  generateWeeklyEvaluation,
+  // Services
+  createService,
+  getServices,
+  updateService,
+  deleteService,
+  getServiceStats,
+  // Invoices
+  createInvoice,
+  getInvoices,
+  getInvoiceById,
+  updateInvoice,
+  deleteInvoice,
+  getInvoiceStats,
+  // Partnerships
+  createPartnership,
+  getPartnerships,
+  getPartnershipById,
+  updatePartnership,
+  deletePartnership,
+  createPartnershipTransaction,
+  getPartnershipTransactions,
+  // Partnership Invoices
+  createPartnershipInvoice,
+  getPartnershipInvoices,
+  updatePartnershipInvoice,
+  deletePartnershipInvoice,
+  markOverduePartnershipInvoices,
+  getPartnershipDashboardStats,
+  // Annual Reports
+  createAnnualReport,
+  getAnnualReports,
+  updateAnnualReport,
+  deleteAnnualReport,
+  generateAnnualSummary,
+  // MultiPark
+  getMultiparkBookings,
+  getMultiparkBookingByExternalId,
+  upsertMultiparkBooking,
+  getMultiparkBookingStats,
+  createSyncLog,
+  getSyncLogs,
+  // MultiPark KPIs
+  upsertDailySnapshot,
+  getDailySnapshots,
+  getSnapshotKPIs,
+  deleteSnapshotsByDateRange,
+  // Invites
+  createInviteToken,
+  getInviteByToken,
+  acceptInviteToken,
+  getInvitesByUser,
+  getInvitesByEmail,
+  linkInviteToOAuthUser,
+  getPayrollData,
+  getProjectCosts,
+  savePayslipRecord,
+  getPayslipHistoryList,
+  deletePayslipRecord,
+  getTaskAssignees,
+  setTaskAssignees,
+  getOverdueTasks,
+  getRecentlyCompletedTasks,
+  markTaskNotified,
+  getProjectHierarchyManagers,
+  // Speed monitoring
+  getSpeedLimits,
+  getDefaultSpeedLimit,
+  createSpeedLimit,
+  updateSpeedLimit,
+  deleteSpeedLimit,
+  recordSpeedViolation,
+  getSpeedViolations,
+  acknowledgeSpeedViolation,
+  getSpeedViolationStats,
+  // Daily driver history
+  createDailyDriverHistory,
+  getDailyDriverHistoryByDate,
+  getDailyDriverHistoryByUser,
+  getDailyDriverHistoryRange,
+  getDailyDriverStats,
+  // PDAs
+  createPda,
+  updatePda,
+  deletePda,
+  listPdas,
+  getPdaById,
+  // PDA Check-ins
+  createPdaCheckin,
+  checkoutPda,
+  getActiveCheckins,
+  getCheckinsByDate,
+  getCheckinsByPda,
+  // GPS Alerts
+  createGpsAlert,
+  getGpsAlerts,
+  acknowledgeGpsAlert,
+  getGpsAlertStats,
+  getLocalBookingsByAction,
+  searchBookingByRef,
+} from "./db";
+import { generatePayrollPdf } from "./payrollPdf";
+import { generatePayslipPdf, generateAllPayslipsPdf } from "./payslipPdf";
+
+import {
+  healthCheck as mpHealthCheck,
+  checkAvailability as mpCheckAvailability,
+  listParks as mpListParks,
+  testConnection as mpTestConnection,
+  getBookingsReportAllParks,
+  type ParkingType,
+  type VehicleType,
+  type BookingActionType,
+} from "./multipark";
+import { syncBookings } from "./jobs/multiparkBookingSync";
+
+import {
+  getZelloUsers,
+  getZelloChannels,
+  getZelloLocations,
+  getZelloUserHistory,
+  getZelloUserLocation,
+} from "./zello";
+import { collectDailyDriverData } from "./jobs/dailyDriverCollection";
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 7,
+  admin: 6,
+  supervisor: 5,
+  team_leader: 4,
+  backoffice: 3,
+  frontoffice: 2,
+  extra: 1,
+  user: 0,
+};
+
+function requireRole(userRole: string, minRole: string) {
+  if ((ROLE_HIERARCHY[userRole] ?? -1) < (ROLE_HIERARCHY[minRole] ?? 0)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acesso não autorizado." });
+  }
+}
+
+// ─── APP ROUTER ───────────────────────────────────────────────────────────────
+
+export const appRouter = router({
+  system: systemRouter,
+
+  // ── AUTH ────────────────────────────────────────────────────────────────────
+  auth: router({
+    me: publicProcedure.query((opts) => opts.ctx.user),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      return { success: true } as const;
+    }),
+  }),
+
+  // ── USERS ───────────────────────────────────────────────────────────────────
+  users: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return getAllUsers();
+    }),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getUserById(input.id);
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1, "Nome é obrigatório"),
+        email: z.string().email("Email inválido"),
+        role: z.string().default("user"),
+        department: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const newUser = await createManualUser(input);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "create",
+          entity: "user",
+          entityId: newUser?.id,
+          details: `Utilizador criado: ${input.name} (${input.email}) - Role: ${input.role}`,
+        });
+        return newUser;
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        userId: z.number(),
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        role: z.string().optional(),
+        department: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const isSelf = ctx.user.id === input.userId;
+        // Allow self-edit for name/email only; role/department changes require super_admin
+        if (!isSelf) {
+          requireRole(ctx.user.role, "super_admin");
+        }
+        const { userId, ...data } = input;
+        // If self-edit, only allow name and email changes
+        const safeData = isSelf && ctx.user.role !== "super_admin"
+          ? { name: data.name, email: data.email }
+          : data;
+        await updateUser(userId, safeData);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "update",
+          entity: "user",
+          entityId: userId,
+          details: `Utilizador atualizado: ${JSON.stringify(safeData)}`,
+        });
+        return { success: true };
+      }),
+    updateRole: protectedProcedure
+      .input(z.object({ userId: z.number(), role: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await updateUserRole(input.userId, input.role);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "update_role",
+          entity: "user",
+          entityId: input.userId,
+          details: `Role alterado para ${input.role}`,
+        });
+        return { success: true };
+      }),
+    toggleActive: protectedProcedure
+      .input(z.object({ userId: z.number(), isActive: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        if (input.userId === ctx.user.id) {
+          throw new Error("Não podes desativar a tua própria conta");
+        }
+        await toggleUserActive(input.userId, input.isActive);
+        await logActivity({
+          userId: ctx.user.id,
+          action: input.isActive ? "activate" : "deactivate",
+          entity: "user",
+          entityId: input.userId,
+          details: input.isActive ? "Utilizador ativado" : "Utilizador desativado",
+        });
+         return { success: true };
+      }),
+    sendInvite: protectedProcedure
+      .input(z.object({
+        userId: z.number(),
+        origin: z.string(), // frontend origin for building the invite link
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const targetUser = await getUserById(input.userId);
+        if (!targetUser) throw new TRPCError({ code: "NOT_FOUND", message: "Utilizador não encontrado" });
+        if (!targetUser.email) throw new TRPCError({ code: "BAD_REQUEST", message: "Utilizador não tem email" });
+        const invite = await createInviteToken({
+          email: targetUser.email,
+          userId: targetUser.id,
+          invitedById: ctx.user.id,
+        });
+        const inviteLink = `${input.origin}/convite/${invite.token}`;
+        await logActivity({
+          userId: ctx.user.id,
+          action: "create",
+          entity: "invite",
+          entityId: targetUser.id,
+          details: `Convite enviado para ${targetUser.email}`,
+        });
+        return {
+          success: true,
+          email: targetUser.email,
+          inviteLink,
+          token: invite.token,
+          expiresAt: invite.expiresAt,
+        };
+      }),
+    getInvites: protectedProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getInvitesByUser(input.userId);
+      }),
+    acceptInvite: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const invite = await getInviteByToken(input.token);
+        if (!invite) return { valid: false, reason: "Token inválido" };
+        if (invite.status === "accepted") return { valid: false, reason: "Este convite já foi utilizado" };
+        if (new Date() > invite.expiresAt) return { valid: false, reason: "Este convite expirou" };
+        return { valid: true, email: invite.email, userId: invite.userId };
+      }),
+    completeInvite: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Tens de fazer login primeiro" });
+        const invite = await getInviteByToken(input.token);
+        if (!invite) throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido" });
+        if (invite.status === "accepted") throw new TRPCError({ code: "BAD_REQUEST", message: "Convite já utilizado" });
+        if (new Date() > invite.expiresAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Convite expirado" });
+        // Link the OAuth user to the manually-created user record
+        await linkInviteToOAuthUser(
+          invite.userId,
+          ctx.user.openId,
+          ctx.user.name,
+          ctx.user.email,
+        );
+        await acceptInviteToken(input.token);
+        return { success: true };
+      }),
+  }),
+  // ── PROJECTS ────────────────────────────────────────────────────────────────
+  projects: router({
+    list: protectedProcedure.query(async () => getProjects()),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getProjectById(input.id)),
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        parentId: z.number().optional(),
+        level: z.enum(["group", "brand", "city", "project"]).default("project"),
+        color: z.string().optional(),
+        managerId: z.number().optional(),
+        budget: z.string().optional(),
+        partnerName: z.string().optional(),
+        partnerPercent: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await createProject({
+          name: input.name,
+          description: input.description ?? null,
+          parentId: input.parentId ?? null,
+          level: input.level,
+          color: input.color ?? "#6366f1",
+          managerId: input.managerId ?? null,
+          budget: input.budget ?? null,
+          partnerName: input.partnerName ?? null,
+          partnerPercent: input.partnerPercent ?? null,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "project", details: input.name });
+        return { success: true };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        level: z.enum(["group", "brand", "city", "project"]).optional(),
+        color: z.string().optional(),
+        managerId: z.number().nullable().optional(),
+        budget: z.string().nullable().optional(),
+        partnerName: z.string().nullable().optional(),
+        partnerPercent: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { id, ...data } = input;
+        await updateProject(id, data as any);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "project", entityId: id });
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteProject(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "project", entityId: input.id });
+        return { success: true };
+      }),
+    // Move project to another parent
+    move: protectedProcedure
+      .input(z.object({ id: z.number(), newParentId: z.number().nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await moveProject(input.id, input.newParentId);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "project", entityId: input.id, details: `moved to parent:${input.newParentId}` });
+        return { success: true };
+      }),
+    // Employee assignments
+    getEmployees: protectedProcedure
+      .input(z.object({ projectId: z.number() }))
+      .query(async ({ input }) => getProjectEmployees(input.projectId)),
+    assignEmployee: protectedProcedure
+      .input(z.object({ projectId: z.number(), employeeId: z.number(), role: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await assignEmployeeToProject({ projectId: input.projectId, employeeId: input.employeeId, role: input.role ?? "member" });
+        await logActivity({ userId: ctx.user.id, action: "assign", entity: "project_employee", entityId: input.projectId, details: `emp:${input.employeeId}` });
+        return { success: true };
+      }),
+    removeEmployee: protectedProcedure
+      .input(z.object({ projectId: z.number(), employeeId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await removeEmployeeFromProject(input.projectId, input.employeeId);
+        return { success: true };
+      }),
+    costs: protectedProcedure
+      .input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        return getProjectCosts(input?.year, input?.month);
+      }),
+  }),
+
+  // ── TASKS (KANBAN) ────────────────────────────────────────────────────────────
+  tasks: router({
+    list: protectedProcedure
+      .input(z.object({ projectId: z.number().optional(), assigneeId: z.number().optional(), status: z.string().optional() }).optional())
+      .query(async ({ input }) => getTasks(input ?? {})),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const task = await getTaskById(input.id);
+        if (!task) return null;
+        const assignees = await getTaskAssignees(input.id);
+        return { ...task, assignees };
+      }),
+    stats: protectedProcedure.query(async () => getTaskStats()),
+    getAssignees: protectedProcedure
+      .input(z.object({ taskId: z.number() }))
+      .query(async ({ input }) => getTaskAssignees(input.taskId)),
+    create: protectedProcedure
+      .input(z.object({
+        title: z.string().min(1),
+        description: z.string().optional(),
+        projectId: z.number().optional(),
+        assigneeId: z.number().optional(),
+        assigneeIds: z.array(z.number()).optional(),
+        priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+        dueDate: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await createTask({
+          title: input.title,
+          description: input.description ?? null,
+          projectId: input.projectId ?? null,
+          assigneeId: input.assigneeId ?? null,
+          createdById: ctx.user.id,
+          taskPriority: input.priority,
+          dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        });
+        // Set multi-assignees if provided
+        if (input.assigneeIds && input.assigneeIds.length > 0) {
+          // Get the newly created task ID
+          const tasks = await getTasks({});
+          const newest = tasks[0];
+          if (newest) await setTaskAssignees(newest.id, input.assigneeIds);
+        }
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "task", details: input.title });
+        return { success: true };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        projectId: z.number().nullable().optional(),
+        assigneeId: z.number().nullable().optional(),
+        assigneeIds: z.array(z.number()).optional(),
+        status: z.enum(["backlog", "todo", "in_progress", "review", "done"]).optional(),
+        priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+        dueDate: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, dueDate, assigneeIds, status, priority, ...rest } = input;
+        const data: any = { ...rest };
+        if (status !== undefined) data.taskStatus = status;
+        if (priority !== undefined) data.taskPriority = priority;
+        if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
+        if (status === "done") {
+          data.completedAt = new Date();
+          data.notifiedComplete = false;
+        }
+        await updateTask(id, data);
+        // Update multi-assignees if provided
+        if (assigneeIds !== undefined) {
+          await setTaskAssignees(id, assigneeIds);
+        }
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "task", entityId: id, details: input.status ?? "" });
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteTask(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "task", entityId: input.id });
+        return { success: true };
+      }),
+    // Check and send notifications for overdue/completed tasks
+    checkNotifications: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        requireRole(ctx.user.role, "admin");
+        const results: string[] = [];
+        
+        // Check overdue tasks
+        const overdue = await getOverdueTasks();
+        for (const task of overdue) {
+          const assignees = await getTaskAssignees(task.id);
+          const assigneeNames = assignees.map(a => a.employee?.fullName ?? "?").join(", ");
+          // Get hierarchy managers for notification
+          let managers: string[] = [];
+          if (task.projectId) {
+            const hierarchy = await getProjectHierarchyManagers(task.projectId);
+            for (const h of hierarchy) {
+              if (h.managerId) {
+                const mgr = await getUserById(h.managerId);
+                if (mgr) managers.push(`${mgr.name} (${h.level})`);
+              }
+            }
+          }
+          await notifyOwner({
+            title: `⚠️ Tarefa em atraso: ${task.title}`,
+            content: `A tarefa "${task.title}" ultrapassou o prazo (${task.dueDate ? new Date(task.dueDate).toLocaleDateString("pt-PT") : "?"}).\nResponsáveis: ${assigneeNames || "Nenhum"}\nHierarquia: ${managers.join(" → ") || "N/A"}`,
+          });
+          await markTaskNotified(task.id, "notifiedOverdue");
+          results.push(`Overdue: ${task.title}`);
+        }
+        
+        // Check recently completed tasks
+        const completed = await getRecentlyCompletedTasks();
+        for (const task of completed) {
+          const assignees = await getTaskAssignees(task.id);
+          const assigneeNames = assignees.map(a => a.employee?.fullName ?? "?").join(", ");
+          await notifyOwner({
+            title: `✅ Tarefa concluída: ${task.title}`,
+            content: `A tarefa "${task.title}" foi concluída.\nResponsáveis: ${assigneeNames || "Nenhum"}\nConcluída em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateString("pt-PT") : "agora"}`,
+          });
+          await markTaskNotified(task.id, "notifiedComplete");
+          results.push(`Completed: ${task.title}`);
+        }
+        
+        return { notified: results.length, details: results };
+      }),
+  }),
+
+  // ── CATEGORIES ──────────────────────────────────────────────────────────────
+  categories: router({
+    list: protectedProcedure.query(async () => {
+      await seedDefaultCategories();
+      return getAllCategories();
+    }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), department: z.string().optional(), color: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await createCategory({ ...input, department: input.department ?? null, color: input.color ?? "#6366f1" });
+        return { success: true };
+      }),
+  }),
+
+  // ── EXPENSES ────────────────────────────────────────────────────────────────
+  expenses: router({
+    list: protectedProcedure
+      .input(
+        z.object({
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          projectId: z.number().optional(),
+          categoryId: z.number().optional(),
+          userId: z.number().optional(),
+          status: z.string().optional(),
+          search: z.string().optional(),
+        }).optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const filters: Record<string, any> = {};
+        if (input?.startDate) filters.startDate = new Date(input.startDate);
+        if (input?.endDate) filters.endDate = new Date(input.endDate);
+        if (input?.projectId) filters.projectId = input.projectId;
+        if (input?.categoryId) filters.categoryId = input.categoryId;
+        if (input?.status) filters.status = input.status;
+        if (input?.search) filters.search = input.search;
+
+        // Non-admins only see their own expenses
+        const role = ctx.user.role;
+        if (!["super_admin", "admin", "supervisor"].includes(role)) {
+          filters.userId = ctx.user.id;
+        } else if (input?.userId) {
+          filters.userId = input.userId;
+        }
+
+        return getExpenses(filters);
+      }),
+
+    byId: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getExpenseById(input.id)),
+
+    create: protectedProcedure
+      .input(
+        z.object({
+          supplier: z.string().optional(),
+          description: z.string().optional(),
+          amount: z.string(),
+          currency: z.string().default("EUR"),
+          paymentMethod: z.enum(["cash", "card", "transfer", "check", "other"]).optional(),
+          expenseDate: z.string(),
+          paymentDueDate: z.string().nullable().optional(),
+          categoryId: z.number().optional(),
+          projectId: z.number().optional(),
+          buyerId: z.number().optional(),
+          invoiceImageUrl: z.string().optional(),
+          invoiceImageKey: z.string().optional(),
+          extractedByAi: z.boolean().default(false),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const expense = await createExpense({
+          supplier: input.supplier ?? null,
+          description: input.description ?? null,
+          amount: input.amount,
+          currency: input.currency,
+          paymentMethod: input.paymentMethod ?? null,
+          expenseDate: new Date(input.expenseDate),
+          paymentDueDate: (input.paymentDueDate && input.paymentDueDate !== 'null') ? new Date(input.paymentDueDate) : null,
+          categoryId: input.categoryId ?? null,
+          projectId: input.projectId ?? null,
+          buyerId: input.buyerId ?? null,
+          insertedById: ctx.user.id,
+          invoiceImageUrl: input.invoiceImageUrl ?? null,
+          invoiceImageKey: input.invoiceImageKey ?? null,
+          extractedByAi: input.extractedByAi,
+          notes: input.notes ?? null,
+          status: "pending",
+        });
+
+        await logActivity({
+          userId: ctx.user.id,
+          action: "create",
+          entity: "expense",
+          entityId: undefined,
+          details: `Despesa criada: ${input.supplier ?? "Sem fornecedor"} - ${input.amount}€`,
+        });
+
+        // Notify super admins if there's a payment due date
+        if (input.paymentDueDate && input.paymentDueDate !== 'null') {
+          const admins = await getSuperAdmins();
+          for (const admin of admins) {
+            await notifyOwner({
+              title: "Nova despesa com data de pagamento",
+              content: `Despesa de ${input.amount}€ (${input.supplier ?? "Sem fornecedor"}) com vencimento em ${new Date(input.paymentDueDate).toLocaleDateString("pt-PT")}.`,
+            });
+          }
+        }
+
+        return { success: true };
+      }),
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          supplier: z.string().optional(),
+          description: z.string().optional(),
+          amount: z.string().optional(),
+          paymentMethod: z.enum(["cash", "card", "transfer", "check", "other"]).optional(),
+          expenseDate: z.string().optional(),
+          paymentDueDate: z.string().optional(),
+          categoryId: z.number().optional(),
+          projectId: z.number().optional(),
+          status: z.enum(["pending", "paid", "overdue", "cancelled"]).optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, expenseDate, paymentDueDate, ...rest } = input;
+        const updateData: Record<string, any> = { ...rest };
+        if (expenseDate) updateData.expenseDate = new Date(expenseDate);
+        if (paymentDueDate) updateData.paymentDueDate = new Date(paymentDueDate);
+        if (rest.status === "paid") updateData.paidAt = new Date();
+
+        await updateExpense(id, updateData);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "update",
+          entity: "expense",
+          entityId: id,
+          details: `Despesa #${id} atualizada`,
+        });
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await deleteExpense(input.id);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "delete",
+          entity: "expense",
+          entityId: input.id,
+          details: `Despesa #${input.id} eliminada`,
+        });
+        return { success: true };
+      }),
+
+    // ── UPLOAD INVOICE ───────────────────────────────────────────────────────
+    uploadInvoice: protectedProcedure
+      .input(
+        z.object({
+          fileName: z.string(),
+          fileBase64: z.string(),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const suffix = Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+        const key = `invoices/${ctx.user.id}/${suffix}-${input.fileName}`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        return { url, key };
+      }),
+
+    // ── EXTRACT WITH LLM ─────────────────────────────────────────────────────
+    extractFromImage: protectedProcedure
+      .input(z.object({ imageUrl: z.string() }))
+      .mutation(async ({ input }) => {
+        const llmMessages: import("./_core/llm").Message[] = [
+          {
+            role: "system",
+            content: "És um assistente especializado em extrair dados de faturas. Analisa a imagem e extrai os dados estruturados. Responde APENAS em JSON válido, sem markdown.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: input.imageUrl, detail: "high" } } as import("./_core/llm").ImageContent,
+              { type: "text", text: 'Extrai os dados desta fatura e devolve em JSON com os campos: supplier (nome do fornecedor), description (descrição dos produtos/serviços), amount (valor total como string numérica, ex: "45.90"), currency (moeda, ex: "EUR"), paymentMethod (cash/card/transfer/check/other), expenseDate (data da fatura em formato ISO YYYY-MM-DD), paymentDueDate (data de vencimento em formato ISO YYYY-MM-DD, ou null se não existir). Se não conseguires extrair um campo, usa null.' } as import("./_core/llm").TextContent,
+            ],
+          },
+        ];
+        const response = await invokeLLM({
+          messages: llmMessages,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "invoice_data",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  supplier: { type: ["string", "null"] },
+                  description: { type: ["string", "null"] },
+                  amount: { type: ["string", "null"] },
+                  currency: { type: ["string", "null"] },
+                  paymentMethod: { type: ["string", "null"] },
+                  expenseDate: { type: ["string", "null"] },
+                  paymentDueDate: { type: ["string", "null"] },
+                },
+                required: ["supplier", "description", "amount", "currency", "paymentMethod", "expenseDate", "paymentDueDate"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const rawContent = response.choices?.[0]?.message?.content;
+        const content = typeof rawContent === "string" ? rawContent : null;
+        if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Sem resposta do LLM" });
+
+        try {
+          const parsed = JSON.parse(content);
+          // Sanitize "null" strings returned by LLM
+          const sanitize = (v: any) => (v === 'null' || v === 'undefined' || v === '' ? null : v);
+          return {
+            supplier: sanitize(parsed.supplier),
+            description: sanitize(parsed.description),
+            amount: sanitize(parsed.amount),
+            currency: sanitize(parsed.currency) ?? 'EUR',
+            paymentMethod: sanitize(parsed.paymentMethod),
+            expenseDate: sanitize(parsed.expenseDate),
+            paymentDueDate: sanitize(parsed.paymentDueDate),
+          };
+        } catch {
+          return { supplier: null, description: null, amount: null, currency: "EUR", paymentMethod: null, expenseDate: null, paymentDueDate: null };
+        }
+      }),
+
+    // ── DASHBOARD STATS ──────────────────────────────────────────────────────
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return getExpenseStats();
+    }),
+
+    // ── UPCOMING PAYMENTS ────────────────────────────────────────────────────
+    upcomingPayments: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return getUpcomingPayments(7);
+    }),
+
+    // ── EXPORT EXCEL ─────────────────────────────────────────────────────────
+    exportExcel: protectedProcedure
+      .input(
+        z.object({
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          projectId: z.number().optional(),
+          categoryId: z.number().optional(),
+          userId: z.number().optional(),
+          status: z.string().optional(),
+          search: z.string().optional(),
+        }).optional()
+      )
+      .mutation(async ({ ctx, input }) => {
+        const filters: Record<string, any> = {};
+        if (input?.startDate) filters.startDate = new Date(input.startDate);
+        if (input?.endDate) filters.endDate = new Date(input.endDate);
+        if (input?.projectId) filters.projectId = input.projectId;
+        if (input?.categoryId) filters.categoryId = input.categoryId;
+        if (input?.status) filters.status = input.status;
+        if (input?.search) filters.search = input.search;
+
+        const role = ctx.user.role;
+        if (!["super_admin", "admin", "supervisor"].includes(role)) {
+          filters.userId = ctx.user.id;
+        } else if (input?.userId) {
+          filters.userId = input.userId;
+        }
+
+        const rows = await getExpenses(filters);
+
+        const STATUS_MAP: Record<string, string> = {
+          pending: "Pendente",
+          paid: "Pago",
+          overdue: "Em Atraso",
+          cancelled: "Cancelado",
+        };
+        const METHOD_MAP: Record<string, string> = {
+          cash: "Numerário",
+          card: "Cartão",
+          transfer: "Transferência",
+          check: "Cheque",
+          other: "Outro",
+        };
+
+        const data = rows.map((r) => ({
+          "Data": r.expense.expenseDate ? new Date(r.expense.expenseDate).toLocaleDateString("pt-PT") : "",
+          "Fornecedor": r.expense.supplier ?? "",
+          "Descrição": r.expense.description ?? "",
+          "Valor (€)": parseFloat(String(r.expense.amount ?? 0)),
+          "Moeda": r.expense.currency ?? "EUR",
+          "Método Pagamento": METHOD_MAP[r.expense.paymentMethod ?? ""] ?? r.expense.paymentMethod ?? "",
+          "Estado": STATUS_MAP[r.expense.status ?? ""] ?? r.expense.status ?? "",
+          "Categoria": r.category?.name ?? "",
+          "Departamento": r.category?.department ?? "",
+          "Projeto": r.project?.name ?? "",
+          "Registado por": r.insertedBy?.name ?? "",
+          "Data Vencimento": r.expense.paymentDueDate ? new Date(r.expense.paymentDueDate).toLocaleDateString("pt-PT") : "",
+          "Data Pagamento": r.expense.paidAt ? new Date(r.expense.paidAt).toLocaleDateString("pt-PT") : "",
+          "Extraído por IA": r.expense.extractedByAi ? "Sim" : "Não",
+          "Notas": r.expense.notes ?? "",
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+
+        // Auto-width columns
+        const colWidths = Object.keys(data[0] ?? {}).map((key) => ({
+          wch: Math.max(key.length, ...data.map((r) => String((r as any)[key] ?? "").length)) + 2,
+        }));
+        ws["!cols"] = colWidths;
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Despesas");
+
+        // Add summary sheet
+        const totalAmount = data.reduce((s, r) => s + (r["Valor (€)"] as number), 0);
+        const summaryData = [
+          { "Resumo": "Total de Registos", "Valor": data.length },
+          { "Resumo": "Total (€)", "Valor": totalAmount },
+          { "Resumo": "Exportado em", "Valor": new Date().toLocaleString("pt-PT") },
+          { "Resumo": "Exportado por", "Valor": ctx.user.name ?? ctx.user.email ?? "" },
+        ];
+        const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+        wsSummary["!cols"] = [{ wch: 20 }, { wch: 30 }];
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
+
+        const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        const base64 = Buffer.from(buffer).toString("base64");
+
+        return { base64, filename: `despesas-${new Date().toISOString().slice(0, 10)}.xlsx`, count: data.length };
+      }),
+
+    // ── CHECK OVERDUE ────────────────────────────────────────────────────────
+    checkOverdue: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      await markOverdueExpenses();
+      const overdue = await getOverdueExpenses();
+
+      if (overdue.length > 0) {
+        await notifyOwner({
+          title: `⚠️ ${overdue.length} despesa(s) em atraso`,
+          content: overdue
+            .map(
+              (o) =>
+                `• ${o.expense.supplier ?? "Sem fornecedor"}: ${o.expense.amount}€ (venceu em ${o.expense.paymentDueDate?.toLocaleDateString("pt-PT")})`
+            )
+            .join("\n"),
+        });
+      }
+
+      return { updated: overdue.length };
+    }),
+  }),
+
+  // ── LOGSS ───────────────────────────────────────────────────────────────────────────────────
+  logs: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      return getActivityLogs(200);
+    }),
+  }),
+
+  // ── RH ───────────────────────────────────────────────────────────────────────────────────────
+  rh: router({
+    // ── STATS ──────────────────────────────────────────────────────────────────────────────────
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      await seedExtraRates();
+      return getHRStats();
+    }),
+
+    // ── EMPLOYEES ─────────────────────────────────────────────────────────────────────────────────
+    list: protectedProcedure
+      .input(z.object({ isActive: z.boolean().optional(), position: z.string().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getAllEmployees({ isActive: input?.isActive, position: input?.position });
+      }),
+
+    byId: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getEmployeeById(input.id);
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        fullName: z.string().min(1),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        nif: z.string().optional(),
+        nib: z.string().optional(),
+        address: z.string().optional(),
+        birthDate: z.string().optional(),
+        nationality: z.string().optional(),
+        position: z.enum(["director","supervisor","team_leader","backoffice","frontoffice","senior_driver","driver","extra"]),
+        extraLevel: z.number().min(1).max(5).optional(),
+        department: z.string().optional(),
+        projectId: z.number().optional(),
+        contractType: z.enum(["permanent","fixed_term","extra"]).optional(),
+        contractStart: z.string().optional(),
+        contractEnd: z.string().optional(),
+        monthlySalary: z.string().optional(),
+        mealAllowancePerDay: z.string().optional(),
+        userId: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await createEmployee({
+          fullName: input.fullName,
+          email: input.email ?? null,
+          phone: input.phone ?? null,
+          nif: input.nif ?? null,
+          nib: input.nib ?? null,
+          address: input.address ?? null,
+          birthDate: input.birthDate ? new Date(input.birthDate) : null,
+          nationality: input.nationality ?? null,
+          position: input.position,
+          extraLevel: input.extraLevel ?? null,
+          department: input.department ?? null,
+          projectId: input.projectId ?? null,
+          contractType: input.contractType ?? "permanent",
+          contractStart: input.contractStart ? new Date(input.contractStart) : null,
+          contractEnd: input.contractEnd ? new Date(input.contractEnd) : null,
+          monthlySalary: input.monthlySalary ?? null,
+          mealAllowancePerDay: input.mealAllowancePerDay ?? null,
+          userId: input.userId ?? null,
+          isActive: true,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "employee", details: `Colaborador criado: ${input.fullName}` });
+        return { success: true };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        fullName: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        nif: z.string().optional(),
+        nib: z.string().optional(),
+        address: z.string().optional(),
+        birthDate: z.string().optional(),
+        nationality: z.string().optional(),
+        photoUrl: z.string().optional(),
+        photoKey: z.string().optional(),
+        position: z.enum(["director","supervisor","team_leader","backoffice","frontoffice","senior_driver","driver","extra"]).optional(),
+        extraLevel: z.number().min(1).max(5).optional(),
+        department: z.string().optional(),
+        projectId: z.number().optional(),
+        contractType: z.enum(["permanent","fixed_term","extra"]).optional(),
+        contractStart: z.string().optional(),
+        contractEnd: z.string().optional(),
+        monthlySalary: z.string().optional(),
+        mealAllowancePerDay: z.string().optional(),
+        userId: z.number().nullable().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { id, birthDate, contractStart, contractEnd, ...rest } = input;
+        const data: any = { ...rest };
+        if (birthDate) data.birthDate = new Date(birthDate);
+        if (contractStart) data.contractStart = new Date(contractStart);
+        if (contractEnd) data.contractEnd = new Date(contractEnd);
+        await updateEmployee(id, data);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "employee", entityId: id, details: `Colaborador atualizado: ${id}` });
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteEmployee(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "employee", entityId: input.id, details: `Colaborador desativado: ${input.id}` });
+        return { success: true };
+      }),
+
+    uploadPhoto: protectedProcedure
+      .input(z.object({ employeeId: z.number(), fileBase64: z.string(), mimeType: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { storagePut } = await import("./storage");
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const ext = input.mimeType.split("/")[1] ?? "jpg";
+        const key = `employees/${input.employeeId}/photo-${Date.now()}.${ext}`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        await updateEmployee(input.employeeId, { photoUrl: url, photoKey: key });
+        return { url, key };
+      }),
+
+    // ── DOCUMENTS ─────────────────────────────────────────────────────────────────────────────────
+    documents: router({
+      list: protectedProcedure
+        .input(z.object({ employeeId: z.number() }))
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getEmployeeDocuments(input.employeeId);
+        }),
+
+      upload: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          docType: z.enum(["id_card","residence_permit","driving_license","nib_proof","address_proof","contract","extra_contract","contract_annex","responsibility_term","work_accident_insurance","photo","other"]),
+          label: z.string().optional(),
+          fileBase64: z.string(),
+          mimeType: z.string(),
+          fileName: z.string(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { storagePut } = await import("./storage");
+          const buffer = Buffer.from(input.fileBase64, "base64");
+          const key = `employees/${input.employeeId}/docs/${input.docType}-${Date.now()}-${input.fileName}`;
+          const { url } = await storagePut(key, buffer, input.mimeType);
+          await createEmployeeDocument({
+            employeeId: input.employeeId,
+            docType: input.docType,
+            label: input.label ?? input.fileName,
+            fileUrl: url,
+            fileKey: key,
+            mimeType: input.mimeType,
+            uploadedById: ctx.user.id,
+          });
+          await logActivity({ userId: ctx.user.id, action: "upload", entity: "employee_document", entityId: input.employeeId, details: `Documento carregado: ${input.docType}` });
+          return { url, key };
+        }),
+
+      uploadBatch: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          docType: z.enum(["id_card","residence_permit","driving_license","nib_proof","address_proof","contract","extra_contract","contract_annex","responsibility_term","work_accident_insurance","photo","other"]),
+          files: z.array(z.object({
+            fileBase64: z.string(),
+            mimeType: z.string(),
+            fileName: z.string(),
+            label: z.string().optional(),
+          })),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { storagePut } = await import("./storage");
+          const results: { url: string; key: string }[] = [];
+          for (const file of input.files) {
+            const buffer = Buffer.from(file.fileBase64, "base64");
+            const key = `employees/${input.employeeId}/docs/${input.docType}-${Date.now()}-${Math.random().toString(36).slice(2)}-${file.fileName}`;
+            const { url } = await storagePut(key, buffer, file.mimeType);
+            await createEmployeeDocument({
+              employeeId: input.employeeId,
+              docType: input.docType,
+              label: file.label ?? file.fileName,
+              fileUrl: url,
+              fileKey: key,
+              mimeType: file.mimeType,
+              uploadedById: ctx.user.id,
+            });
+            results.push({ url, key });
+          }
+          await logActivity({ userId: ctx.user.id, action: "upload", entity: "employee_document", entityId: input.employeeId, details: `${input.files.length} documentos carregados: ${input.docType}` });
+          return results;
+        }),
+      checklist: protectedProcedure
+        .input(z.object({ employeeId: z.number() }))
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getDocumentChecklistForEmployee(input.employeeId);
+        }),
+      allStatus: protectedProcedure
+        .query(async ({ ctx }) => {
+          requireRole(ctx.user.role, "admin");
+          const map = await getAllEmployeesDocumentStatus();
+          const MANDATORY = ["photo","id_card","driving_license","nib_proof","address_proof","contract","responsibility_term"];
+          const result: Record<number, { total: number; present: number; missing: string[] }> = {};
+          if (map instanceof Map) {
+            map.forEach((types, empId) => {
+              const missing = MANDATORY.filter(t => !types.has(t));
+              result[empId] = { total: MANDATORY.length, present: MANDATORY.length - missing.length, missing };
+            });
+          }
+          return result;
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await deleteEmployeeDocument(input.id);
+          return { success: true };
+        }),
+    }),
+
+    // ── SCHEDULES ─────────────────────────────────────────────────────────────────────────────────
+    schedules: router({
+      list: protectedProcedure
+        .input(z.object({ employeeId: z.number() }))
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getEmployeeSchedules(input.employeeId);
+        }),
+
+      upsert: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          weekday: z.number().min(0).max(6),
+          startTime: z.string(),
+          endTime: z.string(),
+          isWorkDay: z.boolean(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await upsertSchedule(input);
+          return { success: true };
+        }),
+    }),
+
+    // ── TIME RECORDS ────────────────────────────────────────────────────────────────────────────────
+    timeRecords: router({
+      list: protectedProcedure
+        .input(z.object({ employeeId: z.number(), startDate: z.string().optional(), endDate: z.string().optional() }))
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getTimeRecords(
+            input.employeeId,
+            input.startDate ? new Date(input.startDate) : undefined,
+            input.endDate ? new Date(input.endDate) : undefined,
+          );
+        }),
+
+      checkIn: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          photoBase64: z.string().optional(),
+          mimeType: z.string().optional(),
+          latitude: z.string().optional(),
+          longitude: z.string().optional(),
+          locationName: z.string().optional(),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          let photoUrl: string | null = null;
+          let photoKey: string | null = null;
+          if (input.photoBase64 && input.mimeType) {
+            const { storagePut } = await import("./storage");
+            const buffer = Buffer.from(input.photoBase64, "base64");
+            const ext = input.mimeType.split("/")[1] ?? "jpg";
+            const key = `employees/${input.employeeId}/ponto/${Date.now()}.${ext}`;
+            const result = await storagePut(key, buffer, input.mimeType);
+            photoUrl = result.url;
+            photoKey = key;
+          }
+          await createTimeRecord({
+            employeeId: input.employeeId,
+            type: "check_in",
+            recordedAt: new Date(),
+            photoUrl,
+            photoKey,
+            latitude: input.latitude ?? null,
+            longitude: input.longitude ?? null,
+            locationName: input.locationName ?? null,
+            notes: input.notes ?? null,
+          });
+          await logActivity({ userId: ctx.user.id, action: "check_in", entity: "time_record", entityId: input.employeeId, details: `Check-in: ${input.locationName ?? ""}` });
+          return { success: true };
+        }),
+
+      checkOut: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          photoBase64: z.string().optional(),
+          mimeType: z.string().optional(),
+          latitude: z.string().optional(),
+          longitude: z.string().optional(),
+          locationName: z.string().optional(),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          let photoUrl: string | null = null;
+          let photoKey: string | null = null;
+          if (input.photoBase64 && input.mimeType) {
+            const { storagePut } = await import("./storage");
+            const buffer = Buffer.from(input.photoBase64, "base64");
+            const ext = input.mimeType.split("/")[1] ?? "jpg";
+            const key = `employees/${input.employeeId}/ponto/${Date.now()}-out.${ext}`;
+            const result = await storagePut(key, buffer, input.mimeType);
+            photoUrl = result.url;
+            photoKey = key;
+          }
+          // Calculate hours since last check-in
+          const records = await getTimeRecords(input.employeeId);
+          const lastCheckIn = records.find(r => r.type === "check_in");
+          let hoursWorked: string | null = null;
+          if (lastCheckIn) {
+            const diff = (new Date().getTime() - new Date(lastCheckIn.recordedAt).getTime()) / 3600000;
+            hoursWorked = diff.toFixed(2);
+          }
+          await createTimeRecord({
+            employeeId: input.employeeId,
+            type: "check_out",
+            recordedAt: new Date(),
+            photoUrl,
+            photoKey,
+            latitude: input.latitude ?? null,
+            longitude: input.longitude ?? null,
+            locationName: input.locationName ?? null,
+            hoursWorked,
+            notes: input.notes ?? null,
+          });
+          await logActivity({ userId: ctx.user.id, action: "check_out", entity: "time_record", entityId: input.employeeId, details: `Check-out: ${hoursWorked}h` });
+          return { success: true, hoursWorked };
+        }),
+
+      monthlyHours: protectedProcedure
+        .input(z.object({ employeeId: z.number(), year: z.number(), month: z.number() }))
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getMonthlyHours(input.employeeId, input.year, input.month);
+        }),
+    }),
+
+    // ── PAYROLL ──────────────────────────────────────────────────────────────────────────────────
+    payroll: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number().min(1).max(12) }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getPayrollData(input.year, input.month);
+      }),
+
+    payrollPdf: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number().min(1).max(12) }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const pdfBuffer = await generatePayrollPdf(input.year, input.month);
+        const { storagePut } = await import("./storage");
+        const fileName = `folha_ordenados_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
+        const key = `payroll/${fileName}_${Date.now()}.pdf`;
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        await savePayslipRecord({ year: input.year, month: input.month, type: "payroll", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        return { url, fileName };
+      }),
+
+    payslipPdf: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number().min(1).max(12), employeeId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const pdfBuffer = await generatePayslipPdf(input.year, input.month, input.employeeId);
+        const { storagePut } = await import("./storage");
+        // Get employee name for history
+        const payrollData = await getPayrollData(input.year, input.month);
+        const emp = payrollData.find((e: any) => e.employeeId === input.employeeId);
+        const empName = emp?.fullName ?? `Funcionário #${input.employeeId}`;
+        const fileName = `recibo_${empName.replace(/[^a-zA-Z0-9]/g, "_")}_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
+        const key = `payslips/${fileName}_${Date.now()}.pdf`;
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        await savePayslipRecord({ employeeId: input.employeeId, employeeName: empName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        return { url };
+      }),
+
+    allPayslipsPdf: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number().min(1).max(12) }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const payslips = await generateAllPayslipsPdf(input.year, input.month);
+        const { storagePut } = await import("./storage");
+        const results: Array<{ employeeId: number; fullName: string; url: string }> = [];
+        for (const ps of payslips) {
+          const safeName = ps.fullName.replace(/[^a-zA-Z0-9]/g, "_");
+          const fileName = `recibo_${safeName}_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
+          const key = `payslips/${fileName}_${Date.now()}.pdf`;
+          const { url } = await storagePut(key, ps.buffer, "application/pdf");
+          results.push({ employeeId: ps.employeeId, fullName: ps.fullName, url });
+          await savePayslipRecord({ employeeId: ps.employeeId, employeeName: ps.fullName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        }
+        return { payslips: results, count: results.length };
+      }),
+
+    sendPayrollEmail: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number().min(1).max(12), email: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        // Generate PDF and upload to S3
+        const pdfBuffer = await generatePayrollPdf(input.year, input.month);
+        const { storagePut } = await import("./storage");
+        const monthNames = ["Janeiro","Fevereiro","Mar\u00e7o","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+        const monthName = monthNames[input.month - 1];
+        const key = `payroll/folha_ordenados_${input.year}_${String(input.month).padStart(2, "0")}_${Date.now()}.pdf`;
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        // Notify the owner with the PDF link so they can forward it
+        const { notifyOwner } = await import("./_core/notification");
+        await notifyOwner({
+          title: `Folha de Ordenados - ${monthName} ${input.year}`,
+          content: `A folha de ordenados de ${monthName} ${input.year} foi gerada e est\u00e1 pronta para enviar ao contabilista (${input.email}).\n\nLink do PDF: ${url}`,
+        });
+        return { url, email: input.email, monthName, year: input.year };
+      }),
+
+    // ── EXTRA RATES ─────────────────────────────────────────────────────────────────────────────────
+    extraRates: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "admin");
+        await seedExtraRates();
+        return getExtraRates();
+      }),
+
+      update: protectedProcedure
+        .input(z.object({ level: z.number(), hourlyRate: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "super_admin");
+          await updateExtraRate(input.level, input.hourlyRate);
+          return { success: true };
+        }),
+    }),
+  }),
+
+  // ─── MARKETING ────────────────────────────────────────────────────────────
+  marketing: router({
+    dashboard: protectedProcedure
+      .input(z.object({ from: z.string().optional(), to: z.string().optional(), projectId: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const from = input?.from ? new Date(input.from) : undefined;
+        const to = input?.to ? new Date(input.to) : undefined;
+        return getMarketingDashboardStats({ from, to, projectId: input?.projectId });
+      }),
+
+    bookingRevenue: protectedProcedure
+      .input(z.object({ from: z.string().optional(), to: z.string().optional(), projectId: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getBookingRevenueByProject({ from: input?.from, to: input?.to, projectId: input?.projectId });
+      }),
+
+    // ── CAMPAIGNS ──
+    campaigns: router({
+      list: protectedProcedure
+        .input(z.object({ platform: z.string().optional(), projectId: z.number().optional(), status: z.string().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getCampaigns({ platform: input?.platform, projectId: input?.projectId, status: input?.status });
+        }),
+      get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getCampaignById(input.id);
+      }),
+      create: protectedProcedure
+        .input(z.object({
+          name: z.string().min(1),
+          platform: z.enum(["google_ads", "meta_ads", "instagram", "other"]),
+          projectId: z.number().optional(),
+          status: z.enum(["active", "paused", "completed"]).optional(),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          budget: z.string().optional(),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const id = await createCampaign({
+            name: input.name,
+            platform: input.platform,
+            projectId: input.projectId ?? null,
+            status: input.status ?? "active",
+            startDate: input.startDate ? new Date(input.startDate) : null,
+            endDate: input.endDate ? new Date(input.endDate) : null,
+            budget: input.budget ?? null,
+            notes: input.notes ?? null,
+            createdById: ctx.user.id,
+          });
+          await logActivity({ userId: ctx.user.id, action: "create", entity: "campaign", entityId: id, details: `Campanha: ${input.name}` });
+          return { id };
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          name: z.string().optional(),
+          platform: z.enum(["google_ads", "meta_ads", "instagram", "other"]).optional(),
+          projectId: z.number().nullable().optional(),
+          status: z.enum(["active", "paused", "completed"]).optional(),
+          startDate: z.string().nullable().optional(),
+          endDate: z.string().nullable().optional(),
+          budget: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { id, ...data } = input;
+          const updateData: any = { ...data };
+          if (data.startDate !== undefined) updateData.startDate = data.startDate ? new Date(data.startDate) : null;
+          if (data.endDate !== undefined) updateData.endDate = data.endDate ? new Date(data.endDate) : null;
+          await updateCampaign(id, updateData);
+          await logActivity({ userId: ctx.user.id, action: "update", entity: "campaign", entityId: id, details: `Campanha atualizada` });
+          return { success: true };
+        }),
+      delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteCampaign(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "campaign", entityId: input.id, details: `Campanha eliminada` });
+        return { success: true };
+      }),
+    }),
+
+    // ── DAILY STATS ──
+    stats: router({
+      byCampaign: protectedProcedure.input(z.object({ campaignId: z.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        return getCampaignStats(input.campaignId);
+      }),
+      all: protectedProcedure
+        .input(z.object({ from: z.string().optional(), to: z.string().optional(), projectId: z.number().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "super_admin");
+          const from = input?.from ? new Date(input.from) : undefined;
+          const to = input?.to ? new Date(input.to) : undefined;
+          return getAllDailyStats({ from, to, projectId: input?.projectId });
+        }),
+      import: protectedProcedure
+        .input(z.object({
+          campaignId: z.number(),
+          rows: z.array(z.object({
+            date: z.string(),
+            spend: z.string(),
+            impressions: z.number().optional(),
+            clicks: z.number().optional(),
+            conversions: z.number().optional(),
+            conversionValue: z.string().optional(),
+          })),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const rows = input.rows.map(r => ({
+            campaignId: input.campaignId,
+            date: new Date(r.date),
+            spend: r.spend,
+            impressions: r.impressions ?? 0,
+            clicks: r.clicks ?? 0,
+            conversions: r.conversions ?? 0,
+            conversionValue: r.conversionValue ?? "0",
+            cpc: r.clicks && r.clicks > 0 ? (parseFloat(r.spend) / r.clicks).toFixed(4) : null,
+            ctr: r.impressions && r.impressions > 0 ? ((r.clicks ?? 0) / r.impressions * 100).toFixed(4) : null,
+            costPerConversion: r.conversions && r.conversions > 0 ? (parseFloat(r.spend) / r.conversions).toFixed(2) : null,
+            importedById: ctx.user.id,
+          }));
+          await importDailyStats(rows);
+          await logActivity({ userId: ctx.user.id, action: "import", entity: "campaign_stats", entityId: input.campaignId, details: `${rows.length} registos importados` });
+          return { count: rows.length };
+        }),
+      delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteDailyStat(input.id);
+        return { success: true };
+      }),
+
+      // ── IMPORTAÇÃO GOOGLE ADS CSV (com dedup) ──
+      importGoogleAdsReport: protectedProcedure
+        .input(z.object({
+          dateRange: z.object({ start: z.string(), end: z.string() }),
+          campaigns: z.array(z.object({
+            name: z.string(),
+            status: z.enum(["active", "paused", "completed"]),
+            budget: z.number(),
+            campaignType: z.string(),
+            impressions: z.number(),
+            interactions: z.number(),
+            cost: z.number(),
+            clicks: z.number(),
+            conversions: z.number(),
+            cpc: z.number(),
+            ctr: z.number(),
+            costPerConversion: z.number(),
+          })),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const startDate = new Date(input.dateRange.start);
+          const endDate = new Date(input.dateRange.end);
+          let created = 0;
+          let updated = 0;
+          let skipped = 0;
+          const details: string[] = [];
+
+          for (const c of input.campaigns) {
+            // Skip campaigns with no data at all
+            if (c.cost === 0 && c.clicks === 0 && c.impressions === 0) {
+              // Still create the campaign if it doesn't exist, but skip stats
+              let campaign = await getCampaignByNameAndPlatform(c.name, "google_ads");
+              if (!campaign) {
+                const id = await createCampaign({
+                  name: c.name,
+                  platform: "google_ads",
+                  status: c.status,
+                  budget: c.budget > 0 ? String(c.budget) : null,
+                  notes: `Tipo: ${c.campaignType}`,
+                  createdById: ctx.user.id,
+                });
+                details.push(`✅ Campanha criada (sem dados): ${c.name}`);
+              }
+              skipped++;
+              continue;
+            }
+
+            // Find or create campaign
+            let campaign = await getCampaignByNameAndPlatform(c.name, "google_ads");
+            if (!campaign) {
+              const id = await createCampaign({
+                name: c.name,
+                platform: "google_ads",
+                status: c.status,
+                startDate,
+                endDate,
+                budget: c.budget > 0 ? String(c.budget) : null,
+                notes: `Tipo: ${c.campaignType}`,
+                createdById: ctx.user.id,
+              });
+              campaign = await getCampaignById(id);
+              details.push(`✅ Campanha criada: ${c.name}`);
+            } else {
+              // Update campaign status and budget
+              await updateCampaign(campaign.id, {
+                status: c.status,
+                budget: c.budget > 0 ? String(c.budget) : campaign.budget,
+              });
+            }
+
+            if (!campaign) { skipped++; continue; }
+
+            // Check for existing stats in this date range (dedup)
+            const existing = await getExistingStatsForCampaignAndDateRange(campaign.id, startDate, endDate);
+            if (existing.length > 0) {
+              // Already have data for this period — skip
+              details.push(`⚠️ Dados já existem para ${c.name} (${input.dateRange.start} a ${input.dateRange.end}) — ignorado`);
+              skipped++;
+              continue;
+            }
+
+            // Import aggregated stats as a single row for the period
+            await importDailyStats([{
+              campaignId: campaign.id,
+              date: endDate, // use end date as reference
+              spend: String(c.cost),
+              impressions: c.impressions,
+              clicks: c.clicks,
+              conversions: Math.round(c.conversions),
+              conversionValue: String(c.conversions),
+              cpc: c.cpc > 0 ? String(c.cpc) : null,
+              ctr: c.ctr > 0 ? String(c.ctr) : null,
+              costPerConversion: c.costPerConversion > 0 ? String(c.costPerConversion) : null,
+              importedById: ctx.user.id,
+            }]);
+            created++;
+            details.push(`📊 Dados importados: ${c.name} — ${c.cost.toFixed(2)}€, ${c.clicks} cliques, ${c.impressions} impressões`);
+          }
+
+          await logActivity({
+            userId: ctx.user.id,
+            action: "import",
+            entity: "google_ads_report",
+            entityId: 0,
+            details: `Google Ads ${input.dateRange.start} a ${input.dateRange.end}: ${created} importados, ${skipped} ignorados`,
+          });
+
+          return { created, updated, skipped, details, total: input.campaigns.length };
+        }),
+    }),
+
+    // ── MARKETING EXPENSES ──
+    expenses: router({
+      list: protectedProcedure
+        .input(z.object({ category: z.string().optional(), projectId: z.number().optional(), from: z.string().optional(), to: z.string().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          return getMarketingExpenses({
+            category: input?.category,
+            projectId: input?.projectId,
+            from: input?.from ? new Date(input.from) : undefined,
+            to: input?.to ? new Date(input.to) : undefined,
+          });
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          description: z.string().min(1),
+          category: z.enum(["google_ads", "meta_ads", "influencer", "print", "merchandise", "event", "other"]),
+          amount: z.string(),
+          date: z.string(),
+          projectId: z.number().optional(),
+          supplier: z.string().optional(),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const id = await createMarketingExpense({
+            description: input.description,
+            category: input.category,
+            amount: input.amount,
+            date: new Date(input.date),
+            projectId: input.projectId ?? null,
+            supplier: input.supplier ?? null,
+            notes: input.notes ?? null,
+            createdById: ctx.user.id,
+          });
+          await logActivity({ userId: ctx.user.id, action: "create", entity: "marketing_expense", entityId: id, details: `${input.description}: ${input.amount}€` });
+          return { id };
+        }),
+      delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteMarketingExpense(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "marketing_expense", entityId: input.id, details: `Despesa marketing eliminada` });
+        return { success: true };
+      }),
+    }),
+   }),
+
+  // ─── OPERACIONAL ──────────────────────────────────────────────────────────
+  operational: router({
+    dashboard: protectedProcedure.query(async () => {
+      return getOperationalStats();
+    }),
+
+    vehicles: router({
+      list: protectedProcedure.input(z.object({ status: z.string().optional(), projectId: z.number().optional() }).optional()).query(async ({ input }) => {
+        return getVehicles(input ?? undefined);
+      }),
+      get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+        return getVehicleById(input.id);
+      }),
+      create: protectedProcedure.input(z.object({
+        plate: z.string().min(1),
+        brand: z.string().optional(),
+        model: z.string().optional(),
+        year: z.number().optional(),
+        color: z.string().optional(),
+        status: z.enum(["active", "maintenance", "inactive"]).optional(),
+        projectId: z.number().optional(),
+        notes: z.string().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const id = await createVehicle({
+          plate: input.plate,
+          brand: input.brand ?? null,
+          model: input.model ?? null,
+          year: input.year ?? null,
+          color: input.color ?? null,
+          status: input.status ?? "active",
+          projectId: input.projectId ?? null,
+          notes: input.notes ?? null,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "vehicle", entityId: id, details: `Viatura ${input.plate}` });
+        return { id };
+      }),
+      update: protectedProcedure.input(z.object({
+        id: z.number(),
+        data: z.object({
+          plate: z.string().optional(),
+          brand: z.string().optional(),
+          model: z.string().optional(),
+          year: z.number().optional(),
+          color: z.string().optional(),
+          status: z.enum(["active", "maintenance", "inactive"]).optional(),
+          projectId: z.number().nullable().optional(),
+          notes: z.string().optional(),
+        }),
+      })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await updateVehicle(input.id, input.data);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "vehicle", entityId: input.id, details: "Viatura atualizada" });
+        return { success: true };
+      }),
+      delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        await deleteVehicle(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "vehicle", entityId: input.id, details: "Viatura eliminada" });
+        return { success: true };
+      }),
+      driverHistory: protectedProcedure.input(z.object({ vehicleId: z.number() })).query(async ({ input }) => {
+        return getVehicleDriverHistory(input.vehicleId);
+      }),
+    }),
+
+    movements: router({
+      list: protectedProcedure.input(z.object({ vehicleId: z.number().optional(), employeeId: z.number().optional(), limit: z.number().optional() }).optional()).query(async ({ input }) => {
+        return getVehicleMovements(input ?? undefined);
+      }),
+      create: protectedProcedure.input(z.object({
+        vehicleId: z.number(),
+        employeeId: z.number(),
+        type: z.enum(["pickup", "return"]),
+        kmReading: z.number().optional(),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
+        notes: z.string().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        const id = await createVehicleMovement({
+          vehicleId: input.vehicleId,
+          employeeId: input.employeeId,
+          type: input.type,
+          kmReading: input.kmReading ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
+          notes: input.notes ?? null,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "vehicle_movement", entityId: id, details: `${input.type === "pickup" ? "Recolha" : "Devolução"} viatura #${input.vehicleId}` });
+        return { id };
+      }),
+    }),
+
+    speedAlerts: router({
+      list: protectedProcedure.input(z.object({ vehicleId: z.number().optional(), acknowledged: z.boolean().optional(), limit: z.number().optional() }).optional()).query(async ({ input }) => {
+        return getSpeedAlerts(input ?? undefined);
+      }),
+      create: protectedProcedure.input(z.object({
+        vehicleId: z.number(),
+        employeeId: z.number().optional(),
+        speed: z.number(),
+        speedLimit: z.number(),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
+        roadName: z.string().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        const id = await createSpeedAlert({
+          vehicleId: input.vehicleId,
+          employeeId: input.employeeId ?? null,
+          speed: input.speed,
+          speedLimit: input.speedLimit,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
+          roadName: input.roadName ?? null,
+        });
+        // Notify super admin
+        const admins = await getSuperAdmins();
+        if (admins.length > 0) {
+          await notifyOwner({ title: "Alerta de Velocidade", content: `Viatura #${input.vehicleId} a ${input.speed} km/h (limite: ${input.speedLimit} km/h)${input.roadName ? " em " + input.roadName : ""}` });
+        }
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "speed_alert", entityId: id, details: `${input.speed}km/h (limite ${input.speedLimit}km/h)` });
+        return { id };
+      }),
+      acknowledge: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await acknowledgeSpeedAlert(input.id, ctx.user.id);
+        return { success: true };
+      }),
+    }),
+
+    radio: router({
+      list: protectedProcedure.input(z.object({ employeeId: z.number().optional(), vehicleId: z.number().optional(), limit: z.number().optional() }).optional()).query(async ({ input }) => {
+        return getRadioTranscriptions(input ?? undefined);
+      }),
+      transcribe: protectedProcedure.input(z.object({
+        audioUrl: z.string(),
+        employeeId: z.number().optional(),
+        vehicleId: z.number().optional(),
+        duration: z.number().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: "pt" });
+        if ("error" in result) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transcrição falhou: ${result.error}` });
+        }
+        const transcriptionText = result.text;
+        const summary = await invokeLLM({
+          messages: [
+            { role: "system", content: "Resume a seguinte transcrição de rádio em 1-2 frases curtas em português. Foca nos pontos operacionais relevantes." },
+            { role: "user", content: transcriptionText },
+          ],
+        });
+        const summaryText = typeof summary.choices[0].message.content === "string" ? summary.choices[0].message.content : "";
+        const id = await createRadioTranscription({
+          audioUrl: input.audioUrl,
+          transcription: transcriptionText,
+          summary: summaryText,
+          employeeId: input.employeeId ?? null,
+          vehicleId: input.vehicleId ?? null,
+          duration: input.duration ?? null,
+          transcribedAt: new Date(),
+          createdById: ctx.user.id,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "radio_transcription", entityId: id, details: "Transcrição de rádio" });
+        return { id, transcription: result.text, summary: summaryText };
+      }),
+    }),
+
+    // ─── ZELLO INTEGRATION ──────────────────────────────────────────────
+    zello: router({
+      users: protectedProcedure.query(async () => {
+        return getZelloUsers();
+      }),
+      channels: protectedProcedure.query(async () => {
+        return getZelloChannels();
+      }),
+      locations: protectedProcedure.query(async () => {
+        return getZelloLocations();
+      }),
+      userLocation: protectedProcedure.input(z.object({ username: z.string() })).query(async ({ input }) => {
+        return getZelloUserLocation(input.username);
+      }),
+      userHistory: protectedProcedure.input(z.object({
+        username: z.string(),
+        startTs: z.number(),
+        endTs: z.number(),
+      })).query(async ({ input }) => {
+        return getZelloUserHistory(input.username, input.startTs, input.endTs);
+      }),
+    }),
+
+    // ─── SPEED MONITORING ──────────────────────────────────────────────
+    speedMonitoring: router({
+      limits: router({
+        list: protectedProcedure.query(async () => {
+          return getSpeedLimits();
+        }),
+        create: protectedProcedure.input(z.object({
+          name: z.string().min(1),
+          maxSpeed: z.number().min(1),
+          tolerancePercent: z.number().min(0).max(100).default(10),
+          isDefault: z.boolean().default(false),
+        })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const id = await createSpeedLimit({
+            name: input.name,
+            maxSpeed: input.maxSpeed,
+            tolerancePercent: input.tolerancePercent,
+            isDefault: input.isDefault,
+          });
+          await logActivity({ userId: ctx.user.id, action: "create", entity: "speed_limit", entityId: id, details: `Limite ${input.name}: ${input.maxSpeed}km/h` });
+          return { id };
+        }),
+        update: protectedProcedure.input(z.object({
+          id: z.number(),
+          data: z.object({
+            name: z.string().optional(),
+            maxSpeed: z.number().optional(),
+            tolerancePercent: z.number().optional(),
+            isDefault: z.boolean().optional(),
+            isActive: z.boolean().optional(),
+          }),
+        })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await updateSpeedLimit(input.id, input.data);
+          return { success: true };
+        }),
+        delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await deleteSpeedLimit(input.id);
+          return { success: true };
+        }),
+      }),
+
+      violations: router({
+        list: protectedProcedure.input(z.object({
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          username: z.string().optional(),
+          acknowledged: z.boolean().optional(),
+        }).optional()).query(async ({ input }) => {
+          return getSpeedViolations({
+            startDate: input?.startDate ? new Date(input.startDate) : undefined,
+            endDate: input?.endDate ? new Date(input.endDate) : undefined,
+            username: input?.username,
+            acknowledged: input?.acknowledged,
+          });
+        }),
+        acknowledge: protectedProcedure.input(z.object({
+          id: z.number(),
+          notes: z.string().optional(),
+        })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await acknowledgeSpeedViolation(input.id, ctx.user.id, input.notes);
+          await logActivity({ userId: ctx.user.id, action: "update", entity: "speed_violation", entityId: input.id, details: "Infração reconhecida" });
+          return { success: true };
+        }),
+        stats: protectedProcedure.input(z.object({
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+        }).optional()).query(async ({ input }) => {
+          return getSpeedViolationStats(
+            input?.startDate ? new Date(input.startDate) : undefined,
+            input?.endDate ? new Date(input.endDate) : undefined,
+          );
+        }),
+      }),
+
+      /** Check all Zello locations and record violations */
+      checkNow: protectedProcedure.mutation(async ({ ctx }) => {
+        requireRole(ctx.user.role, "admin");
+        const locations = await getZelloLocations();
+        const defaultLimit = await getDefaultSpeedLimit();
+        if (!defaultLimit) return { checked: 0, violations: 0, message: "Nenhum limite de velocidade configurado" };
+
+        const threshold = defaultLimit.maxSpeed * (1 + defaultLimit.tolerancePercent / 100);
+        let violationCount = 0;
+
+        for (const loc of locations) {
+          if (loc.speed > threshold) {
+            const excessPercent = ((loc.speed - defaultLimit.maxSpeed) / defaultLimit.maxSpeed) * 100;
+            await recordSpeedViolation({
+              zelloUsername: loc.username,
+              displayName: loc.displayName || loc.username,
+              speed: String(loc.speed),
+              speedLimit: defaultLimit.maxSpeed,
+              excessPercent: String(Math.round(excessPercent * 100) / 100),
+              latitude: loc.latitude ? String(loc.latitude) : null,
+              longitude: loc.longitude ? String(loc.longitude) : null,
+              heading: loc.heading ? String(loc.heading) : null,
+              notificationSent: true,
+              occurredAt: new Date(),
+            });
+            violationCount++;
+            // Send notification
+            await notifyOwner({
+              title: "\u26a0\ufe0f Excesso de Velocidade",
+              content: `${loc.displayName || loc.username} a ${loc.speed.toFixed(1)} km/h (limite: ${defaultLimit.maxSpeed} km/h, +${excessPercent.toFixed(0)}%) - Lat: ${loc.latitude}, Lon: ${loc.longitude}`,
+            });
+          }
+        }
+
+        return { checked: locations.length, violations: violationCount, threshold };
+      }),
+    }),
+
+    // ─── DAILY DRIVER HISTORY ──────────────────────────────────────────
+    driverHistory: router({
+      byDate: protectedProcedure.input(z.object({ date: z.string() })).query(async ({ input }) => {
+        return getDailyDriverHistoryByDate(input.date);
+      }),
+      byUser: protectedProcedure.input(z.object({ username: z.string(), limit: z.number().optional() })).query(async ({ input }) => {
+        return getDailyDriverHistoryByUser(input.username, input.limit);
+      }),
+      range: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() })).query(async ({ input }) => {
+        return getDailyDriverHistoryRange(input.startDate, input.endDate);
+      }),
+      stats: protectedProcedure.input(z.object({ date: z.string() })).query(async ({ input }) => {
+        return getDailyDriverStats(input.date);
+      }),
+      /** Manually trigger data collection for a specific date */
+      collectDay: protectedProcedure.input(z.object({ date: z.string() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const targetDate = new Date(input.date);
+        targetDate.setHours(0, 0, 0, 0);
+        const result = await collectDailyDriverData(targetDate);
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "daily_driver_history", entityId: 0, details: `Recolha manual para ${input.date}: ${result.driversProcessed} motoristas` });
+        return result;
+      }),
+    }),
+
+    // ─── PDAs (DISPOSITIVOS) ──────────────────────────────────────────
+    pdas: router({
+      list: protectedProcedure.query(async () => {
+        return listPdas();
+      }),
+      get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+        return getPdaById(input.id);
+      }),
+      create: protectedProcedure.input(z.object({
+        name: z.string().min(1),
+        phoneNumber: z.string().optional(),
+        imei: z.string().optional(),
+        model: z.string().optional(),
+        status: z.enum(["active", "inactive", "maintenance", "lost"]).optional(),
+        photoUrl: z.string().optional(),
+        simDataPlan: z.string().optional(),
+        notes: z.string().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "team_leader");
+        const id = await createPda({
+          name: input.name,
+          phoneNumber: input.phoneNumber ?? null,
+          imei: input.imei ?? null,
+          model: input.model ?? null,
+          status: input.status ?? "active",
+          photoUrl: input.photoUrl ?? null,
+          simDataPlan: input.simDataPlan ?? null,
+          notes: input.notes ?? null,
+        });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "pda", entityId: id, details: `PDA ${input.name}` });
+        return { id };
+      }),
+      update: protectedProcedure.input(z.object({
+        id: z.number(),
+        data: z.object({
+          name: z.string().optional(),
+          phoneNumber: z.string().nullable().optional(),
+          imei: z.string().nullable().optional(),
+          model: z.string().nullable().optional(),
+          status: z.enum(["active", "inactive", "maintenance", "lost"]).optional(),
+          photoUrl: z.string().nullable().optional(),
+          simDataPlan: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+        }),
+      })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "team_leader");
+        await updatePda(input.id, input.data);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "pda", entityId: input.id, details: "PDA atualizado" });
+        return { success: true };
+      }),
+      delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await deletePda(input.id);
+        await logActivity({ userId: ctx.user.id, action: "delete", entity: "pda", entityId: input.id, details: "PDA eliminado" });
+        return { success: true };
+      }),
+      // Check-ins
+      checkins: router({
+        active: protectedProcedure.query(async () => {
+          return getActiveCheckins();
+        }),
+        byDate: protectedProcedure.input(z.object({ date: z.string() })).query(async ({ input }) => {
+          return getCheckinsByDate(input.date);
+        }),
+        byPda: protectedProcedure.input(z.object({ pdaId: z.number(), limit: z.number().optional() })).query(async ({ input }) => {
+          return getCheckinsByPda(input.pdaId, input.limit);
+        }),
+        checkin: protectedProcedure.input(z.object({
+          pdaId: z.number(),
+          employeeId: z.number().optional(),
+          zelloUsername: z.string().optional(),
+          photoEntryUrl: z.string().optional(),
+          mobileDataMbStart: z.number().optional(),
+          notes: z.string().optional(),
+        })).mutation(async ({ ctx, input }) => {
+          const id = await createPdaCheckin({
+            pdaId: input.pdaId,
+            employeeId: input.employeeId ?? null,
+            zelloUsername: input.zelloUsername ?? null,
+            teamLeaderId: ctx.user.id,
+            photoEntryUrl: input.photoEntryUrl ?? null,
+            mobileDataMbStart: input.mobileDataMbStart ?? null,
+            notes: input.notes ?? null,
+          });
+          await logActivity({ userId: ctx.user.id, action: "create", entity: "pda_checkin", entityId: id, details: `Check-in PDA #${input.pdaId}` });
+          return { id };
+        }),
+        checkout: protectedProcedure.input(z.object({
+          id: z.number(),
+          photoExitUrl: z.string().optional(),
+          mobileDataMbEnd: z.number().optional(),
+          notes: z.string().optional(),
+        })).mutation(async ({ ctx, input }) => {
+          await checkoutPda(input.id, {
+            photoExitUrl: input.photoExitUrl,
+            mobileDataMbEnd: input.mobileDataMbEnd,
+            notes: input.notes,
+          });
+          await logActivity({ userId: ctx.user.id, action: "update", entity: "pda_checkin", entityId: input.id, details: "Check-out PDA" });
+          return { success: true };
+        }),
+      }),
+    }),
+
+    // ─── GPS ALERTS ──────────────────────────────────────────────────────
+    gpsAlerts: router({
+      list: protectedProcedure.input(z.object({
+        limit: z.number().optional(),
+        unacknowledgedOnly: z.boolean().optional(),
+      }).optional()).query(async ({ input }) => {
+        return getGpsAlerts(input ?? {});
+      }),
+      stats: protectedProcedure.query(async () => {
+        return getGpsAlertStats();
+      }),
+      acknowledge: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "team_leader");
+        await acknowledgeGpsAlert(input.id, ctx.user.id);
+        await logActivity({ userId: ctx.user.id, action: "update", entity: "gps_alert", entityId: input.id, details: "Alerta GPS reconhecido" });
+        return { success: true };
+      }),
+      /** Check all users and create alerts for disabled GPS/Zello */
+      checkNow: protectedProcedure.mutation(async ({ ctx }) => {
+        requireRole(ctx.user.role, "team_leader");
+        const users = await getZelloUsers();
+        let alertsCreated = 0;
+        for (const user of users) {
+          if (user.admin) continue; // skip admins
+          if (user.geotrackingOff) {
+            await createGpsAlert({
+              zelloUsername: user.name,
+              displayName: user.fullName || user.name,
+              alertType: "gps_off",
+              message: `${user.fullName || user.name} tem o GPS desligado no Zello`,
+              notificationSent: true,
+              occurredAt: new Date(),
+            });
+            alertsCreated++;
+            await notifyOwner({
+              title: "\u26a0\ufe0f GPS Desligado",
+              content: `${user.fullName || user.name} (${user.name}) tem o GPS desligado no Zello`,
+            });
+          }
+        }
+        // Also check for users with very low battery
+        try {
+          const locations = await getZelloLocations();
+          for (const loc of locations) {
+            if (loc.batteryLevel > 0 && loc.batteryLevel < 15) {
+              await createGpsAlert({
+                zelloUsername: loc.username,
+                displayName: loc.displayName || loc.username,
+                alertType: "battery_low",
+                message: `${loc.displayName || loc.username} com bateria a ${loc.batteryLevel}%`,
+                latitude: String(loc.latitude),
+                longitude: String(loc.longitude),
+                batteryLevel: loc.batteryLevel,
+                notificationSent: true,
+                occurredAt: new Date(),
+              });
+              alertsCreated++;
+            }
+          }
+        } catch (e) {
+          // Locations may fail if no users are online
+        }
+        return { success: true, alertsCreated };
+      }),
+    }),
+  }),
+
+  // ─── API KEYS MANAGEMENT ──────────────────────────────────────────────────
+  apiKeys: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      return getApiKeys();
+    }),
+    create: protectedProcedure.input(z.object({
+      name: z.string().min(1),
+      permissions: z.array(z.string()).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { nanoid } = await import("nanoid");
+      const key = `mp_${nanoid(32)}`;
+      const id = await createApiKey({
+        name: input.name,
+        key,
+        permissions: input.permissions ? JSON.stringify(input.permissions) : null,
+        active: true,
+        createdById: ctx.user.id,
+      });
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "api_key", entityId: id, details: `API Key: ${input.name}` });
+      return { id, key };
+    }),
+    toggle: protectedProcedure.input(z.object({
+      id: z.number(),
+      active: z.boolean(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      await toggleApiKey(input.id, input.active);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "api_key", entityId: input.id, details: input.active ? "Ativada" : "Desativada" });
+      return { success: true };
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      await deleteApiKey(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "api_key", entityId: input.id, details: "API Key eliminada" });
+      return { success: true };
+    }),
+  }),
+
+  // ─── RECLAMAÇÕES ────────────────────────────────────────────────────────────
+  complaints: router({
+    searchBooking: protectedProcedure
+      .input(z.object({ search: z.string().min(2) }))
+      .query(async ({ input }) => {
+        return searchBookingByRef(input.search);
+      }),
+    fetchBookingDetails: protectedProcedure
+      .input(z.object({ externalId: z.string() }))
+      .query(async ({ input }) => {
+        const { getBooking } = await import("./multipark");
+        try {
+          return await getBooking(input.externalId);
+        } catch {
+          return null;
+        }
+      }),
+    list: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      type: z.string().optional(),
+      vehicleId: z.number().optional(),
+      assignedToId: z.number().optional(),
+      projectId: z.number().optional(),
+    }).optional()).query(async ({ input }) => {
+      return getComplaints(input ?? {});
+    }),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      const complaint = await getComplaintById(input.id);
+      if (!complaint) throw new TRPCError({ code: "NOT_FOUND" });
+      const messages = await getComplaintMessages(input.id);
+      const photos = await getComplaintPhotos(input.id);
+      return { complaint, messages, photos };
+    }),
+    create: protectedProcedure.input(z.object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      type: z.enum(["damage", "dirt", "delay", "overcharge", "staff", "other"]),
+      priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+      clientName: z.string().optional(),
+      clientEmail: z.string().optional(),
+      clientPhone: z.string().optional(),
+      reservationRef: z.string().optional(),
+      reservationStart: z.string().optional(),
+      reservationEnd: z.string().optional(),
+      vehicleId: z.number().optional(),
+      vehiclePlate: z.string().optional(),
+      driversInvolved: z.string().optional(),
+      slaHours: z.number().optional(),
+      projectId: z.number().optional(),
+      assignedToId: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const slaDeadline = input.slaHours ? new Date(Date.now() + input.slaHours * 3600000) : null;
+      const id = await createComplaint({
+        title: input.title,
+        description: input.description ?? null,
+        complaintType: input.type,
+        complaintPriority: input.priority ?? "medium",
+        complaintStatus: "new",
+        clientName: input.clientName ?? null,
+        clientEmail: input.clientEmail ?? null,
+        clientPhone: input.clientPhone ?? null,
+        reservationRef: input.reservationRef ?? null,
+        reservationStart: input.reservationStart ? new Date(input.reservationStart) : null,
+        reservationEnd: input.reservationEnd ? new Date(input.reservationEnd) : null,
+        vehicleId: input.vehicleId ?? null,
+        vehiclePlate: input.vehiclePlate ?? null,
+        driversInvolved: input.driversInvolved ?? null,
+        slaDeadline,
+        projectId: input.projectId ?? null,
+        assignedToId: input.assignedToId ?? null,
+        createdById: ctx.user.id,
+      });
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "complaint", entityId: id, details: `Reclamação: ${input.title}` });
+      return { id };
+    }),
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      type: z.enum(["damage", "dirt", "delay", "overcharge", "staff", "other"]).optional(),
+      status: z.enum(["new", "analyzing", "waiting_client", "resolved", "closed"]).optional(),
+      priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+      clientName: z.string().optional(),
+      clientEmail: z.string().optional(),
+      clientPhone: z.string().optional(),
+      assignedToId: z.number().nullable().optional(),
+      driversInvolved: z.string().optional(),
+      slaHours: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { id, slaHours, type, status, priority, ...rest } = input;
+      const updateData: any = { ...rest };
+      // Map to actual DB column names
+      if (type) updateData.complaintType = type;
+      if (status) updateData.complaintStatus = status;
+      if (priority) updateData.complaintPriority = priority;
+      if (slaHours) updateData.slaDeadline = new Date(Date.now() + slaHours * 3600000);
+      if (status === "resolved") updateData.resolvedAt = new Date();
+      await updateComplaint(id, updateData);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "complaint", entityId: id, details: `Reclamação atualizada` });
+      return { success: true };
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      await deleteComplaint(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "complaint", entityId: input.id, details: "Reclamação eliminada" });
+      return { success: true };
+    }),
+    addMessage: protectedProcedure.input(z.object({
+      complaintId: z.number(),
+      message: z.string().min(1),
+      isInternal: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await addComplaintMessage({
+        complaintId: input.complaintId,
+        message: input.message,
+        isInternal: input.isInternal ?? false,
+        authorId: ctx.user.id,
+        authorName: ctx.user.name ?? "Desconhecido",
+      });
+      return { id };
+    }),
+    uploadPhoto: protectedProcedure.input(z.object({
+      complaintId: z.number(),
+      base64: z.string(),
+      filename: z.string(),
+      label: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const buffer = Buffer.from(input.base64, "base64");
+      const ext = input.filename.split(".").pop() || "jpg";
+      const key = `complaints/${input.complaintId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { url } = await storagePut(key, buffer, `image/${ext}`);
+      const id = await addComplaintPhoto({
+        complaintId: input.complaintId,
+        url,
+        fileKey: key,
+        label: input.label ?? null,
+        uploadedById: ctx.user.id,
+      });
+      return { id, url };
+    }),
+    deletePhoto: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await deleteComplaintPhoto(input.id);
+      return { success: true };
+    }),
+    stats: protectedProcedure.query(async () => {
+      return getComplaintStats();
+    }),
+    // Get vehicle driver history for a complaint
+    vehicleHistory: protectedProcedure.input(z.object({ vehicleId: z.number() })).query(async ({ input }) => {
+      return getVehicleDriverHistory(input.vehicleId);
+    }),
+  }),
+
+  // ─── GOOGLE REVIEWS ───────────────────────────────────────────────────────
+  reviews: router({
+    list: protectedProcedure.input(z.object({
+      rating: z.number().optional(),
+      status: z.string().optional(),
+      projectId: z.number().optional(),
+    }).optional()).query(async ({ input }) => {
+      return getGoogleReviews(input ?? undefined);
+    }),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return getGoogleReviewById(input.id);
+    }),
+    stats: protectedProcedure.query(async () => {
+      return getGoogleReviewStats();
+    }),
+    create: protectedProcedure.input(z.object({
+      reviewerName: z.string().min(1),
+      reviewerEmail: z.string().optional(),
+      rating: z.number().min(1).max(5),
+      reviewText: z.string().optional(),
+      reviewDate: z.string().optional(),
+      projectId: z.number().optional(),
+      vehiclePlate: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const reviewDate = input.reviewDate ? new Date(input.reviewDate) : new Date();
+      const id = await createGoogleReview({
+        ...input,
+        reviewDate,
+        createdById: ctx.user.id,
+      });
+
+      // Auto-process: if rating >= 4, generate AI response
+      if (input.rating >= 4 && id) {
+        try {
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `És o gestor de atendimento ao cliente de um parque de estacionamento premium. Responde a avaliações positivas do Google de forma natural, calorosa e profissional em português. Não uses linguagem demasiado formal nem genérica. Personaliza a resposta com base no texto da avaliação. Máximo 3 frases.`
+              },
+              {
+                role: "user",
+                content: `Avaliação de ${input.rating} estrelas de ${input.reviewerName}: "${input.reviewText || 'Sem texto'}". Gera uma resposta de agradecimento.`
+              }
+            ],
+          });
+          const aiText = typeof response.choices[0].message.content === "string" ? response.choices[0].message.content : "";
+          if (aiText) {
+            await updateGoogleReview(id, { aiResponse: aiText, status: "ai_responded" });
+          }
+        } catch (e) {
+          console.error("[Reviews] AI response failed:", e);
+        }
+      }
+
+      // If rating <= 3, auto-convert to complaint
+      if (input.rating <= 3 && id) {
+        try {
+          const complaintId = await createComplaint({
+            title: `Crítica Google ${input.rating}\u2605 — ${input.reviewerName}`,
+            description: `Avaliação negativa no Google (${input.rating} estrelas):\n\n"${input.reviewText || 'Sem texto'}"\n\nCliente: ${input.reviewerName}${input.reviewerEmail ? '\nEmail: ' + input.reviewerEmail : ''}${input.vehiclePlate ? '\nMatrícula: ' + input.vehiclePlate : ''}`,
+            type: "other",
+            priority: input.rating === 1 ? "urgent" : "high",
+            clientName: input.reviewerName,
+            clientEmail: input.reviewerEmail || undefined,
+            vehiclePlate: input.vehiclePlate || undefined,
+            projectId: input.projectId || undefined,
+            slaDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h SLA
+            createdById: ctx.user.id,
+          });
+          await updateGoogleReview(id, { complaintId, status: "converted_complaint" });
+          await logActivity({ userId: ctx.user.id, action: "review_to_complaint", entity: "google_review", entityId: id, details: `Review ${input.rating}\u2605 convertida em reclamação #${complaintId}` });
+        } catch (e) {
+          console.error("[Reviews] Complaint conversion failed:", e);
+        }
+      }
+
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "google_review", entityId: id ?? 0, details: `Review ${input.rating}\u2605 de ${input.reviewerName}` });
+      return { id };
+    }),
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      aiResponse: z.string().optional(),
+      status: z.enum(["pending_response", "ai_responded", "manually_responded", "converted_complaint", "dismissed"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      if (data.status === "manually_responded" || data.aiResponse) {
+        (data as any).respondedAt = new Date();
+        (data as any).respondedBy = ctx.user.id;
+      }
+      await updateGoogleReview(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "google_review", entityId: id, details: `Review atualizada` });
+      return { success: true };
+    }),
+    generateResponse: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const review = await getGoogleReviewById(input.id);
+      if (!review) throw new TRPCError({ code: "NOT_FOUND" });
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `És o gestor de atendimento ao cliente de um parque de estacionamento premium. Responde a avaliações do Google de forma natural, empática e profissional em português. Se a avaliação for positiva (4-5 estrelas), agradece calorosamente. Se for negativa (1-3 estrelas), pede desculpa, mostra empatia e oferece resolução. Personaliza com base no texto. Máximo 4 frases.`
+          },
+          {
+            role: "user",
+            content: `Avaliação de ${review.rating} estrelas de ${review.reviewerName}: "${review.reviewText || 'Sem texto'}". Gera uma resposta.`
+          }
+        ],
+      });
+      const aiText = typeof response.choices[0].message.content === "string" ? response.choices[0].message.content : "";
+      await updateGoogleReview(input.id, { aiResponse: aiText, status: "ai_responded" });
+      return { response: aiText };
+    }),
+    searchClient: protectedProcedure.input(z.object({
+      name: z.string().optional(),
+      email: z.string().optional(),
+      plate: z.string().optional(),
+    })).query(async ({ input }) => {
+      return searchClientHistory(input.name, input.email, input.plate);
+    }),
+    approveResponse: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await updateGoogleReview(input.id, { aiResponseApproved: true, respondedAt: new Date(), respondedBy: ctx.user.id, status: "manually_responded" });
+      await logActivity({ userId: ctx.user.id, action: "approve", entity: "google_review", entityId: input.id, details: "Resposta aprovada" });
+      return { success: true };
+    }),
+    syncFromGmail: protectedProcedure.mutation(async ({ ctx }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      // Gmail sync is handled externally via scheduled task (2x/day)
+      // This endpoint just returns info about the sync status
+      return {
+        reviewsImported: 0,
+        reviewsSkipped: 0,
+        incidentsImported: 0,
+        incidentsSkipped: 0,
+        message: "A sincroniza\u00e7\u00e3o Gmail corre automaticamente 2x/dia (0h e 12h). Para for\u00e7ar manualmente, contacta o administrador.",
+      };
+    }),
+  }),
+
+  // ─── FORMAÇÃO E APOIO ──────────────────────────────────────────────────────
+  training: router({
+    // Categories
+    categories: protectedProcedure.query(async () => {
+      return getTrainingCategories();
+    }),
+    createCategory: protectedProcedure.input(z.object({ name: z.string(), description: z.string().optional(), icon: z.string().optional(), sortOrder: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createTrainingCategory(input);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "training_category", entityId: result.id, details: input.name });
+      return result;
+    }),
+    deleteCategory: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["super_admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteTrainingCategory(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "training_category", entityId: input.id, details: "" });
+      return { success: true };
+    }),
+
+    // Videos
+    videos: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+      return getTrainingVideos(input.categoryId);
+    }),
+    createVideo: protectedProcedure.input(z.object({ categoryId: z.number(), title: z.string(), description: z.string().optional(), videoUrl: z.string(), thumbnailUrl: z.string().optional(), durationMinutes: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createTrainingVideo({ ...input, createdBy: ctx.user.id });
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "training_video", entityId: result.id, details: input.title });
+      return result;
+    }),
+    deleteVideo: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteTrainingVideo(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "training_video", entityId: input.id, details: "" });
+      return { success: true };
+    }),
+
+    // Manuals / Blog
+    manuals: protectedProcedure.input(z.object({ categoryId: z.number().optional(), type: z.string().optional() })).query(async ({ input }) => {
+      return getTrainingManuals(input.categoryId, input.type);
+    }),
+    createManual: protectedProcedure.input(z.object({ categoryId: z.number().optional(), title: z.string(), content: z.string(), type: z.enum(["manual", "update", "news", "procedure"]).optional(), fileUrl: z.string().optional(), fileKey: z.string().optional(), fileName: z.string().optional(), fileMimeType: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createTrainingManual({ ...input, createdBy: ctx.user.id });
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "training_manual", entityId: result.id, details: input.title });
+      return result;
+    }),
+    uploadManualFile: protectedProcedure.input(z.object({ fileName: z.string(), fileBase64: z.string(), mimeType: z.string() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const { storagePut } = await import("./storage");
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const key = `training/manuals/${Date.now()}-${input.fileName}`;
+      const { url } = await storagePut(key, buffer, input.mimeType);
+      return { url, key, fileName: input.fileName, mimeType: input.mimeType };
+    }),
+    updateManual: protectedProcedure.input(z.object({ id: z.number(), title: z.string().optional(), content: z.string().optional(), type: z.enum(["manual", "update", "news", "procedure"]).optional(), published: z.boolean().optional(), fileUrl: z.string().optional(), fileKey: z.string().optional(), fileName: z.string().optional(), fileMimeType: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const { id, ...data } = input;
+      await updateTrainingManual(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "training_manual", entityId: id, details: data.title || "" });
+      return { success: true };
+    }),
+    deleteManual: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteTrainingManual(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "training_manual", entityId: input.id, details: "" });
+      return { success: true };
+    }),
+
+    // FAQs
+    faqs: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+      return getFAQs(input.categoryId);
+    }),
+    createFAQ: protectedProcedure.input(z.object({ categoryId: z.number().optional(), question: z.string(), answer: z.string(), sortOrder: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createFAQ(input);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "faq", entityId: result.id, details: input.question });
+      return result;
+    }),
+    updateFAQ: protectedProcedure.input(z.object({ id: z.number(), question: z.string().optional(), answer: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const { id, ...data } = input;
+      await updateFAQ(id, data);
+      return { success: true };
+    }),
+    deleteFAQ: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteFAQ(input.id);
+      return { success: true };
+    }),
+
+    // Quiz
+    quizQuestions: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+      return getQuizQuestions(input.categoryId);
+    }),
+    createQuizQuestion: protectedProcedure.input(z.object({ categoryId: z.number().optional(), question: z.string(), optionA: z.string(), optionB: z.string(), optionC: z.string(), optionD: z.string(), correctOption: z.enum(["A", "B", "C", "D"]), explanation: z.string().optional(), difficulty: z.enum(["easy", "medium", "hard"]).optional(), points: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createQuizQuestion(input);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "quiz_question", entityId: result.id, details: input.question });
+      return result;
+    }),
+    deleteQuizQuestion: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteQuizQuestion(input.id);
+      return { success: true };
+    }),
+    submitQuiz: protectedProcedure.input(z.object({ employeeId: z.number(), answers: z.array(z.object({ questionId: z.number(), answer: z.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      const questions = await getQuizQuestions();
+      const questionMap = new Map(questions.map(q => [q.id, q]));
+      let correct = 0;
+      let score = 0;
+      for (const a of input.answers) {
+        const q = questionMap.get(a.questionId);
+        if (q && q.correctOption === a.answer) { correct++; score += q.points; }
+      }
+      const result = await saveQuizAttempt({ employeeId: input.employeeId, totalQuestions: input.answers.length, correctAnswers: correct, score, timeSpentSeconds: input.timeSpentSeconds });
+      return { ...result, correct, score, total: input.answers.length };
+    }),
+    quizRanking: protectedProcedure.query(async () => {
+      return getQuizRanking();
+    }),
+
+    // Career Exams
+    careerExams: protectedProcedure.query(async () => {
+      return getCareerExams();
+    }),
+    createCareerExam: protectedProcedure.input(z.object({ level: z.enum(["extra", "condutor", "senior", "team_leader", "supervisor"]), title: z.string(), description: z.string().optional(), passingScore: z.number(), timeLimitMinutes: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createCareerExam(input);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "career_exam", entityId: result.id, details: input.title });
+      return result;
+    }),
+    deleteCareerExam: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["super_admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteCareerExam(input.id);
+      return { success: true };
+    }),
+    careerExamQuestions: protectedProcedure.input(z.object({ examId: z.number() })).query(async ({ input }) => {
+      return getCareerExamQuestions(input.examId);
+    }),
+    createCareerExamQuestion: protectedProcedure.input(z.object({ examId: z.number(), question: z.string(), optionA: z.string(), optionB: z.string(), optionC: z.string(), optionD: z.string(), correctOption: z.enum(["A", "B", "C", "D"]), explanation: z.string().optional(), points: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await createCareerExamQuestion(input);
+      return result;
+    }),
+    submitCareerExam: protectedProcedure.input(z.object({ examId: z.number(), employeeId: z.number(), answers: z.array(z.object({ questionId: z.number(), answer: z.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      const questions = await getCareerExamQuestions(input.examId);
+      const exams = await getCareerExams();
+      const exam = exams.find(e => e.id === input.examId);
+      if (!exam) throw new TRPCError({ code: "NOT_FOUND", message: "Exame n\u00e3o encontrado" });
+      const questionMap = new Map(questions.map(q => [q.id, q]));
+      let correct = 0;
+      let score = 0;
+      const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
+      for (const a of input.answers) {
+        const q = questionMap.get(a.questionId);
+        if (q && q.correctOption === a.answer) { correct++; score += q.points; }
+      }
+      const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
+      const passed = percentage >= exam.passingScore;
+      const result = await saveCareerExamAttempt({ examId: input.examId, employeeId: input.employeeId, totalQuestions: questions.length, correctAnswers: correct, score: percentage, passed, timeSpentSeconds: input.timeSpentSeconds });
+      if (passed) {
+        await notifyOwner({ title: `Exame aprovado: ${exam.title}`, content: `Colaborador #${input.employeeId} passou no exame "${exam.title}" com ${percentage}% (m\u00ednimo: ${exam.passingScore}%)` });
+      }
+      return { ...result, correct, score: percentage, total: questions.length, passed, passingScore: exam.passingScore };
+    }),
+    careerExamAttempts: protectedProcedure.input(z.object({ employeeId: z.number().optional(), examId: z.number().optional() })).query(async ({ input }) => {
+      return getCareerExamAttempts(input.employeeId, input.examId);
+    }),
+  }),
+
+  // ─── PERDIDOS E ACHADOS ────────────────────────────────────────────────────
+  lostFound: router({
+    list: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      itemType: z.string().optional(),
+      projectId: z.number().optional(),
+      search: z.string().optional(),
+    }).optional()).query(({ input }) => getLostFoundItems(input)),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getLostFoundItemById(input.id)),
+
+    create: protectedProcedure.input(z.object({
+      projectId: z.number().optional(),
+      vehiclePlate: z.string().optional(),
+      clientName: z.string().min(1),
+      clientEmail: z.string().optional(),
+      clientPhone: z.string().optional(),
+      bookingRef: z.string().optional(),
+      itemType: z.enum(["money", "electronics", "clothing", "documents", "accessories", "other"]),
+      description: z.string().min(1),
+      estimatedValue: z.number().optional(),
+      priority: z.enum(["low", "medium", "high"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const id = await createLostFoundItem({ ...input, createdBy: ctx.user.id, status: "new", priority: input.priority || "medium" } as any);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "lost_found", entityId: id || 0, details: `Perdido/Achado: ${input.description}` });
+      // Notify super admin
+      const admins = await getSuperAdmins();
+      if (admins.length > 0) {
+        await notifyOwner({ title: "Novo Perdido/Achado", content: `${input.clientName}: ${input.description} (Viatura: ${input.vehiclePlate || "N/A"})` });
+      }
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.string().optional(),
+      priority: z.string().optional(),
+      assignedTo: z.number().optional(),
+      resolution: z.string().optional(),
+      clientName: z.string().optional(),
+      clientEmail: z.string().optional(),
+      clientPhone: z.string().optional(),
+      bookingRef: z.string().optional(),
+      vehiclePlate: z.string().optional(),
+      itemType: z.string().optional(),
+      description: z.string().optional(),
+      estimatedValue: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      await updateLostFoundItem(id, data as any);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "lost_found", entityId: id, details: `Atualizado: ${JSON.stringify(data)}` });
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const role = ctx.user.role || "user";
+      if (role !== "super_admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteLostFoundItem(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "lost_found", entityId: input.id, details: "Eliminado" });
+      return { success: true };
+    }),
+
+    // Photos
+    getPhotos: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ input }) => getLostFoundPhotos(input.itemId)),
+
+    uploadPhoto: protectedProcedure.input(z.object({
+      itemId: z.number(),
+      base64: z.string(),
+      filename: z.string(),
+      caption: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const buffer = Buffer.from(input.base64, "base64");
+      const ext = input.filename.split(".").pop() || "jpg";
+      const key = `lost-found/${input.itemId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { url } = await storagePut(key, buffer, `image/${ext}`);
+      await addLostFoundPhoto({ itemId: input.itemId, url, fileKey: key, caption: input.caption || null });
+      return { url };
+    }),
+
+    // Messages
+    getMessages: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ input }) => getLostFoundMessages(input.itemId)),
+
+    addMessage: protectedProcedure.input(z.object({
+      itemId: z.number(),
+      message: z.string().min(1),
+      isInternal: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal ?? true });
+      return { success: true };
+    }),
+
+    // Driver ranking (cruzamento de dados)
+    driverRanking: protectedProcedure.query(() => getLostFoundDriverRanking()),
+
+    // Vehicle driver history (reuse from operational)
+    vehicleDrivers: protectedProcedure.input(z.object({ plate: z.string() })).query(async ({ input }) => {
+      const allVehicles = await getVehicles();
+      const vehicle = allVehicles.find(v => v.plate === input.plate);
+      if (!vehicle) return [];
+      return getVehicleDriverHistory(vehicle.id);
+    }),
+
+    // ── Booking History (imported from Excel) ──
+    importBookingHistory: protectedProcedure
+      .input(z.object({ fileBase64: z.string(), filename: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const wb = XLSX.read(buffer, { type: "buffer" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!ws) throw new Error("Ficheiro Excel vazio");
+        const raw: any[] = XLSX.utils.sheet_to_json(ws);
+        if (raw.length === 0) throw new Error("Sem dados no ficheiro");
+
+        const rows = raw.map((r: any) => {
+          // Convert Excel serial date to MySQL datetime string
+          let actionDate: string | null = null;
+          const rawDate = r["Data da Ação"] || r["Data da Acao"] || r["actionDate"];
+          if (typeof rawDate === "number") {
+            const d = new Date((rawDate - 25569) * 86400 * 1000);
+            actionDate = d.toISOString().slice(0, 19).replace("T", " ");
+          } else if (rawDate) {
+            const d = new Date(rawDate);
+            if (!isNaN(d.getTime())) actionDate = d.toISOString().slice(0, 19).replace("T", " ");
+          }
+
+          const str = (v: any) => (v != null && String(v).trim() !== "") ? String(v).trim() : null;
+          return {
+            historyId: str(r["ID do Histórico"] ?? r["ID do Historico"] ?? r["historyId"]) || `gen_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            bookingId: str(r["ID da Reserva"] ?? r["bookingId"]) || "",
+            changeType: str(r["Tipo de Alteração"] ?? r["Tipo de Alteracao"] ?? r["changeType"]) || "",
+            userName: str(r["Nome do Utilizador"] ?? r["userName"]),
+            userLastName: str(r["Apelido do Utilizador"] ?? r["userLastName"]),
+            userEmail: str(r["Email do Utilizador"] ?? r["userEmail"]),
+            remarks: str(r["Observações"] ?? r["Observacoes"] ?? r["remarks"]),
+            actionDate,
+            parkName: str(r["Parque"] ?? r["parkName"]),
+            licensePlate: str(r["Matrícula"] ?? r["Matricula"] ?? r["licensePlate"]),
+            bookingStatus: str(r["Estado da Reserva"] ?? r["bookingStatus"]),
+          };
+        }).filter((r: any) => r.bookingId);
+
+        const result = await importBookingHistory(rows);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "import",
+          entity: "booking_history",
+          details: `Importados ${result.imported} registos (${result.skipped} duplicados) de ${input.filename}`,
+        });
+        return { ...result, total: rows.length };
+      }),
+
+    bookingHistory: protectedProcedure
+      .input(z.object({ bookingId: z.string().optional(), plate: z.string().optional(), search: z.string().optional() }))
+      .query(async ({ input }) => {
+        if (input.bookingId) return getBookingHistoryByBookingId(input.bookingId);
+        if (input.plate) return getBookingHistoryByPlate(input.plate);
+        if (input.search) return searchBookingHistory(input.search);
+        return [];
+      }),
+
+    bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
+
+    bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
+  }),
+
+  // ─── OCORRÊNCIAS (INCIDENTS) ──────────────────────────────────────────────
+  incidents: router({
+    list: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      severity: z.string().optional(),
+      employeeId: z.number().optional(),
+      weekNumber: z.number().optional(),
+      yearNumber: z.number().optional(),
+    }).optional()).query(({ input }) => getIncidents(input)),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getIncidentById(input.id)),
+
+    create: protectedProcedure.input(z.object({
+      projectId: z.number().optional(),
+      vehiclePlate: z.string().optional(),
+      employeeId: z.number().optional(),
+      incidentType: z.enum(["vidro_aberto", "mal_estacionado", "dano", "chave_errada", "combustivel", "limpeza", "documentos", "outro"]),
+      severity: z.enum(["low", "medium", "high", "critical"]),
+      description: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const id = await createIncident({ ...input, reportedBy: ctx.user.id, status: "open" });
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "incident", entityId: id || 0, details: `Ocorrência: ${input.description}` });
+      if (input.severity === "critical") {
+        await notifyOwner({ title: "Ocorrência Crítica", content: `${input.incidentType}: ${input.description} (Viatura: ${input.vehiclePlate || "N/A"})` });
+      }
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.string().optional(),
+      severity: z.string().optional(),
+      resolution: z.string().optional(),
+      incidentType: z.string().optional(),
+      description: z.string().optional(),
+      vehiclePlate: z.string().optional(),
+      employeeId: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      if (data.status === "resolved") {
+        (data as any).resolvedAt = new Date();
+        (data as any).resolvedBy = ctx.user.id;
+      }
+      await updateIncident(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "incident", entityId: id });
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deleteIncident(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "incident", entityId: input.id });
+      return { success: true };
+    }),
+
+    stats: protectedProcedure.input(z.object({
+      weekNumber: z.number().optional(),
+      yearNumber: z.number().optional(),
+    }).optional()).query(({ input }) => getIncidentStats(input?.weekNumber, input?.yearNumber)),
+
+    byEmployee: protectedProcedure.input(z.object({ employeeId: z.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId)),
+  }),
+
+  // ─── AVALIAÇÃO DE DESEMPENHO ─────────────────────────────────────────────
+  performance: router({
+    list: protectedProcedure.input(z.object({
+      weekNumber: z.number().optional(),
+      yearNumber: z.number().optional(),
+      employeeId: z.number().optional(),
+    }).optional()).query(({ input }) => getPerformanceEvaluations(input)),
+
+    generate: protectedProcedure.input(z.object({
+      weekNumber: z.number(),
+      yearNumber: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const results = await generateWeeklyEvaluation(input.weekNumber, input.yearNumber);
+      await logActivity({ userId: ctx.user.id, action: "generate", entity: "performance_evaluation", details: `Semana ${input.weekNumber}/${input.yearNumber}` });
+      return results;
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      positivePoints: z.number().optional(),
+      negativePoints: z.number().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      if (data.positivePoints !== undefined || data.negativePoints !== undefined) {
+        (data as any).totalPoints = (data.positivePoints || 0) - (data.negativePoints || 0);
+      }
+      await updatePerformanceEvaluation(id, data);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deletePerformanceEvaluation(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ─── SERVIÇOS ────────────────────────────────────────────────────────────
+  services: router({
+    list: protectedProcedure.input(z.object({
+      serviceType: z.string().optional(),
+      employeeId: z.number().optional(),
+      projectId: z.number().optional(),
+      month: z.number().optional(),
+      year: z.number().optional(),
+    }).optional()).query(({ input }) => getServices(input)),
+
+    create: protectedProcedure.input(z.object({
+      projectId: z.number().optional(),
+      employeeId: z.number().optional(),
+      serviceType: z.enum(["lavagem", "carregamento_eletrico", "valet_flex", "outro"]),
+      clientName: z.string().optional(),
+      vehiclePlate: z.string().optional(),
+      bookingRef: z.string().optional(),
+      revenue: z.number().optional(),
+      cost: z.number().optional(),
+      commission: z.number().optional(),
+      notes: z.string().optional(),
+      serviceDate: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const data = { ...input, serviceDate: input.serviceDate ? new Date(input.serviceDate) : new Date() };
+      const id = await createService(data);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "service", entityId: id || 0, details: `Serviço: ${input.serviceType}` });
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      revenue: z.number().optional(),
+      cost: z.number().optional(),
+      commission: z.number().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      await updateService(id, data);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deleteService(input.id);
+      return { success: true };
+    }),
+
+    stats: protectedProcedure.input(z.object({
+      month: z.number().optional(),
+      year: z.number().optional(),
+    }).optional()).query(({ input }) => getServiceStats(input?.month, input?.year)),
+  }),
+
+  // ─── FATURAÇÃO ───────────────────────────────────────────────────────────
+  invoices: router({
+    list: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      projectId: z.number().optional(),
+      search: z.string().optional(),
+      month: z.number().optional(),
+      year: z.number().optional(),
+    }).optional()).query(({ input }) => getInvoices(input)),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getInvoiceById(input.id)),
+
+    create: protectedProcedure.input(z.object({
+      projectId: z.number().optional(),
+      invoiceNumber: z.string().min(1),
+      clientName: z.string().optional(),
+      clientNif: z.string().optional(),
+      issueDate: z.string(),
+      dueDate: z.string().optional(),
+      totalAmount: z.number(),
+      taxAmount: z.number().optional(),
+      status: z.enum(["draft", "issued", "paid", "overdue", "cancelled"]).optional(),
+      paymentMethod: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const data = {
+        ...input,
+        issueDate: new Date(input.issueDate),
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        createdBy: ctx.user.id,
+        status: input.status || "draft",
+      };
+      const id = await createInvoice(data);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "invoice", entityId: id || 0, details: `Fatura: ${input.invoiceNumber}` });
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.string().optional(),
+      totalAmount: z.number().optional(),
+      taxAmount: z.number().optional(),
+      paymentMethod: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      await updateInvoice(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "invoice", entityId: id });
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deleteInvoice(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "invoice", entityId: input.id });
+      return { success: true };
+    }),
+
+    stats: protectedProcedure.input(z.object({
+      month: z.number().optional(),
+      year: z.number().optional(),
+    }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
+  }),
+
+  // ─── PARCERIAS ───────────────────────────────────────────────────────────
+  partnerships: router({
+    list: protectedProcedure.input(z.object({
+      partnerType: z.string().optional(),
+      status: z.string().optional(),
+    }).optional()).query(({ input }) => getPartnerships(input)),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getPartnershipById(input.id)),
+
+    dashboardStats: protectedProcedure.query(async () => {
+      await markOverduePartnershipInvoices();
+      return getPartnershipDashboardStats();
+    }),
+
+    create: protectedProcedure.input(z.object({
+      name: z.string().min(1),
+      partnerType: z.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]),
+      contactName: z.string().optional(),
+      contactEmail: z.string().optional(),
+      contactPhone: z.string().optional(),
+      commissionRate: z.number().optional(),
+      monthlyFee: z.number().optional(),
+      nif: z.string().optional(),
+      billingAgreement: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const id = await createPartnership(input);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "partnership", entityId: id || 0, details: `Parceria: ${input.name}` });
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      contactName: z.string().optional(),
+      contactEmail: z.string().optional(),
+      contactPhone: z.string().optional(),
+      commissionRate: z.number().optional(),
+      monthlyFee: z.number().optional(),
+      nif: z.string().optional(),
+      billingAgreement: z.string().optional(),
+      status: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      await updatePartnership(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "partnership", entityId: id });
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deletePartnership(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership", entityId: input.id });
+      return { success: true };
+    }),
+
+    // Transactions
+    getTransactions: protectedProcedure.input(z.object({ partnershipId: z.number() })).query(({ input }) => getPartnershipTransactions(input.partnershipId)),
+
+    addTransaction: protectedProcedure.input(z.object({
+      partnershipId: z.number(),
+      projectId: z.number().optional(),
+      transactionType: z.enum(["booking", "commission", "payment", "adjustment"]),
+      description: z.string().optional(),
+      amount: z.number(),
+      transactionDate: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const data = { ...input, transactionDate: input.transactionDate ? new Date(input.transactionDate) : new Date() };
+      const id = await createPartnershipTransaction(data);
+      return { id };
+    }),
+
+    // Invoices
+    listInvoices: protectedProcedure.input(z.object({
+      partnershipId: z.number().optional(),
+      status: z.string().optional(),
+      year: z.number().optional(),
+      month: z.number().optional(),
+    }).optional()).query(({ input }) => getPartnershipInvoices(input)),
+
+    createInvoice: protectedProcedure.input(z.object({
+      partnershipId: z.number(),
+      invoiceNumber: z.string().optional(),
+      amount: z.number(),
+      referenceMonth: z.number().min(1).max(12),
+      referenceYear: z.number(),
+      dueDate: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const data = { ...input, dueDate: input.dueDate ? new Date(input.dueDate) : undefined };
+      const id = await createPartnershipInvoice(data);
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "partnership_invoice", entityId: id || 0 });
+      return { id };
+    }),
+
+    updateInvoice: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["draft", "sent", "paid", "overdue", "cancelled"]).optional(),
+      invoiceNumber: z.string().optional(),
+      amount: z.number().optional(),
+      dueDate: z.string().optional(),
+      sentAt: z.string().optional(),
+      paidAt: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...rest } = input;
+      const data: any = { ...rest };
+      if (rest.dueDate) data.dueDate = new Date(rest.dueDate);
+      if (rest.sentAt) data.sentAt = new Date(rest.sentAt);
+      if (rest.paidAt) data.paidAt = new Date(rest.paidAt);
+      if (rest.status === "sent" && !rest.sentAt) data.sentAt = new Date();
+      if (rest.status === "paid" && !rest.paidAt) data.paidAt = new Date();
+      await updatePartnershipInvoice(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "partnership_invoice", entityId: id });
+      return { success: true };
+    }),
+
+    deleteInvoice: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deletePartnershipInvoice(input.id);
+      await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership_invoice", entityId: input.id });
+      return { success: true };
+    }),
+
+    markOverdue: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const count = await markOverduePartnershipInvoices();
+      return { updated: count };
+    }),
+  }),
+
+  // ─── ANUAL ───────────────────────────────────────────────────────────────
+  annual: router({
+    list: protectedProcedure.input(z.object({
+      year: z.number().optional(),
+      projectId: z.number().optional(),
+    }).optional()).query(({ input }) => getAnnualReports(input)),
+
+    generate: protectedProcedure.input(z.object({
+      year: z.number(),
+      projectId: z.number().optional(),
+      splitPartner: z.number().min(0).max(100).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const results = await generateAnnualSummary(input.year, input.projectId, input.splitPartner ?? 60);
+      await logActivity({ userId: ctx.user.id, action: "generate", entity: "annual_report", details: `Relatório anual ${input.year}` });
+      return results;
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      totalRevenue: z.number().optional(),
+      totalExpenses: z.number().optional(),
+      partnerShare: z.number().optional(),
+      companyShare: z.number().optional(),
+      splitRatio: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { id, ...data } = input;
+      await updateAnnualReport(id, data);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await deleteAnnualReport(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ── MULTIPARK INTEGRATION ──────────────────────────────────────────────────
+  multipark: router({
+    // Test API connection
+    testConnection: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return mpTestConnection();
+    }),
+
+    // Check availability
+    checkAvailability: protectedProcedure
+      .input(z.object({
+        checkIn: z.string(),
+        checkOut: z.string(),
+        vehicleType: z.enum(["MOTORCYCLE", "CAR", "VAN", "TRUCK"]).default("CAR"),
+        parkingType: z.enum(["COVERED", "UNCOVERED", "INDOOR", "VIP"]).default("COVERED"),
+      }))
+      .query(async ({ input }) => {
+        return mpCheckAvailability(
+          input.checkIn,
+          input.checkOut,
+          input.vehicleType as VehicleType,
+          input.parkingType as ParkingType,
+        );
+      }),
+
+    // List parks
+    listParks: protectedProcedure.query(async () => {
+      return mpListParks();
+    }),
+
+    // Get sync logs
+    syncLogs: protectedProcedure.query(async () => {
+      return getSyncLogs(50);
+    }),
+
+    // ── KPIs AGREGADOS ──
+    kpis: protectedProcedure
+      .input(z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        city: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getSnapshotKPIs({
+          from: input?.from ? new Date(input.from) : undefined,
+          to: input?.to ? new Date(input.to) : undefined,
+          city: input?.city,
+        });
+      }),
+
+    // Get daily snapshots (raw data)
+    snapshots: protectedProcedure
+      .input(z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        parkName: z.string().optional(),
+        city: z.string().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getDailySnapshots({
+          from: input?.from ? new Date(input.from) : undefined,
+          to: input?.to ? new Date(input.to) : undefined,
+          parkName: input?.parkName,
+          city: input?.city,
+          limit: input?.limit,
+        });
+      }),
+
+    // ── IMPORT EXCEL ──
+    importExcel: protectedProcedure
+      .input(z.object({
+        fileBase64: z.string(),
+        filename: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const wb = XLSX.read(buffer, { type: "buffer" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!ws) throw new Error("Ficheiro Excel vazio");
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+        if (rows.length === 0) throw new Error("Nenhuma linha encontrada no ficheiro");
+
+        // Parse helper
+        const parsePrice = (val: any): number => {
+          if (!val) return 0;
+          const s = String(val).replace(/[^\d.,]/g, "").replace(",", ".");
+          return Math.round(parseFloat(s) * 100) || 0; // cents
+        };
+        const parseDate = (val: any): Date | null => {
+          if (!val) return null;
+          const s = String(val);
+          // Format: "03/03/2026, 16:25" or "2026-03-03"
+          const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+          if (m) return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+          const d = new Date(s);
+          return isNaN(d.getTime()) ? null : d;
+        };
+
+        // Detect column names (handle encoding issues)
+        const colMap: Record<string, string> = {};
+        const firstRow = rows[0];
+        for (const key of Object.keys(firstRow)) {
+          const k = key.toLowerCase();
+          if (k.includes("estado")) colMap.status = key;
+          if (k.includes("cria") || k === "data de cria\u00e7\u00e3o" || k.includes("cria\ufffd")) colMap.createdAt = key;
+          if (k.includes("nome do parque") || k === "nome do parque") colMap.parkName = key;
+          if (k === "parkname") colMap.parkName = colMap.parkName || key;
+          if (k.includes("cidade")) colMap.city = key;
+          if (k.includes("pre\u00e7o total") || k.includes("pre\ufffd") && k.includes("total")) colMap.totalPrice = key;
+          if (k.includes("estacionamento") && k.includes("pre")) colMap.parkingPrice = key;
+          if (k.includes("entrega") && k.includes("pre")) colMap.deliveryPrice = key;
+          if (k.includes("extra") && k.includes("pre")) colMap.extrasPrice = key;
+          if (k.includes("pagamento") && k.includes("todo")) colMap.paymentMethod = key;
+          if (k.includes("externalcampaign") || k.includes("external")) colMap.campaign = key;
+        }
+
+        // Fallback: try to find columns by index position matching known export
+        const keys = Object.keys(firstRow);
+        if (!colMap.status && keys[1]) colMap.status = keys[1];
+        if (!colMap.createdAt && keys[2]) colMap.createdAt = keys[2];
+        if (!colMap.parkName && keys[5]) colMap.parkName = keys[5];
+        if (!colMap.city && keys[8]) colMap.city = keys[8];
+        if (!colMap.totalPrice && keys[28]) colMap.totalPrice = keys[28];
+        if (!colMap.parkingPrice && keys[29]) colMap.parkingPrice = keys[29];
+        if (!colMap.deliveryPrice && keys[30]) colMap.deliveryPrice = keys[30];
+        if (!colMap.extrasPrice && keys[31]) colMap.extrasPrice = keys[31];
+        if (!colMap.paymentMethod && keys[47]) colMap.paymentMethod = keys[47];
+        if (!colMap.campaign && keys[65]) colMap.campaign = keys[65];
+
+        // Group by date + park + city
+        const grouped: Record<string, {
+          date: Date;
+          parkName: string;
+          city: string;
+          total: number;
+          reserved: number;
+          checkin: number;
+          checkout: number;
+          cancelled: number;
+          revenue: number;
+          parkingRev: number;
+          deliveryRev: number;
+          extrasRev: number;
+          online: number;
+          agent: number;
+          campaigns: Record<string, number>;
+        }> = {};
+
+        let parsedRows = 0;
+        for (const row of rows) {
+          const createdDate = parseDate(row[colMap.createdAt]);
+          if (!createdDate) continue;
+          const dateKey = createdDate.toISOString().slice(0, 10);
+          const parkName = String(row[colMap.parkName] || "Desconhecido").trim();
+          const city = String(row[colMap.city] || "Desconhecida").trim();
+          const status = String(row[colMap.status] || "").toLowerCase();
+          const groupKey = `${dateKey}|${parkName}|${city}`;
+
+          if (!grouped[groupKey]) {
+            grouped[groupKey] = {
+              date: createdDate,
+              parkName,
+              city,
+              total: 0, reserved: 0, checkin: 0, checkout: 0, cancelled: 0,
+              revenue: 0, parkingRev: 0, deliveryRev: 0, extrasRev: 0,
+              online: 0, agent: 0, campaigns: {},
+            };
+          }
+          const g = grouped[groupKey];
+          g.total++;
+          parsedRows++;
+
+          if (status.includes("reserv")) g.reserved++;
+          else if (status.includes("check-in") || status.includes("checkin")) g.checkin++;
+          else if (status.includes("check-out") || status.includes("checkout")) g.checkout++;
+          else if (status.includes("cancel")) g.cancelled++;
+
+          g.revenue += parsePrice(row[colMap.totalPrice]);
+          g.parkingRev += parsePrice(row[colMap.parkingPrice]);
+          g.deliveryRev += parsePrice(row[colMap.deliveryPrice]);
+          g.extrasRev += parsePrice(row[colMap.extrasPrice]);
+
+          const method = String(row[colMap.paymentMethod] || "").toLowerCase();
+          if (method.includes("online")) g.online++;
+
+          const campaign = row[colMap.campaign];
+          if (campaign && String(campaign).trim()) {
+            const campName = String(campaign).trim();
+            g.campaigns[campName] = (g.campaigns[campName] || 0) + 1;
+            g.agent++;
+          }
+        }
+
+        // Upsert snapshots
+        let created = 0, updated = 0;
+        for (const g of Object.values(grouped)) {
+          const result = await upsertDailySnapshot({
+            snapshotDate: new Date(g.date.toISOString().slice(0, 10) + "T00:00:00.000Z"),
+            parkName: g.parkName,
+            city: g.city,
+            totalBookings: g.total,
+            reservedCount: g.reserved,
+            checkinCount: g.checkin,
+            checkoutCount: g.checkout,
+            cancelledCount: g.cancelled,
+            totalRevenue: g.revenue,
+            parkingRevenue: g.parkingRev,
+            deliveryRevenue: g.deliveryRev,
+            extrasRevenue: g.extrasRev,
+            onlineCount: g.online,
+            agentCount: g.agent,
+            externalCampaigns: Object.keys(g.campaigns).length > 0 ? JSON.stringify(g.campaigns) : null,
+            importSource: "excel",
+            importedById: ctx.user.id,
+          });
+          if (result?.action === "created") created++;
+          else if (result?.action === "updated") updated++;
+        }
+
+        await createSyncLog({
+          syncType: "excel_import",
+          status: "success",
+          recordsProcessed: parsedRows,
+          recordsCreated: created,
+          recordsUpdated: updated,
+          triggeredById: ctx.user.id,
+          completedAt: new Date(),
+        });
+
+        await logActivity({
+          userId: ctx.user.id,
+          action: "import",
+          entity: "multipark_kpis",
+          details: `Excel importado: ${parsedRows} reservas → ${created + updated} snapshots (${input.filename})`,
+        });
+
+        return {
+          success: true,
+          rowsParsed: parsedRows,
+          snapshotsCreated: created,
+          snapshotsUpdated: updated,
+          totalGroups: Object.keys(grouped).length,
+        };
+      }),
+
+    // Manual sync trigger
+    // Sync bookings from API (manual trigger with date range)
+    triggerSync: protectedProcedure
+      .input(z.object({
+        startDate: z.string(),
+        endDate: z.string(),
+        actionTypes: z.array(z.enum(["creation", "checkin", "checkout", "cancelation"])).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        try {
+          const result = await syncBookings({
+            startDate: input.startDate,
+            endDate: input.endDate,
+            actionTypes: input.actionTypes as any,
+            triggeredById: ctx.user.id,
+          });
+          await logActivity({
+            userId: ctx.user.id,
+            action: "sync",
+            entity: "multipark",
+            details: `Sync API: ${result.processed} processadas, ${result.created} novas, ${result.updated} atualizadas`,
+          });
+          return result;
+        } catch (error: any) {
+          await createSyncLog({
+            syncType: "manual",
+            status: "error",
+            errorMessage: error.message,
+            triggeredById: ctx.user.id,
+            completedAt: new Date(),
+          });
+          return { success: false, processed: 0, created: 0, updated: 0, errors: [error.message] };
+        }
+      }),
+
+    // List synced bookings with filters
+    bookings: protectedProcedure
+      .input(z.object({
+        status: z.string().optional(),
+        parkingType: z.string().optional(),
+        city: z.string().optional(),
+        parkName: z.string().optional(),
+        projectId: z.number().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getMultiparkBookings({
+          status: input?.status,
+          parkingType: input?.parkingType,
+          from: input?.from,
+          to: input?.to,
+          search: input?.search,
+          limit: input?.limit,
+        });
+      }),
+
+    // Booking stats (with optional filters)
+    bookingStats: protectedProcedure
+      .input(z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        projectId: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return getMultiparkBookingStats(input ?? undefined);
+      }),
+
+    // Query LOCAL DB by actionType + date range
+    localBookingsByAction: protectedProcedure
+      .input(z.object({
+        startDate: z.string(),
+        endDate: z.string(),
+        actionType: z.enum(["creation", "checkin", "checkout", "cancelation"]),
+        projectId: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        const bookings = await getLocalBookingsByAction(input);
+        return {
+          total: bookings.length,
+          actionType: input.actionType,
+          period: { startDate: input.startDate, endDate: input.endDate },
+          bookings,
+        };
+      }),
+
+    // Query API directly by actionType + date range (all parks)
+    reportByAction: protectedProcedure
+      .input(z.object({
+        startDate: z.string(),
+        endDate: z.string(),
+        actionType: z.enum(["creation", "checkin", "checkout", "cancelation"]),
+      }))
+      .query(async ({ input }) => {
+        const results = await getBookingsReportAllParks(
+          input.startDate,
+          input.endDate,
+          input.actionType as BookingActionType,
+        );
+        // Flatten all bookings from all parks, tag each with park info
+        let bookings = results.flatMap(r =>
+          r.report.bookings.map(b => ({
+            ...b,
+            _parkName: r.park.name,
+            _parkCity: r.park.city,
+            _parkId: r.park.id,
+          }))
+        );
+        // For checkin/checkout, exclude cancelled bookings
+        if (input.actionType === "checkin" || input.actionType === "checkout") {
+          bookings = bookings.filter((b: any) => b.status !== "CANCELLED");
+        }
+        return {
+          total: bookings.length,
+          actionType: input.actionType,
+          period: { startDate: input.startDate, endDate: input.endDate },
+          bookings,
+        };
+      }),
+  }),
+});
+export type AppRouter = typeof appRouter;

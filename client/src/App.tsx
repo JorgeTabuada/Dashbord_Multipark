@@ -1,0 +1,186 @@
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import NotFound from "@/pages/NotFound";
+import { Route, Switch } from "wouter";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import Home from "./pages/Home";
+import DashboardLayout from "./components/DashboardLayout";
+import ExpensesPage from "./pages/ExpensesPage";
+import ExpenseDashboard from "./pages/ExpenseDashboard";
+import UsersPage from "./pages/UsersPage";
+import LogsPage from "./pages/LogsPage";
+import HRPage from "./pages/HRPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import TasksPage from "./pages/TasksPage";
+import MarketingPage from "./pages/MarketingPage";
+import OperationalPage from "./pages/OperationalPage";
+import ApiKeysPage from "./pages/ApiKeysPage";
+import ComplaintsPage from "./pages/ComplaintsPage";
+import GoogleReviewsPage from "./pages/GoogleReviewsPage";
+import TrainingPage from "./pages/TrainingPage";
+import LostFoundPage from "./pages/LostFoundPage";
+import ServicesPage from "./pages/ServicesPage";
+import IncidentsPage from "./pages/IncidentsPage";
+import PerformancePage from "./pages/PerformancePage";
+import InvoicesPage from "./pages/InvoicesPage";
+import PartnershipsPage from "./pages/PartnershipsPage";
+import AnnualPage from "./pages/AnnualPage";
+import MultiparkPage from "./pages/MultiparkPage";
+import InvitePage from "./pages/InvitePage";
+import ProjectCostsDashboard from "./pages/ProjectCostsDashboard";
+import DashboardPage from "./pages/DashboardPage";
+import FinanceiroDashboard from "./pages/FinanceiroDashboard";
+import OperacoesDashboard from "./pages/OperacoesDashboard";
+import PessoasDashboard from "./pages/PessoasDashboard";
+import SuporteDashboard from "./pages/SuporteDashboard";
+import MarketingDashboard from "./pages/MarketingDashboard";
+import { GlobalFiltersProvider } from "./contexts/GlobalFiltersContext";
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/convite/:token" component={InvitePage} />
+      <Route path="/" component={Home} />
+      <Route path="/dashboard">
+        {() => (
+          <DashboardLayout>
+            <DashboardPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/despesas">
+        {() => (
+          <DashboardLayout>
+            <ExpensesPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/despesas/dashboard">
+        {() => (
+          <DashboardLayout>
+            <ExpenseDashboard />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/utilizadores">
+        {() => (
+          <DashboardLayout>
+            <UsersPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/logs">
+        {() => (
+          <DashboardLayout>
+            <LogsPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/rh">
+        {() => (
+          <DashboardLayout>
+            <HRPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/projetos">
+        {() => (
+          <DashboardLayout>
+            <ProjectsPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/tarefas">
+        {() => (
+          <DashboardLayout>
+            <TasksPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/projetos/custos">
+        {() => (
+          <DashboardLayout>
+            <ProjectCostsDashboard />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/marketing">
+        {() => (<DashboardLayout><MarketingPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/operacional">
+        {() => (<DashboardLayout><OperationalPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/reclamacoes">
+        {() => (<DashboardLayout><ComplaintsPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/criticas">
+        {() => (<DashboardLayout><GoogleReviewsPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/formacao">
+        {() => (<DashboardLayout><TrainingPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/perdidos-achados">
+        {() => (<DashboardLayout><LostFoundPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/ocorrencias">
+        {() => (<DashboardLayout><IncidentsPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/avaliacao">
+        {() => (<DashboardLayout><PerformancePage /></DashboardLayout>)}
+      </Route>
+      <Route path="/faturacao">
+        {() => (<DashboardLayout><InvoicesPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/parcerias">
+        {() => (<DashboardLayout><PartnershipsPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/anual">
+        {() => (<DashboardLayout><AnnualPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/multipark/:section?">
+        {() => (<DashboardLayout><MultiparkPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/servicos">
+        {() => (<DashboardLayout><ServicesPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/api-keys">
+        {() => (<DashboardLayout><ApiKeysPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/financeiro">
+        {() => (<DashboardLayout><FinanceiroDashboard /></DashboardLayout>)}
+      </Route>
+      <Route path="/operacoes-dashboard">
+        {() => (<DashboardLayout><OperacoesDashboard /></DashboardLayout>)}
+      </Route>
+      <Route path="/pessoas-dashboard">
+        {() => (<DashboardLayout><PessoasDashboard /></DashboardLayout>)}
+      </Route>
+      <Route path="/suporte-dashboard">
+        {() => (<DashboardLayout><SuporteDashboard /></DashboardLayout>)}
+      </Route>
+      <Route path="/marketing-dashboard">
+        {() => (<DashboardLayout><MarketingDashboard /></DashboardLayout>)}
+      </Route>
+      <Route path="/404" component={NotFound} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light">
+        <GlobalFiltersProvider>
+          <TooltipProvider>
+            <Toaster richColors position="top-right" />
+            <Router />
+          </TooltipProvider>
+        </GlobalFiltersProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;

@@ -1,0 +1,23 @@
+CREATE TABLE `multipark_daily_snapshots` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`snapshotDate` timestamp NOT NULL,
+	`parkName` varchar(128) NOT NULL,
+	`city` varchar(64) NOT NULL,
+	`totalBookings` int NOT NULL DEFAULT 0,
+	`reservedCount` int DEFAULT 0,
+	`checkinCount` int DEFAULT 0,
+	`checkoutCount` int DEFAULT 0,
+	`cancelledCount` int DEFAULT 0,
+	`totalRevenue` int NOT NULL DEFAULT 0,
+	`parkingRevenue` int DEFAULT 0,
+	`deliveryRevenue` int DEFAULT 0,
+	`extrasRevenue` int DEFAULT 0,
+	`onlineCount` int DEFAULT 0,
+	`agentCount` int DEFAULT 0,
+	`externalCampaigns` text,
+	`importSource` varchar(32) DEFAULT 'excel',
+	`importedById` int,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `multipark_daily_snapshots_id` PRIMARY KEY(`id`)
+);

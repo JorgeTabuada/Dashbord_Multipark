@@ -1,0 +1,353 @@
+/**
+ * MultiPark Backoffice API Client
+ * 
+ * Discovered endpoints:
+ * - GET    /health                → Health check (public)
+ * - GET    /availability          → Check parking availability (requires vehicleType + parkingType)
+ * - POST   /bookings             → Create booking
+ * - PUT    /bookings/:id         → Update booking
+ * - GET    /api/v1/parks         → List parks (public, different base)
+ * 
+ * Auth: X-Api-Key header for bookings-api endpoints
+ */
+
+import { ENV } from "./_core/env";
+
+const MAX_RETRIES = 3;
+
+// ─── Park API key mapping ───
+
+export interface ParkConfig {
+  id: string;
+  name: string;
+  city: string;
+  envKey: string;
+}
+
+export const PARK_CONFIGS: ParkConfig[] = [
+  { id: "LISBON_AIRPARK", name: "Airpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_AIRPARK" },
+  { id: "LISBON_REDPARK", name: "Redpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_REDPARK" },
+  { id: "LISBON_SKYPARK", name: "Skypark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_SKYPARK" },
+  { id: "LISBON_TOP_PARKING", name: "Top-Parking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TOP_PARKING" },
+  { id: "FARO_AIRPARK", name: "Airpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_AIRPARK" },
+  { id: "FARO_REDPARK", name: "Redpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_REDPARK" },
+  { id: "FARO_SKYPARK", name: "Skypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_SKYPARK" },
+  { id: "PORTO_AIRPARK", name: "Airpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_AIRPARK" },
+  { id: "PORTO_REDPARK", name: "Redpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_REDPARK" },
+  { id: "PORTO_SKYPARK", name: "Skypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_SKYPARK" },
+];
+
+export function getParkApiKey(parkConfig: ParkConfig): string | undefined {
+  return process.env[parkConfig.envKey];
+}
+
+export function getConfiguredParks(): ParkConfig[] {
+  return PARK_CONFIGS.filter(p => !!process.env[p.envKey]);
+}
+
+// ─── Core request helper with retry + rate-limit handling ───
+
+async function multiparkRequest<T = any>(opts: {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+  body?: Record<string, any>;
+  params?: Record<string, string>;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<T> {
+  const { method = "GET", path, body, params, baseUrl } = opts;
+  const base = baseUrl || ENV.multiparkApiUrl;
+  const apiKey = opts.apiKey || ENV.multiparkApiKey;
+
+  if (!apiKey) throw new Error("MULTIPARK_API_KEY não configurada");
+
+  let url = `${base}${path}`;
+  if (params) {
+    const qs = new URLSearchParams(params).toString();
+    url += `?${qs}`;
+  }
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "X-Api-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      // Rate limited — exponential backoff
+      if (res.status === 429 && attempt < MAX_RETRIES - 1) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      if (!res.ok) {
+        let errorBody: any = null;
+        try { errorBody = await res.json(); } catch {}
+        const msg = errorBody?.error?.message || errorBody?.message || `HTTP ${res.status}`;
+        const err = new Error(`MultiPark API: ${Array.isArray(msg) ? msg.join(", ") : msg}`) as Error & { status: number; details: any };
+        err.status = res.status;
+        err.details = errorBody?.error?.details || errorBody?.details;
+        throw err;
+      }
+
+      if (res.status === 204) return {} as T;
+      return (await res.json()) as T;
+    } catch (error: any) {
+      if (error.status) throw error;
+      if (attempt === MAX_RETRIES - 1) throw error;
+    }
+  }
+  throw new Error("MultiPark API: max retries exceeded");
+}
+
+// ─── Type definitions ───
+
+export interface MultiparkClient {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  nif?: string;
+}
+
+export interface MultiparkVehicle {
+  licensePlate: string; // No spaces or hyphens
+  brand?: string;
+  model?: string;
+  color?: string;
+  type?: "MOTORCYCLE" | "CAR" | "VAN" | "TRUCK";
+}
+
+export interface MultiparkFlightInfo {
+  arrivalFlight?: string;
+  arrivalTime?: string;
+  departureFlight?: string;
+  departureTime?: string;
+}
+
+export type ParkingType = "COVERED" | "UNCOVERED" | "INDOOR" | "VIP";
+export type VehicleType = "MOTORCYCLE" | "CAR" | "VAN" | "TRUCK";
+
+export interface MultiparkBookingInput {
+  checkIn: string;
+  checkOut: string;
+  checkInTime: string;
+  checkOutTime: string;
+  client?: MultiparkClient;
+  vehicle?: MultiparkVehicle;
+  parkingType: ParkingType;
+  pricingType?: "DAY" | "HOUR";
+  deliveryType?: string;
+  deliveryService?: boolean;
+  deliveryAddress?: string;
+  pickupAddress?: string;
+  flightInfo?: MultiparkFlightInfo;
+  extraServices?: string[];
+  discountCode?: string;
+  notes?: string;
+}
+
+export interface MultiparkBooking {
+  id: string;
+  bookingNumber: string;
+  status: string;
+  checkIn: string;
+  checkOut: string;
+  checkInTime: string;
+  checkOutTime?: string;
+  parkId?: string;
+  parkName?: string;
+  park?: {
+    id: string;
+    name: string;
+    city: string;
+    types?: string[];
+    isPro?: boolean;
+  };
+  customer?: MultiparkClient;
+  client?: MultiparkClient;
+  vehicle?: MultiparkVehicle;
+  pricing?: {
+    total?: number;
+    totalPrice?: number;
+    parkingPrice?: number;
+    deliveryCharges?: number;
+    extraServicesTotal?: number;
+    discount?: number;
+    remainingToPay?: number;
+    currency: string;
+  };
+  deliveryService?: boolean;
+  deliveryAddress?: string;
+  pickupAddress?: string;
+  extraServices?: Array<{ name: string; quantity: number; price: number }>;
+  discountCode?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
+  createdAt?: string;
+  updatedAt: string;
+  [key: string]: any;
+}
+
+export type BookingActionType = "creation" | "checkin" | "checkout" | "cancelation";
+
+export interface MultiparkBookingsReport {
+  total: number;
+  actionType: BookingActionType;
+  period: { startDate: string; endDate: string };
+  bookings: MultiparkBooking[];
+}
+
+export interface MultiparkAvailability {
+  available: boolean;
+  totalSpots: number;
+  availableSpots: number;
+  message: string;
+}
+
+export interface MultiparkPark {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  featured: boolean;
+  status?: string;
+  [key: string]: any;
+}
+
+// ─── Public API methods ───
+
+/** Health check */
+export async function healthCheck(): Promise<{ status: string; timestamp: string; version: string }> {
+  return multiparkRequest({ path: "/health" });
+}
+
+/** Check availability for a date range */
+export async function checkAvailability(
+  checkIn: string,
+  checkOut: string,
+  vehicleType: VehicleType = "CAR",
+  parkingType: ParkingType = "COVERED"
+): Promise<MultiparkAvailability> {
+  return multiparkRequest({
+    path: "/availability",
+    params: { checkIn, checkOut, vehicleType, parkingType },
+  });
+}
+
+/** Create a new booking */
+export async function createBooking(data: MultiparkBookingInput): Promise<MultiparkBooking> {
+  return multiparkRequest({ method: "POST", path: "/bookings", body: data });
+}
+
+/** Update an existing booking */
+export async function updateBooking(id: string, data: Partial<MultiparkBookingInput>): Promise<MultiparkBooking> {
+  return multiparkRequest({ method: "PUT", path: `/bookings/${id}`, body: data });
+}
+
+/** Get booking by ID */
+export async function getBooking(id: string): Promise<MultiparkBooking> {
+  return multiparkRequest({ path: `/bookings/${id}` });
+}
+
+/** Check if MultiPark API is configured */
+export function isMultiparkConfigured(): boolean {
+  return !!ENV.multiparkApiKey;
+}
+
+/** List parks (public endpoint, no auth needed) */
+export async function listParks(): Promise<{ parks: MultiparkPark[] }> {
+  if (!isMultiparkConfigured()) return { parks: [] };
+  return multiparkRequest({
+    path: "/parks",
+    baseUrl: "https://api.multipark.pt/api/v1",
+  });
+}
+
+/** Get bookings report by period and action type */
+export async function getBookingsReport(
+  startDate: string,
+  endDate: string,
+  actionType: BookingActionType,
+  apiKey?: string
+): Promise<MultiparkBookingsReport> {
+  return multiparkRequest({
+    path: "/bookings/report",
+    params: { startDate, endDate, actionType },
+    apiKey,
+  });
+}
+
+/** Get bookings report for a specific park */
+export async function getBookingsReportForPark(
+  parkConfig: ParkConfig,
+  startDate: string,
+  endDate: string,
+  actionType: BookingActionType
+): Promise<MultiparkBookingsReport & { parkConfig: ParkConfig }> {
+  const apiKey = getParkApiKey(parkConfig);
+  if (!apiKey) throw new Error(`API key not configured for ${parkConfig.name} - ${parkConfig.city}`);
+  const report = await getBookingsReport(startDate, endDate, actionType, apiKey);
+  return { ...report, parkConfig };
+}
+
+/** Get bookings report for ALL configured parks */
+export async function getBookingsReportAllParks(
+  startDate: string,
+  endDate: string,
+  actionType: BookingActionType
+): Promise<{ park: ParkConfig; report: MultiparkBookingsReport }[]> {
+  const parks = getConfiguredParks();
+  const results: { park: ParkConfig; report: MultiparkBookingsReport }[] = [];
+  for (const park of parks) {
+    try {
+      const report = await getBookingsReport(startDate, endDate, actionType, getParkApiKey(park));
+      results.push({ park, report });
+    } catch (err: any) {
+      console.error(`[MultiPark] Report failed for ${park.name} ${park.city}: ${err.message}`);
+    }
+  }
+  return results;
+}
+
+/** Cancel a booking */
+export async function cancelBooking(
+  id: string,
+  reason: string
+): Promise<MultiparkBooking> {
+  return multiparkRequest({
+    method: "PUT",
+    path: `/bookings/${id}/status`,
+    body: { status: "CANCELLED", reason },
+  });
+}
+
+/** Calculate pricing */
+export async function calculatePricing(data: {
+  checkIn: string;
+  checkOut: string;
+  vehicleType?: VehicleType;
+  parkingType?: ParkingType;
+  deliveryService?: boolean;
+  deliveryAddress?: string;
+  extraServices?: Array<{ serviceId: string; quantity: number }>;
+  discountCode?: string;
+}): Promise<any> {
+  return multiparkRequest({ method: "POST", path: "/pricing", body: data });
+}
+
+/** Test API connectivity */
+export async function testConnection(): Promise<{ ok: boolean; message: string; version?: string }> {
+  try {
+    const health = await healthCheck();
+    return { ok: true, message: `API OK (v${health.version})`, version: health.version };
+  } catch (error: any) {
+    return { ok: false, message: `Erro: ${error.message}` };
+  }
+}
