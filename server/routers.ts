@@ -52,6 +52,7 @@ import {
   // RH
   getAllEmployees,
   getEmployeeById,
+  getEmployeeByUserId,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -1107,6 +1108,11 @@ export const appRouter = router({
 
   // ── RH ───────────────────────────────────────────────────────────────────────────────────────
   rh: router({
+    // ── MY PROFILE (for extra/low-role users) ──────────────────────────────────────────────────
+    me: protectedProcedure.query(async ({ ctx }) => {
+      return getEmployeeByUserId(ctx.user.id);
+    }),
+
     // ── STATS ──────────────────────────────────────────────────────────────────────────────────
     stats: protectedProcedure.query(async ({ ctx }) => {
       requireRole(ctx.user.role, "admin");
@@ -1125,7 +1131,13 @@ export const appRouter = router({
     byId: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        // extras can view their own profile
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const myEmployee = await getEmployeeByUserId(ctx.user.id);
+          if (!myEmployee || myEmployee.employee.id !== input.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+          }
+        }
         return getEmployeeById(input.id);
       }),
 

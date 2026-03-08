@@ -87,16 +87,44 @@ type MenuItem = {
   icon: React.ElementType;
   label: string;
   path: string;
+  minRole?: string;
 };
 
 type MenuGroup = {
   label: string;
   items: MenuItem[];
+  minRole?: string;
 };
+
+const ROLE_HIERARCHY: Record<string, number> = {
+  user: 0,
+  extra: 1,
+  frontoffice: 2,
+  backoffice: 3,
+  team_leader: 4,
+  supervisor: 5,
+  admin: 6,
+  super_admin: 7,
+};
+
+function hasRole(userRole: string, minRole: string): boolean {
+  return (ROLE_HIERARCHY[userRole] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 0);
+}
+
+function getFilteredMenuGroups(userRole: string): MenuGroup[] {
+  return menuGroups
+    .filter(g => !g.minRole || hasRole(userRole, g.minRole))
+    .map(g => ({
+      ...g,
+      items: g.items.filter(i => !i.minRole || hasRole(userRole, i.minRole)),
+    }))
+    .filter(g => g.items.length > 0);
+}
 
 const menuGroups: MenuGroup[] = [
   {
     label: "Geral",
+    minRole: "frontoffice",
     items: [
       { icon: Home, label: "Dashboard", path: "/dashboard" },
       { icon: BarChart3, label: "Financeiro", path: "/financeiro" },
@@ -108,6 +136,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     label: "Financeiro",
+    minRole: "frontoffice",
     items: [
       { icon: Receipt, label: "Despesas", path: "/despesas" },
       { icon: FolderTree, label: "Projetos", path: "/projetos" },
@@ -122,13 +151,14 @@ const menuGroups: MenuGroup[] = [
     label: "Pessoas",
     items: [
       { icon: UserCheck, label: "Recursos Humanos", path: "/rh" },
-      { icon: Users, label: "Utilizadores", path: "/utilizadores" },
-      { icon: Trophy, label: "Avaliação", path: "/avaliacao" },
+      { icon: Users, label: "Utilizadores", path: "/utilizadores", minRole: "admin" },
+      { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "frontoffice" },
       { icon: GraduationCap, label: "Formação", path: "/formacao" },
     ],
   },
   {
     label: "Operações",
+    minRole: "frontoffice",
     items: [
       { icon: Truck, label: "Operacional", path: "/operacional" },
       { icon: Megaphone, label: "Marketing", path: "/marketing" },
@@ -142,6 +172,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     label: "Suporte",
+    minRole: "frontoffice",
     items: [
       { icon: MessageSquareWarning, label: "Reclamações", path: "/reclamacoes" },
       { icon: Star, label: "Críticas Google", path: "/criticas" },
@@ -151,6 +182,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     label: "Sistema",
+    minRole: "admin",
     items: [
       { icon: Key, label: "API Keys", path: "/api-keys" },
       { icon: ScrollText, label: "Logs", path: "/logs" },
@@ -159,6 +191,7 @@ const menuGroups: MenuGroup[] = [
 ];
 
 const allMenuItems = menuGroups.flatMap(g => g.items);
+const allMenuPaths = new Set(allMenuItems.map(i => i.path));
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
@@ -240,8 +273,20 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const userRole = user?.role ?? "user";
+  const filteredGroups = getFilteredMenuGroups(userRole);
+  const filteredItems = filteredGroups.flatMap(g => g.items);
   const activeMenuItem = allMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+
+  // Redirect extra/user to allowed page if on restricted route
+  useEffect(() => {
+    if (!user) return;
+    const allowedPaths = new Set(filteredItems.map(i => i.path));
+    if (allMenuPaths.has(location) && !allowedPaths.has(location)) {
+      setLocation(filteredItems[0]?.path ?? "/formacao");
+    }
+  }, [location, user, filteredItems]);
   const filters = useGlobalFilters();
 
   useEffect(() => {
@@ -311,7 +356,7 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            {menuGroups.map(group => {
+            {filteredGroups.map(group => {
               const hasActiveItem = group.items.some(item => item.path === location);
               return (
                 <Collapsible key={group.label} defaultOpen={hasActiveItem || group.label === "Geral" || group.label === "Financeiro"} className="group/collapsible">

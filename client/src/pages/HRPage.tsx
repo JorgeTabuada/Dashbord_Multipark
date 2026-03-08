@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1607,6 +1608,13 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
 }
 
 export default function HRPage() {
+  const { user } = useAuth();
+  const userRole = user?.role ?? "user";
+  const isExtra = userRole === "extra" || userRole === "user";
+
+  // Extra users: show only their own profile
+  const { data: myEmployee } = trpc.rh.me.useQuery(undefined, { enabled: isExtra });
+
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showRates, setShowRates] = useState(false);
@@ -1618,8 +1626,24 @@ export default function HRPage() {
   const { data: employees = [], isLoading } = trpc.rh.list.useQuery({
     isActive: true,
     position: filterPosition !== "all" ? filterPosition : undefined,
-  });
-  const { data: docStatus = {} } = trpc.rh.documents.allStatus.useQuery();
+  }, { enabled: !isExtra });
+  const { data: docStatus = {} } = trpc.rh.documents.allStatus.useQuery(undefined, { enabled: !isExtra });
+
+  // Extra users go directly to their profile
+  if (isExtra) {
+    if (!myEmployee) {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center space-y-2">
+            <Users className="w-12 h-12 mx-auto text-muted-foreground" />
+            <p className="text-muted-foreground">O seu perfil de colaborador ainda não foi criado.</p>
+            <p className="text-sm text-muted-foreground">Contacte a administração.</p>
+          </div>
+        </div>
+      );
+    }
+    return <EmployeeDetail employeeId={myEmployee.employee.id} onBack={() => {}} />;
+  }
 
   const filtered = employees.filter(({ employee: e }) => {
     const matchesSearch = e.fullName.toLowerCase().includes(search.toLowerCase()) ||

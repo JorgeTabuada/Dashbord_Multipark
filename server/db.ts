@@ -551,6 +551,15 @@ export async function getEmployeeById(id: number) {
   return result[0];
 }
 
+export async function getEmployeeByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({ employee: employees, project: projects }).from(employees)
+    .leftJoin(projects, eq(employees.projectId, projects.id))
+    .where(eq(employees.userId, userId)).limit(1);
+  return result[0];
+}
+
 export async function createEmployee(data: InsertEmployee) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
