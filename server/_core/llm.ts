@@ -276,20 +276,10 @@ function isAnthropic(): boolean {
   return url.includes("anthropic");
 }
 
-function resolveAnthropicModel(raw: string): string {
-  const aliases: Record<string, string> = {
-    "claude-sonnet-4-6": "claude-sonnet-4-20250514",
-    "claude-opus-4-6": "claude-opus-4-20250514",
-    "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-    "claude-sonnet-4": "claude-sonnet-4-20250514",
-    "claude-opus-4": "claude-opus-4-20250514",
-  };
-  return aliases[raw] || raw;
-}
-
 async function invokeClaude(params: InvokeParams): Promise<InvokeResult> {
   const apiKey = resolveApiKey();
-  const model = resolveAnthropicModel(process.env.LLM_MODEL || "claude-sonnet-4-20250514");
+  // Always use a known valid Anthropic model ID regardless of env var
+  const model = "claude-sonnet-4-20250514";
 
   // Separate system message from user/assistant messages
   const normalized = params.messages.map(normalizeMessage);

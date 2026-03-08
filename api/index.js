@@ -4780,19 +4780,9 @@ function isAnthropic() {
   const url = process.env.LLM_API_URL || "";
   return url.includes("anthropic");
 }
-function resolveAnthropicModel(raw) {
-  const aliases = {
-    "claude-sonnet-4-6": "claude-sonnet-4-20250514",
-    "claude-opus-4-6": "claude-opus-4-20250514",
-    "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-    "claude-sonnet-4": "claude-sonnet-4-20250514",
-    "claude-opus-4": "claude-opus-4-20250514"
-  };
-  return aliases[raw] || raw;
-}
 async function invokeClaude(params) {
   const apiKey = resolveApiKey();
-  const model = resolveAnthropicModel(process.env.LLM_MODEL || "claude-sonnet-4-20250514");
+  const model = "claude-sonnet-4-20250514";
   const normalized = params.messages.map(normalizeMessage);
   let system = "";
   const msgs = [];
