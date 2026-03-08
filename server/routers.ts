@@ -200,6 +200,7 @@ import {
   deleteInvoice,
   getInvoiceStats,
   getBillingData,
+  getPartnershipAnalytics,
   // Partnerships
   createPartnership,
   getPartnerships,
@@ -3281,6 +3282,12 @@ export const appRouter = router({
 
   // ─── PARCERIAS ───────────────────────────────────────────────────────────
   partnerships: router({
+    analytics: protectedProcedure.input(z.object({
+      from: z.string(),
+      to: z.string(),
+      projectId: z.number().optional(),
+    })).query(({ input }) => getPartnershipAnalytics(input)),
+
     list: protectedProcedure.input(z.object({
       partnerType: z.string().optional(),
       status: z.string().optional(),

@@ -2269,6 +2269,104 @@ export async function getBillingData(filters: { from: string; to: string; projec
   };
 }
 
+// ─── PARTNERSHIP ANALYTICS (from bookings campaign field) ────────────────────
+export async function getPartnershipAnalytics(filters: { from: string; to: string; projectId?: number }) {
+  const db = await getDb();
+  if (!db) return { partners: [], proBookings: [], totals: { partnerBookings: 0, partnerRevenue: 0, directBookings: 0, directRevenue: 0, proBookings: 0, proRevenue: 0 } };
+
+  let projectIds: number[] | undefined;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
+
+  // Base conditions: checkouts in period
+  const baseConds: any[] = [
+    isNotNull(multiparkBookings.checkOut),
+    gte(multiparkBookings.checkOut, new Date(filters.from)),
+    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+  ];
+  if (projectIds) baseConds.push(inArray(multiparkBookings.projectId, projectIds));
+
+  // 1. Partner bookings (campaign is not null = came from partner/affiliate)
+  const partnerRows = await db
+    .select({
+      campaign: multiparkBookings.campaign,
+      city: multiparkBookings.city,
+      parkName: multiparkBookings.parkName,
+      count: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+      avgPrice: sql<number>`COALESCE(AVG(${multiparkBookings.totalPrice}), 0)`,
+      totalDiscount: sql<number>`COALESCE(SUM(${multiparkBookings.discount}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...baseConds, isNotNull(multiparkBookings.campaign)))
+    .groupBy(multiparkBookings.campaign, multiparkBookings.city, multiparkBookings.parkName);
+
+  // 2. All bookings for totals (partner vs direct)
+  const allRows = await db
+    .select({
+      hasPartner: sql<number>`CASE WHEN ${multiparkBookings.campaign} IS NOT NULL AND ${multiparkBookings.campaign} != '' THEN 1 ELSE 0 END`,
+      count: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...baseConds))
+    .groupBy(sql`CASE WHEN ${multiparkBookings.campaign} IS NOT NULL AND ${multiparkBookings.campaign} != '' THEN 1 ELSE 0 END`);
+
+  // 3. Pro bookings (extract from rawJson where park.isPro = true)
+  const proRows = await db
+    .select({
+      parkName: multiparkBookings.parkName,
+      city: multiparkBookings.city,
+      count: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(
+      ...baseConds,
+      sql`JSON_EXTRACT(${multiparkBookings.rawJson}, '$.park.isPro') = true`,
+    ))
+    .groupBy(multiparkBookings.parkName, multiparkBookings.city);
+
+  // Calculate totals
+  let partnerBookings = 0, partnerRevenue = 0, directBookings = 0, directRevenue = 0;
+  for (const r of allRows) {
+    if (Number(r.hasPartner) === 1) {
+      partnerBookings = Number(r.count);
+      partnerRevenue = Number(r.totalRevenue);
+    } else {
+      directBookings = Number(r.count);
+      directRevenue = Number(r.totalRevenue);
+    }
+  }
+  const proBookingsTotal = proRows.reduce((s, r) => s + Number(r.count), 0);
+  const proRevenueTotal = proRows.reduce((s, r) => s + Number(r.totalRevenue), 0);
+
+  return {
+    partners: partnerRows.map(r => ({
+      campaign: r.campaign,
+      city: r.city,
+      parkName: r.parkName,
+      count: Number(r.count),
+      totalRevenue: Number(r.totalRevenue),
+      avgPrice: Number(r.avgPrice),
+      totalDiscount: Number(r.totalDiscount),
+    })),
+    proBookings: proRows.map(r => ({
+      parkName: r.parkName,
+      city: r.city,
+      count: Number(r.count),
+      totalRevenue: Number(r.totalRevenue),
+    })),
+    totals: {
+      partnerBookings,
+      partnerRevenue,
+      directBookings,
+      directRevenue,
+      proBookings: proBookingsTotal,
+      proRevenue: proRevenueTotal,
+    },
+  };
+}
+
 // ─── PARCERIAS (PARTNERSHIPS) ────────────────────────────────────────────────
 export async function createPartnership(data: any) {
   const db = await getDb(); if (!db) return null;
