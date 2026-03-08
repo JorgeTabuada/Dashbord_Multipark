@@ -212,7 +212,12 @@ const normalizeToolChoice = (
 const resolveApiUrl = () => {
   const url = process.env.LLM_API_URL || process.env.OPENAI_API_URL;
   if (!url) throw new Error("LLM_API_URL or OPENAI_API_URL is not configured");
-  return `${url.replace(/\/$/, "")}/v1/chat/completions`;
+  const base = url.replace(/\/$/, "");
+  // Gemini OpenAI-compatible endpoint already includes /v1beta/openai
+  if (base.includes("/openai")) {
+    return `${base}/chat/completions`;
+  }
+  return `${base}/v1/chat/completions`;
 };
 
 const resolveApiKey = () => {
@@ -266,7 +271,94 @@ const normalizeResponseFormat = ({
   };
 };
 
-export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
+function isAnthropic(): boolean {
+  const url = process.env.LLM_API_URL || "";
+  return url.includes("anthropic");
+}
+
+async function invokeClaude(params: InvokeParams): Promise<InvokeResult> {
+  const apiKey = resolveApiKey();
+  const model = process.env.LLM_MODEL || "claude-sonnet-4-6";
+
+  // Separate system message from user/assistant messages
+  const normalized = params.messages.map(normalizeMessage);
+  let system = "";
+  const msgs: any[] = [];
+  for (const m of normalized) {
+    if (m.role === "system") {
+      system += (typeof m.content === "string" ? m.content : JSON.stringify(m.content)) + "\n";
+    } else {
+      // Convert OpenAI image_url format to Anthropic format
+      let content = m.content;
+      if (Array.isArray(content)) {
+        content = content.map((part: any) => {
+          if (part.type === "image_url" && part.image_url?.url) {
+            const url = part.image_url.url;
+            // If it's a data URI, extract base64
+            const dataMatch = url.match(/^data:(image\/\w+);base64,(.+)$/);
+            if (dataMatch) {
+              return {
+                type: "image",
+                source: { type: "base64", media_type: dataMatch[1], data: dataMatch[2] },
+              };
+            }
+            // Otherwise it's a URL
+            return {
+              type: "image",
+              source: { type: "url", url },
+            };
+          }
+          return part;
+        });
+      }
+      msgs.push({ role: m.role, content });
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    model,
+    max_tokens: 4096,
+    messages: msgs,
+  };
+  if (system.trim()) payload.system = system.trim();
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`);
+  }
+
+  const data = await response.json() as any;
+
+  // Convert Anthropic response to OpenAI format
+  const textContent = data.content?.find((c: any) => c.type === "text")?.text || "";
+  return {
+    id: data.id || "",
+    created: Date.now(),
+    model: data.model || model,
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content: textContent },
+      finish_reason: data.stop_reason || "stop",
+    }],
+    usage: data.usage ? {
+      prompt_tokens: data.usage.input_tokens || 0,
+      completion_tokens: data.usage.output_tokens || 0,
+      total_tokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0),
+    } : undefined,
+  };
+}
+
+async function invokeOpenAI(params: InvokeParams): Promise<InvokeResult> {
   const apiKey = resolveApiKey();
   const apiUrl = resolveApiUrl();
 
@@ -330,4 +422,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   return (await response.json()) as InvokeResult;
+}
+
+export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
+  if (isAnthropic()) {
+    return invokeClaude(params);
+  }
+  return invokeOpenAI(params);
 }

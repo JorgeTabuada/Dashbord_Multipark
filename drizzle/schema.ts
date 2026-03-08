@@ -558,6 +558,7 @@ export const partnershipTransactions = mysqlTable("partnership_transactions", {
 export const partnerships = mysqlTable("partnerships", {
 	id: int().autoincrement().primaryKey(),
 	name: varchar({ length: 255 }).notNull(),
+	campaignKey: varchar({ length: 128 }),
 	partnerType: mysqlEnum(['aggregator','agency','pro_client','other','corporate','retainer']).default('other').notNull(),
 	contactName: varchar({ length: 255 }),
 	contactEmail: varchar({ length: 320 }),

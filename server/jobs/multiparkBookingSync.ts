@@ -153,7 +153,7 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
     deliveryService: booking.deliveryService ? 1 : 0,
     deliveryAddress: booking.deliveryAddress || null,
     pickupAddress: booking.pickupAddress || null,
-    campaign: booking.discountCode || booking.campaign || null,
+    campaign: (booking as any).partnerName || booking.discountCode || booking.campaign || null,
     parkingPrice: pricing?.parkingPrice?.toString() ?? null,
     deliveryCharges: pricing?.deliveryCharges?.toString() ?? null,
     extrasTotal: pricing?.extraServicesTotal?.toString() ?? null,

@@ -216,6 +216,7 @@ import {
   deletePartnershipInvoice,
   markOverduePartnershipInvoices,
   getPartnershipDashboardStats,
+  getBookingsByCampaign,
   // Annual Reports
   createAnnualReport,
   getAnnualReports,
@@ -915,6 +916,22 @@ export const appRouter = router({
     extractFromImage: protectedProcedure
       .input(z.object({ imageUrl: z.string() }))
       .mutation(async ({ input }) => {
+        // If the URL is a local /uploads/ path, read from disk and convert to base64 data URI
+        let imageUrl = input.imageUrl;
+        if (imageUrl.startsWith("/uploads/")) {
+          const fs = await import("fs");
+          const path = await import("path");
+          const filePath = path.join(process.cwd(), imageUrl);
+          if (!fs.existsSync(filePath)) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Ficheiro de fatura não encontrado" });
+          }
+          const fileBuffer = fs.readFileSync(filePath);
+          const ext = path.extname(filePath).toLowerCase().replace(".", "");
+          const mimeMap: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+          const mime = mimeMap[ext] || "image/jpeg";
+          imageUrl = `data:${mime};base64,${fileBuffer.toString("base64")}`;
+        }
+
         const llmMessages: import("./_core/llm").Message[] = [
           {
             role: "system",
@@ -923,39 +940,22 @@ export const appRouter = router({
           {
             role: "user",
             content: [
-              { type: "image_url", image_url: { url: input.imageUrl, detail: "high" } } as import("./_core/llm").ImageContent,
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } } as import("./_core/llm").ImageContent,
               { type: "text", text: 'Extrai os dados desta fatura e devolve em JSON com os campos: supplier (nome do fornecedor), description (descrição dos produtos/serviços), amount (valor total como string numérica, ex: "45.90"), currency (moeda, ex: "EUR"), paymentMethod (cash/card/transfer/check/other), expenseDate (data da fatura em formato ISO YYYY-MM-DD), paymentDueDate (data de vencimento em formato ISO YYYY-MM-DD, ou null se não existir). Se não conseguires extrair um campo, usa null.' } as import("./_core/llm").TextContent,
             ],
           },
         ];
         const response = await invokeLLM({
           messages: llmMessages,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "invoice_data",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  supplier: { type: ["string", "null"] },
-                  description: { type: ["string", "null"] },
-                  amount: { type: ["string", "null"] },
-                  currency: { type: ["string", "null"] },
-                  paymentMethod: { type: ["string", "null"] },
-                  expenseDate: { type: ["string", "null"] },
-                  paymentDueDate: { type: ["string", "null"] },
-                },
-                required: ["supplier", "description", "amount", "currency", "paymentMethod", "expenseDate", "paymentDueDate"],
-                additionalProperties: false,
-              },
-            },
-          },
+          response_format: { type: "json_object" },
         });
 
         const rawContent = response.choices?.[0]?.message?.content;
-        const content = typeof rawContent === "string" ? rawContent : null;
+        let content = typeof rawContent === "string" ? rawContent : null;
         if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Sem resposta do LLM" });
+
+        // Strip markdown code fences if present (e.g. ```json ... ```)
+        content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
 
         try {
           const parsed = JSON.parse(content);
@@ -3302,6 +3302,7 @@ export const appRouter = router({
 
     create: protectedProcedure.input(z.object({
       name: z.string().min(1),
+      campaignKey: z.string().optional(),
       partnerType: z.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]),
       contactName: z.string().optional(),
       contactEmail: z.string().optional(),
@@ -3313,7 +3314,8 @@ export const appRouter = router({
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      const id = await createPartnership(input);
+      const { nif, ...rest } = input;
+      const id = await createPartnership({ ...rest, partnerNif: nif });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "partnership", entityId: id || 0, details: `Parceria: ${input.name}` });
       return { id };
     }),
@@ -3321,6 +3323,7 @@ export const appRouter = router({
     update: protectedProcedure.input(z.object({
       id: z.number(),
       name: z.string().optional(),
+      campaignKey: z.string().optional(),
       contactName: z.string().optional(),
       contactEmail: z.string().optional(),
       contactPhone: z.string().optional(),
@@ -3332,8 +3335,8 @@ export const appRouter = router({
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      const { id, ...data } = input;
-      await updatePartnership(id, data);
+      const { id, nif, ...rest } = input;
+      await updatePartnership(id, { ...rest, ...(nif !== undefined ? { partnerNif: nif } : {}) });
       await logActivity({ userId: ctx.user.id, action: "update", entity: "partnership", entityId: id });
       return { success: true };
     }),
@@ -3421,6 +3424,14 @@ export const appRouter = router({
       const count = await markOverduePartnershipInvoices();
       return { updated: count };
     }),
+
+    // Bookings by campaign key for monthly billing
+    bookingsByCampaign: protectedProcedure.input(z.object({
+      campaignKey: z.string(),
+      from: z.string(),
+      to: z.string(),
+      projectId: z.number().optional(),
+    })).query(({ input }) => getBookingsByCampaign(input)),
   }),
 
   // ─── ANUAL ───────────────────────────────────────────────────────────────

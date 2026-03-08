@@ -1,30 +1,11 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { put, head } from "@vercel/blob";
 import fs from "fs";
 import path from "path";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
-function isS3Configured(): boolean {
-  return !!(process.env.AWS_REGION && process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID);
-}
-
-const getS3Client = (() => {
-  let client: S3Client | null = null;
-  return () => {
-    if (!client) {
-      const region = process.env.AWS_REGION;
-      if (!region) throw new Error("AWS_REGION not configured");
-      client = new S3Client({ region });
-    }
-    return client;
-  };
-})();
-
-function getBucket(): string {
-  const bucket = process.env.AWS_S3_BUCKET;
-  if (!bucket) throw new Error("AWS_S3_BUCKET not configured");
-  return bucket;
+function isBlobConfigured(): boolean {
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
 }
 
 function ensureUploadsDir() {
@@ -39,41 +20,27 @@ export async function storagePut(
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
   const key = relKey.replace(/^\/+/, "");
+  const body = typeof data === "string" ? Buffer.from(data) : data;
 
-  // Use local filesystem if S3 is not configured
-  if (!isS3Configured()) {
+  if (!isBlobConfigured()) {
     ensureUploadsDir();
     const filePath = path.join(UPLOADS_DIR, key.replace(/\//g, path.sep));
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const body = typeof data === "string" ? Buffer.from(data) : data;
     fs.writeFileSync(filePath, body);
     const url = `/uploads/${key}`;
     return { key, url };
   }
 
-  const s3 = getS3Client();
-  const bucket = getBucket();
-  const body = typeof data === "string" ? Buffer.from(data) : data;
+  const blob = await put(key, body, {
+    access: "public",
+    contentType,
+    addRandomSuffix: false,
+  });
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    })
-  );
-
-  const url = await getSignedUrl(
-    s3,
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-    { expiresIn: 3600 * 24 * 7 }
-  );
-
-  return { key, url };
+  return { key, url: blob.url };
 }
 
 export async function storageGet(
@@ -81,19 +48,15 @@ export async function storageGet(
 ): Promise<{ key: string; url: string }> {
   const key = relKey.replace(/^\/+/, "");
 
-  if (!isS3Configured()) {
+  if (!isBlobConfigured()) {
     const url = `/uploads/${key}`;
     return { key, url };
   }
 
-  const s3 = getS3Client();
-  const bucket = getBucket();
-
-  const url = await getSignedUrl(
-    s3,
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-    { expiresIn: 3600 * 24 * 7 }
-  );
-
-  return { key, url };
+  try {
+    const blob = await head(key);
+    return { key, url: blob.url };
+  } catch {
+    return { key, url: "" };
+  }
 }

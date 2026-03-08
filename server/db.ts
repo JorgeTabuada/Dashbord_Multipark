@@ -2367,6 +2367,52 @@ export async function getPartnershipAnalytics(filters: { from: string; to: strin
   };
 }
 
+export async function getBookingsByCampaign(filters: { campaignKey: string; from: string; to: string; projectId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+
+  let projectIds: number[] | undefined;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
+
+  const conds: any[] = [
+    eq(multiparkBookings.campaign, filters.campaignKey),
+    isNotNull(multiparkBookings.checkOut),
+    gte(multiparkBookings.checkOut, new Date(filters.from)),
+    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+  ];
+  if (projectIds) conds.push(inArray(multiparkBookings.projectId, projectIds));
+
+  const rows = await db
+    .select({
+      id: multiparkBookings.id,
+      bookingNumber: multiparkBookings.bookingNumber,
+      clientFirstName: multiparkBookings.clientFirstName,
+      clientLastName: multiparkBookings.clientLastName,
+      licensePlate: multiparkBookings.licensePlate,
+      checkIn: multiparkBookings.checkIn,
+      checkOut: multiparkBookings.checkOut,
+      parkName: multiparkBookings.parkName,
+      city: multiparkBookings.city,
+      totalPrice: multiparkBookings.totalPrice,
+      discount: multiparkBookings.discount,
+      parkingPrice: multiparkBookings.parkingPrice,
+      deliveryCharges: multiparkBookings.deliveryCharges,
+      extrasTotal: multiparkBookings.extrasTotal,
+    })
+    .from(multiparkBookings)
+    .where(and(...conds))
+    .orderBy(desc(multiparkBookings.checkOut));
+
+  return rows.map(r => ({
+    ...r,
+    totalPrice: Number(r.totalPrice ?? 0),
+    discount: Number(r.discount ?? 0),
+    parkingPrice: Number(r.parkingPrice ?? 0),
+    deliveryCharges: Number(r.deliveryCharges ?? 0),
+    extrasTotal: Number(r.extrasTotal ?? 0),
+  }));
+}
+
 // ─── PARCERIAS (PARTNERSHIPS) ────────────────────────────────────────────────
 export async function createPartnership(data: any) {
   const db = await getDb(); if (!db) return null;
@@ -2378,7 +2424,7 @@ export async function getPartnerships(filters?: { partnerType?: string; status?:
   const db = await getDb(); if (!db) return [];
   const conditions: any[] = [];
   if (filters?.partnerType) conditions.push(eq(partnerships.partnerType, filters.partnerType as any));
-  if (filters?.status) conditions.push(eq(partnerships.status, filters.status as any));
+  if (filters?.status) conditions.push(eq(partnerships.partnerStatus, filters.status as any));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return db.select().from(partnerships).where(where).orderBy(desc(partnerships.createdAt));
 }
