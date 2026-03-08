@@ -914,23 +914,9 @@ export const appRouter = router({
 
     // ── EXTRACT WITH LLM ─────────────────────────────────────────────────────
     extractFromImage: protectedProcedure
-      .input(z.object({ imageUrl: z.string() }))
+      .input(z.object({ imageBase64: z.string(), mimeType: z.string().default("image/jpeg") }))
       .mutation(async ({ input }) => {
-        // If the URL is a local /uploads/ path, read from disk and convert to base64 data URI
-        let imageUrl = input.imageUrl;
-        if (imageUrl.startsWith("/uploads/")) {
-          const fs = await import("fs");
-          const path = await import("path");
-          const filePath = path.join(process.cwd(), imageUrl);
-          if (!fs.existsSync(filePath)) {
-            throw new TRPCError({ code: "NOT_FOUND", message: "Ficheiro de fatura não encontrado" });
-          }
-          const fileBuffer = fs.readFileSync(filePath);
-          const ext = path.extname(filePath).toLowerCase().replace(".", "");
-          const mimeMap: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
-          const mime = mimeMap[ext] || "image/jpeg";
-          imageUrl = `data:${mime};base64,${fileBuffer.toString("base64")}`;
-        }
+        const imageUrl = `data:${input.mimeType};base64,${input.imageBase64}`;
 
         const llmMessages: import("./_core/llm").Message[] = [
           {

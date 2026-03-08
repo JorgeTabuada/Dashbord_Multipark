@@ -6419,21 +6419,8 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       return { url, key };
     }),
     // ── EXTRACT WITH LLM ─────────────────────────────────────────────────────
-    extractFromImage: protectedProcedure.input(z2.object({ imageUrl: z2.string() })).mutation(async ({ input }) => {
-      let imageUrl = input.imageUrl;
-      if (imageUrl.startsWith("/uploads/")) {
-        const fs2 = await import("fs");
-        const path2 = await import("path");
-        const filePath = path2.join(process.cwd(), imageUrl);
-        if (!fs2.existsSync(filePath)) {
-          throw new TRPCError3({ code: "NOT_FOUND", message: "Ficheiro de fatura n\xE3o encontrado" });
-        }
-        const fileBuffer = fs2.readFileSync(filePath);
-        const ext = path2.extname(filePath).toLowerCase().replace(".", "");
-        const mimeMap = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
-        const mime = mimeMap[ext] || "image/jpeg";
-        imageUrl = `data:${mime};base64,${fileBuffer.toString("base64")}`;
-      }
+    extractFromImage: protectedProcedure.input(z2.object({ imageBase64: z2.string(), mimeType: z2.string().default("image/jpeg") })).mutation(async ({ input }) => {
+      const imageUrl = `data:${input.mimeType};base64,${input.imageBase64}`;
       const llmMessages = [
         {
           role: "system",

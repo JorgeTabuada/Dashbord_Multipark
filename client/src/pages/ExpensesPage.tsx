@@ -709,6 +709,8 @@ function ExpenseFormModal({
   const [scanning, setScanning] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [lastFileBase64, setLastFileBase64] = useState<string>("");
+  const [lastFileMime, setLastFileMime] = useState<string>("");
 
   const [form, setForm] = useState<FormData>({
     supplier: "",
@@ -786,6 +788,8 @@ function ExpenseFormModal({
     setUploading(true);
     try {
       const base64 = await fileToBase64(file);
+      setLastFileBase64(base64);
+      setLastFileMime(file.type);
       const result = await uploadMutation.mutateAsync({
         fileName: file.name,
         fileBase64: base64,
@@ -802,10 +806,10 @@ function ExpenseFormModal({
   }, [uploadMutation]);
 
   const handleExtract = async () => {
-    if (!form.invoiceImageUrl) return;
+    if (!lastFileBase64) return;
     setScanning(true);
     try {
-      const data = await extractMutation.mutateAsync({ imageUrl: form.invoiceImageUrl });
+      const data = await extractMutation.mutateAsync({ imageBase64: lastFileBase64, mimeType: lastFileMime || "image/jpeg" });
       if (data.supplier) set("supplier", data.supplier);
       if (data.description) set("description", data.description);
       if (data.amount) set("amount", data.amount);
