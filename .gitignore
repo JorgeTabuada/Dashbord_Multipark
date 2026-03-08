@@ -112,3 +112,8 @@ temp/
 # Manus artifacts
 .manus/
 .manus-logs/
+
+.vercel
+
+# Vercel bundled API
+api/*.js
