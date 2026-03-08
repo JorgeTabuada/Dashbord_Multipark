@@ -1,8 +1,8 @@
 import express from "express";
-import { registerOAuthRoutes } from "../server/_core/oauth";
-import { appRouter } from "../server/routers";
-import { createContext } from "../server/_core/context";
-import { createExternalApiRouter } from "../server/externalApi";
+import { registerOAuthRoutes } from "./oauth";
+import { appRouter } from "../routers";
+import { createContext } from "./context";
+import { createExternalApiRouter } from "../externalApi";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 const app = express();
