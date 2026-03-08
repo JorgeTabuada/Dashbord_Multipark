@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, like, or, sql, aliasedTable } from "drizzle-orm";
+import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   users,
@@ -2140,6 +2140,133 @@ export async function getInvoiceStats(month?: number, year?: number) {
     if (i.status === "draft") draft++;
   }
   return { total: all.length, totalAmount, paid, overdue, draft };
+}
+
+// ─── BILLING / FATURAÇÃO ────────────────────────────────────────────────────
+async function resolveProjectIds(projectId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [projectId];
+  const allProjects = await db.select().from(projects);
+  const ids = new Set<number>();
+  const addChildren = (pid: number) => {
+    ids.add(pid);
+    for (const p of allProjects) {
+      if (p.parentId === pid) addChildren(p.id);
+    }
+  };
+  addChildren(projectId);
+  return Array.from(ids);
+}
+
+export async function getBillingData(filters: { from: string; to: string; projectId?: number }) {
+  const db = await getDb();
+  if (!db) return { deliveries: [], expensesPaid: [], expensesPending: [], forecast: [] };
+
+  // Resolve project hierarchy
+  let projectIds: number[] | undefined;
+  if (filters.projectId) {
+    projectIds = await resolveProjectIds(filters.projectId);
+  }
+
+  // 1. Entregas (revenue from bookings) by project - checkout within period
+  const deliveryConds: any[] = [
+    gte(multiparkBookings.checkOut, new Date(filters.from)),
+    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+    isNotNull(multiparkBookings.checkOut),
+  ];
+  if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
+
+  const deliveryRows = await db
+    .select({
+      projectId: multiparkBookings.projectId,
+      projectName: projects.name,
+      count: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+      parkingRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.parkingPrice}), 0)`,
+      deliveryCharges: sql<number>`COALESCE(SUM(${multiparkBookings.deliveryCharges}), 0)`,
+      extrasRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.extrasTotal}), 0)`,
+    })
+    .from(multiparkBookings)
+    .leftJoin(projects, eq(multiparkBookings.projectId, projects.id))
+    .where(and(...deliveryConds))
+    .groupBy(multiparkBookings.projectId, projects.name);
+
+  // 2. Despesas pagas no período
+  const paidConds: any[] = [
+    eq(expenses.status, "paid"),
+    isNotNull(expenses.paidAt),
+    gte(expenses.paidAt, new Date(filters.from)),
+    lte(expenses.paidAt, new Date(filters.to + "T23:59:59")),
+  ];
+  if (projectIds) paidConds.push(inArray(expenses.projectId, projectIds));
+
+  const expPaidRows = await db
+    .select({
+      projectId: expenses.projectId,
+      projectName: projects.name,
+      categoryName: expenseCategories.name,
+      count: sql<number>`COUNT(*)`,
+      totalAmount: sql<number>`COALESCE(SUM(${expenses.amount}), 0)`,
+    })
+    .from(expenses)
+    .leftJoin(projects, eq(expenses.projectId, projects.id))
+    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
+    .where(and(...paidConds))
+    .groupBy(expenses.projectId, projects.name, expenseCategories.name);
+
+  // 3. Despesas pendentes (a pagar) no período
+  const pendConds: any[] = [
+    inArray(expenses.status, ["pending", "overdue"]),
+    isNotNull(expenses.paymentDueDate),
+    gte(expenses.paymentDueDate, new Date(filters.from)),
+    lte(expenses.paymentDueDate, new Date(filters.to + "T23:59:59")),
+  ];
+  if (projectIds) pendConds.push(inArray(expenses.projectId, projectIds));
+
+  const expPendRows = await db
+    .select({
+      projectId: expenses.projectId,
+      projectName: projects.name,
+      categoryName: expenseCategories.name,
+      supplier: expenses.supplier,
+      count: sql<number>`COUNT(*)`,
+      totalAmount: sql<number>`COALESCE(SUM(${expenses.amount}), 0)`,
+    })
+    .from(expenses)
+    .leftJoin(projects, eq(expenses.projectId, projects.id))
+    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
+    .where(and(...pendConds))
+    .groupBy(expenses.projectId, projects.name, expenseCategories.name, expenses.supplier);
+
+  // 4. Forecast: reservas futuras (checkin no futuro mas dentro do período)
+  const now = new Date();
+  const forecastFrom = now > new Date(filters.from) ? now.toISOString().slice(0, 10) : filters.from;
+  const forecastConds: any[] = [
+    gte(multiparkBookings.checkIn, new Date(forecastFrom)),
+    lte(multiparkBookings.checkIn, new Date(filters.to + "T23:59:59")),
+    isNull(multiparkBookings.checkOut),
+    isNull(multiparkBookings.cancelledAt),
+  ];
+  if (projectIds) forecastConds.push(inArray(multiparkBookings.projectId, projectIds));
+
+  const forecastRows = await db
+    .select({
+      projectId: multiparkBookings.projectId,
+      projectName: projects.name,
+      count: sql<number>`COUNT(*)`,
+      totalRevenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .leftJoin(projects, eq(multiparkBookings.projectId, projects.id))
+    .where(and(...forecastConds))
+    .groupBy(multiparkBookings.projectId, projects.name);
+
+  return {
+    deliveries: deliveryRows,
+    expensesPaid: expPaidRows,
+    expensesPending: expPendRows,
+    forecast: forecastRows,
+  };
 }
 
 // ─── PARCERIAS (PARTNERSHIPS) ────────────────────────────────────────────────

@@ -199,6 +199,7 @@ import {
   updateInvoice,
   deleteInvoice,
   getInvoiceStats,
+  getBillingData,
   // Partnerships
   createPartnership,
   getPartnerships,
@@ -3269,6 +3270,12 @@ export const appRouter = router({
       month: z.number().optional(),
       year: z.number().optional(),
     }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
+
+    billing: protectedProcedure.input(z.object({
+      from: z.string(),
+      to: z.string(),
+      projectId: z.number().optional(),
+    })).query(({ input }) => getBillingData(input)),
   }),
 
   // ─── PARCERIAS ───────────────────────────────────────────────────────────

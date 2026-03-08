@@ -1,397 +1,352 @@
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import {
-  Receipt, Plus, Trash2, Euro, Search, FileText, Clock,
-  CheckCircle2, AlertCircle, XCircle, Eye, Pencil
+  Euro, TrendingUp, TrendingDown, Receipt, Truck, CalendarClock,
+  Building2, FolderTree,
 } from "lucide-react";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft: { label: "Rascunho", color: "bg-gray-100 text-gray-700" },
-  issued: { label: "Emitida", color: "bg-blue-100 text-blue-700" },
-  paid: { label: "Paga", color: "bg-green-100 text-green-700" },
-  overdue: { label: "Vencida", color: "bg-red-100 text-red-700" },
-  cancelled: { label: "Cancelada", color: "bg-gray-100 text-gray-500" },
+const fmt = (v: number | string) => {
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(n);
 };
 
 export default function InvoicesPage() {
-  const { user } = useAuth();
   const filters = useGlobalFilters();
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editInvoice, setEditInvoice] = useState<any>(null);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
-  const queryInput = useMemo(() => {
-    const input: any = { month, year };
-    if (filterStatus !== "all") input.status = filterStatus;
-    if (search.trim()) input.search = search.trim();
-    if (filters.projectId !== undefined) input.projectId = filters.projectId;
-    return input;
-  }, [month, year, filterStatus, search, filters.projectId]);
+  const [from, setFrom] = useState(monthStart);
+  const [to, setTo] = useState(monthEnd);
 
-  const { data: invoices = [], isLoading } = trpc.invoices.list.useQuery(queryInput);
-  const { data: stats } = trpc.invoices.stats.useQuery({ month, year });
-  const updateMut = trpc.invoices.update.useMutation();
-  const deleteMut = trpc.invoices.delete.useMutation();
-  const utils = trpc.useUtils();
+  const projectId = useMemo(() => {
+    if (filters.brandId !== null) return filters.brandId;
+    if (filters.cityId !== null) return filters.cityId;
+    return undefined;
+  }, [filters.cityId, filters.brandId]);
 
-  const formatCents = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+  const { data, isLoading } = trpc.invoices.billing.useQuery({ from, to, projectId });
 
-  const handleStatusChange = async (id: number, status: string) => {
-    await updateMut.mutateAsync({ id, status });
-    utils.invoices.list.invalidate();
-    utils.invoices.stats.invalidate();
-    toast.success("Estado atualizado");
-  };
+  const deliveries = data?.deliveries ?? [];
+  const expensesPaid = data?.expensesPaid ?? [];
+  const expensesPending = data?.expensesPending ?? [];
+  const forecast = data?.forecast ?? [];
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Eliminar esta fatura?")) return;
-    await deleteMut.mutateAsync({ id });
-    utils.invoices.list.invalidate();
-    utils.invoices.stats.invalidate();
-    toast.success("Fatura eliminada");
-  };
+  // Totals
+  const totalDeliveryRevenue = deliveries.reduce((s, d) => s + Number(d.totalRevenue), 0);
+  const totalExpensesPaid = expensesPaid.reduce((s, e) => s + Number(e.totalAmount), 0);
+  const totalExpensesPending = expensesPending.reduce((s, e) => s + Number(e.totalAmount), 0);
+  const totalForecastRevenue = forecast.reduce((s, f) => s + Number(f.totalRevenue), 0);
+  const margin = totalDeliveryRevenue - totalExpensesPaid;
+  const forecastMargin = totalForecastRevenue - totalExpensesPending;
+
+  // Group expenses paid by project
+  const expPaidByProject = useMemo(() => {
+    const map = new Map<string, { projectName: string; total: number; categories: { name: string; total: number }[] }>();
+    for (const e of expensesPaid) {
+      const key = e.projectName ?? "Sem projeto";
+      if (!map.has(key)) map.set(key, { projectName: key, total: 0, categories: [] });
+      const entry = map.get(key)!;
+      entry.total += Number(e.totalAmount);
+      entry.categories.push({ name: e.categoryName ?? "Sem categoria", total: Number(e.totalAmount) });
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [expensesPaid]);
+
+  // Group expenses pending by project
+  const expPendByProject = useMemo(() => {
+    const map = new Map<string, { projectName: string; total: number; items: { supplier: string; category: string; total: number }[] }>();
+    for (const e of expensesPending) {
+      const key = e.projectName ?? "Sem projeto";
+      if (!map.has(key)) map.set(key, { projectName: key, total: 0, items: [] });
+      const entry = map.get(key)!;
+      entry.total += Number(e.totalAmount);
+      entry.items.push({ supplier: e.supplier ?? "—", category: e.categoryName ?? "Sem categoria", total: Number(e.totalAmount) });
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [expensesPending]);
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <p className="text-muted-foreground">Visão de receitas (entregas) e despesas por projeto</p>
+        <div className="flex items-center gap-3">
           <div>
-            <p className="text-muted-foreground">Gestão de faturas e pagamentos</p>
+            <Label className="text-xs mb-1 block">De</Label>
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-[140px]" />
           </div>
-          <div className="flex items-center gap-3">
-            <Select value={String(month)} onValueChange={v => setMonth(parseInt(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
-                  <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || 2026)} className="w-24" />
-            <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-2" /> Nova Fatura</Button>
+          <div>
+            <Label className="text-xs mb-1 block">Até</Label>
+            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-[140px]" />
           </div>
         </div>
-
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Card className="p-3">
-              <div className="flex items-center gap-2"><FileText className="w-4 h-4" /><span className="text-xs text-muted-foreground">Total</span></div>
-              <p className="text-xl font-bold mt-1">{stats.total}</p>
-            </Card>
-            <Card className="p-3">
-              <div className="flex items-center gap-2"><Euro className="w-4 h-4 text-green-500" /><span className="text-xs text-muted-foreground">Valor Total</span></div>
-              <p className="text-xl font-bold mt-1">{formatCents(stats.totalAmount)}</p>
-            </Card>
-            <Card className="p-3">
-              <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500" /><span className="text-xs text-muted-foreground">Pagas</span></div>
-              <p className="text-xl font-bold mt-1 text-green-600">{stats.paid}</p>
-            </Card>
-            <Card className="p-3">
-              <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500" /><span className="text-xs text-muted-foreground">Vencidas</span></div>
-              <p className="text-xl font-bold mt-1 text-red-600">{stats.overdue}</p>
-            </Card>
-            <Card className="p-3">
-              <div className="flex items-center gap-2"><Clock className="w-4 h-4" /><span className="text-xs text-muted-foreground">Rascunhos</span></div>
-              <p className="text-xl font-bold mt-1">{stats.draft}</p>
-            </Card>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar nº fatura, cliente, NIF..." className="pl-9" />
-          </div>
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* List */}
-        {isLoading ? (
-          <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>
-        ) : invoices.length === 0 ? (
-          <Card className="p-10 text-center">
-            <Receipt className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">Sem faturas neste período</p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="p-2">Nº Fatura</th>
-                  <th className="p-2">Cliente</th>
-                  <th className="p-2">NIF</th>
-                  <th className="p-2">Emissão</th>
-                  <th className="p-2">Vencimento</th>
-                  <th className="p-2 text-right">Valor</th>
-                  <th className="p-2">Estado</th>
-                  <th className="p-2 w-24">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv: any) => (
-                  <tr key={inv.id} className="border-b hover:bg-muted/50">
-                    <td className="p-2 font-medium">{inv.invoiceNumber}</td>
-                    <td className="p-2">{inv.clientName || "—"}</td>
-                    <td className="p-2 text-xs">{inv.clientNif || "—"}</td>
-                    <td className="p-2 text-xs">{new Date(inv.issueDate).toLocaleDateString("pt-PT")}</td>
-                    <td className="p-2 text-xs">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("pt-PT") : "—"}</td>
-                    <td className="p-2 text-right font-medium">{formatCents(inv.totalAmount)}</td>
-                    <td className="p-2">
-                      <Select value={inv.status} onValueChange={v => handleStatusChange(inv.id, v)}>
-                        <SelectTrigger className="h-7 text-xs w-28">
-                          <Badge className={STATUS_CONFIG[inv.status]?.color}>{STATUS_CONFIG[inv.status]?.label}</Badge>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                            <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setEditInvoice(inv)}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(inv.id)}>
-                          <Trash2 className="w-3 h-3 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
-      {showCreate && <CreateInvoiceDialog onClose={() => setShowCreate(false)} />}
-      {editInvoice && <EditInvoiceDialog invoice={editInvoice} onClose={() => setEditInvoice(null)} />}
-    </>
-  );
-}
-
-function CreateInvoiceDialog({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({
-    invoiceNumber: "",
-    clientName: "",
-    clientNif: "",
-    issueDate: new Date().toISOString().split("T")[0],
-    dueDate: "",
-    totalAmount: "",
-    taxAmount: "",
-    status: "draft" as const,
-    paymentMethod: "",
-    notes: "",
-  });
-  const createMut = trpc.invoices.create.useMutation();
-  const utils = trpc.useUtils();
-
-  const handleSubmit = async () => {
-    if (!form.invoiceNumber.trim()) { toast.error("Nº de fatura obrigatório"); return; }
-    if (!form.totalAmount) { toast.error("Valor obrigatório"); return; }
-    try {
-      await createMut.mutateAsync({
-        invoiceNumber: form.invoiceNumber,
-        clientName: form.clientName || undefined,
-        clientNif: form.clientNif || undefined,
-        issueDate: form.issueDate,
-        dueDate: form.dueDate || undefined,
-        totalAmount: Math.round(parseFloat(form.totalAmount) * 100),
-        taxAmount: form.taxAmount ? Math.round(parseFloat(form.taxAmount) * 100) : undefined,
-        status: form.status,
-        paymentMethod: form.paymentMethod || undefined,
-        notes: form.notes || undefined,
-      });
-      utils.invoices.list.invalidate();
-      utils.invoices.stats.invalidate();
-      toast.success("Fatura criada");
-      onClose();
-    } catch (e: any) { toast.error(e.message || "Erro"); }
-  };
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Nova Fatura</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Nº Fatura *</Label>
-              <Input value={form.invoiceNumber} onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))} placeholder="FT 2026/001" />
-            </div>
-            <div>
-              <Label>Estado</Label>
-              <Select value={form.status} onValueChange={(v: any) => setForm(f => ({ ...f, status: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Cliente</Label>
-              <Input value={form.clientName} onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))} />
-            </div>
-            <div>
-              <Label>NIF</Label>
-              <Input value={form.clientNif} onChange={e => setForm(f => ({ ...f, clientNif: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Data Emissão</Label>
-              <Input type="date" value={form.issueDate} onChange={e => setForm(f => ({ ...f, issueDate: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Data Vencimento</Label>
-              <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Valor Total (€) *</Label>
-              <Input type="number" step="0.01" value={form.totalAmount} onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))} />
-            </div>
-            <div>
-              <Label>IVA (€)</Label>
-              <Input type="number" step="0.01" value={form.taxAmount} onChange={e => setForm(f => ({ ...f, taxAmount: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Método Pagamento</Label>
-              <Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="transfer">Transferência</SelectItem>
-                  <SelectItem value="card">Cartão</SelectItem>
-                  <SelectItem value="cash">Dinheiro</SelectItem>
-                  <SelectItem value="check">Cheque</SelectItem>
-                  <SelectItem value="other">Outro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label>Notas</Label>
-            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
-          </div>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={createMut.isPending}>{createMut.isPending ? "A criar..." : "Criar"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+      ) : (
+        <Tabs defaultValue="real" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="real">Realizado</TabsTrigger>
+            <TabsTrigger value="forecast">Previsão</TabsTrigger>
+          </TabsList>
 
+          {/* ─── ABA 1: REALIZADO ─── */}
+          <TabsContent value="real" className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Truck className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-muted-foreground">Entregas (Receita)</span>
+                </div>
+                <p className="text-2xl font-bold text-green-700">{fmt(totalDeliveryRevenue)}</p>
+                <p className="text-xs text-muted-foreground">{deliveries.reduce((s, d) => s + Number(d.count), 0)} entregas</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Receipt className="w-4 h-4 text-red-600" />
+                  <span className="text-xs text-muted-foreground">Despesas Pagas</span>
+                </div>
+                <p className="text-2xl font-bold text-red-700">{fmt(totalExpensesPaid)}</p>
+                <p className="text-xs text-muted-foreground">{expensesPaid.reduce((s, e) => s + Number(e.count), 0)} registos</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  {margin >= 0 ? <TrendingUp className="w-4 h-4 text-green-600" /> : <TrendingDown className="w-4 h-4 text-red-600" />}
+                  <span className="text-xs text-muted-foreground">Margem</span>
+                </div>
+                <p className={`text-2xl font-bold ${margin >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(margin)}</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Euro className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs text-muted-foreground">% Margem</span>
+                </div>
+                <p className="text-2xl font-bold">{totalDeliveryRevenue > 0 ? ((margin / totalDeliveryRevenue) * 100).toFixed(1) : "0"}%</p>
+              </Card>
+            </div>
 
-function EditInvoiceDialog({ invoice, onClose }: { invoice: any; onClose: () => void }) {
-  const [form, setForm] = useState({
-    totalAmount: String((invoice.totalAmount / 100).toFixed(2)),
-    taxAmount: invoice.taxAmount ? String((invoice.taxAmount / 100).toFixed(2)) : "",
-    paymentMethod: invoice.paymentMethod || "",
-    notes: invoice.notes || "",
-    status: invoice.status || "draft",
-  });
-  const updateMut = trpc.invoices.update.useMutation();
-  const utils = trpc.useUtils();
+            {/* Entregas por projeto */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Truck className="w-4 h-4" /> Entregas por Projeto
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {deliveries.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">Sem entregas no período</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="p-2">Projeto</th>
+                        <th className="p-2 text-right">Entregas</th>
+                        <th className="p-2 text-right">Parking</th>
+                        <th className="p-2 text-right">Delivery</th>
+                        <th className="p-2 text-right">Extras</th>
+                        <th className="p-2 text-right font-bold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deliveries.map((d, i) => (
+                        <tr key={i} className="border-b hover:bg-muted/50">
+                          <td className="p-2 flex items-center gap-2">
+                            <FolderTree className="w-3 h-3 text-muted-foreground" />
+                            {d.projectName ?? "Sem projeto"}
+                          </td>
+                          <td className="p-2 text-right tabular-nums">{d.count}</td>
+                          <td className="p-2 text-right tabular-nums">{fmt(Number(d.parkingRevenue))}</td>
+                          <td className="p-2 text-right tabular-nums">{fmt(Number(d.deliveryCharges))}</td>
+                          <td className="p-2 text-right tabular-nums">{fmt(Number(d.extrasRevenue))}</td>
+                          <td className="p-2 text-right tabular-nums font-bold">{fmt(Number(d.totalRevenue))}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-muted/30 font-bold">
+                        <td className="p-2">Total</td>
+                        <td className="p-2 text-right">{deliveries.reduce((s, d) => s + Number(d.count), 0)}</td>
+                        <td className="p-2 text-right">{fmt(deliveries.reduce((s, d) => s + Number(d.parkingRevenue), 0))}</td>
+                        <td className="p-2 text-right">{fmt(deliveries.reduce((s, d) => s + Number(d.deliveryCharges), 0))}</td>
+                        <td className="p-2 text-right">{fmt(deliveries.reduce((s, d) => s + Number(d.extrasRevenue), 0))}</td>
+                        <td className="p-2 text-right">{fmt(totalDeliveryRevenue)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
 
-  const handleSubmit = async () => {
-    try {
-      await updateMut.mutateAsync({
-        id: invoice.id,
-        totalAmount: form.totalAmount ? Math.round(parseFloat(form.totalAmount) * 100) : undefined,
-        taxAmount: form.taxAmount ? Math.round(parseFloat(form.taxAmount) * 100) : undefined,
-        paymentMethod: form.paymentMethod || undefined,
-        notes: form.notes || undefined,
-        status: form.status || undefined,
-      });
-      utils.invoices.list.invalidate();
-      utils.invoices.stats.invalidate();
-      toast.success("Fatura atualizada");
-      onClose();
-    } catch (e: any) { toast.error(e.message || "Erro"); }
-  };
+            {/* Despesas pagas por projeto */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Receipt className="w-4 h-4" /> Despesas Pagas por Projeto
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {expPaidByProject.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">Sem despesas pagas no período</p>
+                ) : (
+                  <div className="space-y-4">
+                    {expPaidByProject.map((proj) => (
+                      <div key={proj.projectName} className="border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-muted-foreground" />
+                            {proj.projectName}
+                          </span>
+                          <span className="font-bold text-red-700">{fmt(proj.total)}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {proj.categories.map((cat, i) => (
+                            <div key={i} className="flex justify-between text-sm text-muted-foreground">
+                              <span>{cat.name}</span>
+                              <span className="tabular-nums">{fmt(cat.total)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                      <span>Total Despesas Pagas</span>
+                      <span className="text-red-700">{fmt(totalExpensesPaid)}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Editar Fatura — {invoice.invoiceNumber}</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Estado</Label>
-              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Rascunho</SelectItem>
-                  <SelectItem value="issued">Emitida</SelectItem>
-                  <SelectItem value="paid">Paga</SelectItem>
-                  <SelectItem value="overdue">Vencida</SelectItem>
-                  <SelectItem value="cancelled">Cancelada</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* ─── ABA 2: PREVISÃO ─── */}
+          <TabsContent value="forecast" className="space-y-6">
+            {/* KPIs Previsão */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CalendarClock className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs text-muted-foreground">Receita Prevista</span>
+                </div>
+                <p className="text-2xl font-bold text-blue-700">{fmt(totalForecastRevenue)}</p>
+                <p className="text-xs text-muted-foreground">{forecast.reduce((s, f) => s + Number(f.count), 0)} reservas pendentes</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Receipt className="w-4 h-4 text-orange-600" />
+                  <span className="text-xs text-muted-foreground">Despesas a Pagar</span>
+                </div>
+                <p className="text-2xl font-bold text-orange-700">{fmt(totalExpensesPending)}</p>
+                <p className="text-xs text-muted-foreground">{expensesPending.reduce((s, e) => s + Number(e.count), 0)} pendentes</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  {forecastMargin >= 0 ? <TrendingUp className="w-4 h-4 text-green-600" /> : <TrendingDown className="w-4 h-4 text-red-600" />}
+                  <span className="text-xs text-muted-foreground">Margem Prevista</span>
+                </div>
+                <p className={`text-2xl font-bold ${forecastMargin >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(forecastMargin)}</p>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingUp className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs text-muted-foreground">Total Estimado</span>
+                </div>
+                <p className="text-2xl font-bold">{fmt(totalDeliveryRevenue + totalForecastRevenue)}</p>
+                <p className="text-xs text-muted-foreground">Realizado + Previsto</p>
+              </Card>
             </div>
-            <div>
-              <Label>Método Pagamento</Label>
-              <Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="transfer">Transferência</SelectItem>
-                  <SelectItem value="card">Cartão</SelectItem>
-                  <SelectItem value="cash">Dinheiro</SelectItem>
-                  <SelectItem value="check">Cheque</SelectItem>
-                  <SelectItem value="other">Outro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Valor Total (€)</Label>
-              <Input type="number" step="0.01" value={form.totalAmount} onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))} />
-            </div>
-            <div>
-              <Label>IVA (€)</Label>
-              <Input type="number" step="0.01" value={form.taxAmount} onChange={e => setForm(f => ({ ...f, taxAmount: e.target.value }))} />
-            </div>
-          </div>
-          <div>
-            <Label>Notas</Label>
-            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={updateMut.isPending}>Guardar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+            {/* Previsão receita por projeto */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4" /> Receita Prevista por Projeto
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Reservas com check-in futuro, sem check-out e sem cancelamento</p>
+              </CardHeader>
+              <CardContent>
+                {forecast.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">Sem reservas pendentes no período</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="p-2">Projeto</th>
+                        <th className="p-2 text-right">Reservas</th>
+                        <th className="p-2 text-right font-bold">Receita Prevista</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {forecast.map((f, i) => (
+                        <tr key={i} className="border-b hover:bg-muted/50">
+                          <td className="p-2 flex items-center gap-2">
+                            <FolderTree className="w-3 h-3 text-muted-foreground" />
+                            {f.projectName ?? "Sem projeto"}
+                          </td>
+                          <td className="p-2 text-right tabular-nums">{f.count}</td>
+                          <td className="p-2 text-right tabular-nums font-bold">{fmt(Number(f.totalRevenue))}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-muted/30 font-bold">
+                        <td className="p-2">Total</td>
+                        <td className="p-2 text-right">{forecast.reduce((s, f) => s + Number(f.count), 0)}</td>
+                        <td className="p-2 text-right">{fmt(totalForecastRevenue)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Despesas a pagar por projeto */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Receipt className="w-4 h-4" /> Despesas a Pagar por Projeto
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Despesas pendentes com vencimento no período</p>
+              </CardHeader>
+              <CardContent>
+                {expPendByProject.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-6">Sem despesas pendentes no período</p>
+                ) : (
+                  <div className="space-y-4">
+                    {expPendByProject.map((proj) => (
+                      <div key={proj.projectName} className="border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-muted-foreground" />
+                            {proj.projectName}
+                          </span>
+                          <span className="font-bold text-orange-700">{fmt(proj.total)}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {proj.items.map((item, i) => (
+                            <div key={i} className="flex justify-between text-sm text-muted-foreground">
+                              <span>{item.supplier} · {item.category}</span>
+                              <span className="tabular-nums">{fmt(item.total)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                      <span>Total a Pagar</span>
+                      <span className="text-orange-700">{fmt(totalExpensesPending)}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
   );
 }
