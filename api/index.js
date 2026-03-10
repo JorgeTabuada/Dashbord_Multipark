@@ -1127,10 +1127,13 @@ __export(multipark_exports, {
   cancelBooking: () => cancelBooking,
   checkAvailability: () => checkAvailability,
   createBooking: () => createBooking,
+  getAgentHistory: () => getAgentHistory,
   getBooking: () => getBooking,
+  getBookingHistory: () => getBookingHistory,
   getBookingsReport: () => getBookingsReport,
   getBookingsReportAllParks: () => getBookingsReportAllParks,
   getBookingsReportForPark: () => getBookingsReportForPark,
+  getCheckoutDrivers: () => getCheckoutDrivers,
   getConfiguredParks: () => getConfiguredParks,
   getParkApiKey: () => getParkApiKey,
   healthCheck: () => healthCheck,
@@ -1262,6 +1265,33 @@ async function testConnection() {
   } catch (error) {
     return { ok: false, message: `Erro: ${error.message}` };
   }
+}
+async function getBookingHistory(bookingId, apiKey) {
+  return multiparkRequest({
+    path: `/bookings/${bookingId}/history`,
+    apiKey
+  });
+}
+async function getAgentHistory(opts) {
+  const params = {
+    startDate: opts.startDate,
+    endDate: opts.endDate
+  };
+  if (opts.userId) params.userId = opts.userId;
+  else if (opts.agentName) params.agentName = opts.agentName;
+  else throw new Error("Either userId or agentName must be provided");
+  return multiparkRequest({
+    path: "/agent/history",
+    params,
+    apiKey: opts.apiKey
+  });
+}
+async function getCheckoutDrivers(startDate, endDate, apiKey) {
+  return multiparkRequest({
+    path: "/bookings/checkoutDrivers",
+    params: { startDate, endDate },
+    apiKey
+  });
 }
 var MAX_RETRIES, PARK_CONFIGS;
 var init_multipark = __esm({
@@ -5043,6 +5073,9 @@ function getLanguageName(langCode) {
   return langMap[langCode] || langCode;
 }
 
+// server/routers.ts
+init_multipark();
+
 // server/payrollPdf.ts
 import PDFDocument from "pdfkit";
 var MONTH_NAMES = [
@@ -7878,6 +7911,12 @@ Link do PDF: ${url}`
     // Get vehicle driver history for a complaint
     vehicleHistory: protectedProcedure.input(z2.object({ vehicleId: z2.number() })).query(async ({ input }) => {
       return getVehicleDriverHistory(input.vehicleId);
+    }),
+    // Booking timeline from Multipark API
+    bookingTimeline: protectedProcedure.input(z2.object({
+      bookingId: z2.string()
+    })).query(async ({ input }) => {
+      return getBookingHistory(input.bookingId);
     })
   }),
   // ─── GOOGLE REVIEWS ───────────────────────────────────────────────────────
@@ -8016,6 +8055,27 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         incidentsSkipped: 0,
         message: "A sincroniza\xE7\xE3o Gmail corre automaticamente 2x/dia (0h e 12h). Para for\xE7ar manualmente, contacta o administrador."
       };
+    }),
+    // Checkout drivers ranking from Multipark API
+    checkoutDrivers: protectedProcedure.input(z2.object({
+      startDate: z2.string(),
+      endDate: z2.string()
+    })).query(async ({ input }) => {
+      return getCheckoutDrivers(input.startDate, input.endDate);
+    }),
+    // Agent performance history from Multipark API
+    agentHistory: protectedProcedure.input(z2.object({
+      startDate: z2.string(),
+      endDate: z2.string(),
+      agentName: z2.string().optional(),
+      userId: z2.string().optional()
+    })).query(async ({ input }) => {
+      return getAgentHistory({
+        startDate: input.startDate,
+        endDate: input.endDate,
+        agentName: input.agentName,
+        userId: input.userId
+      });
     })
   }),
   // ─── FORMAÇÃO E APOIO ──────────────────────────────────────────────────────
@@ -8332,7 +8392,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return [];
     }),
     bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
-    bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference())
+    bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
+    // Booking timeline from Multipark API
+    bookingTimeline: protectedProcedure.input(z2.object({
+      bookingId: z2.string()
+    })).query(async ({ input }) => {
+      return getBookingHistory(input.bookingId);
+    })
   }),
   // ─── OCORRÊNCIAS (INCIDENTS) ──────────────────────────────────────────────
   incidents: router({
@@ -8476,7 +8542,30 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     stats: protectedProcedure.input(z2.object({
       month: z2.number().optional(),
       year: z2.number().optional()
-    }).optional()).query(({ input }) => getServiceStats(input?.month, input?.year))
+    }).optional()).query(({ input }) => getServiceStats(input?.month, input?.year)),
+    // Extra services from Multipark bookings
+    multiparkExtras: protectedProcedure.input(z2.object({
+      startDate: z2.string(),
+      endDate: z2.string()
+    })).query(async ({ input }) => {
+      const report = await getBookingsReport(input.startDate, input.endDate, "checkout");
+      const services2 = [];
+      for (const b of report.bookings || []) {
+        const extras = b.extraServices || [];
+        for (const s of extras) {
+          services2.push({
+            bookingId: b.id,
+            licensePlate: b.allocation || "",
+            parkName: b.park?.name || "",
+            checkOut: b.checkOutDate || "",
+            serviceName: s.name,
+            price: s.price || 0,
+            done: s.done ?? true
+          });
+        }
+      }
+      return { total: services2.length, services: services2 };
+    })
   }),
   // ─── FATURAÇÃO ───────────────────────────────────────────────────────────
   invoices: router({

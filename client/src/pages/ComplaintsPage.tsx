@@ -17,7 +17,7 @@ import { useState, useMemo, useRef } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Shield,
-  BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil, FileSpreadsheet
+  BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -314,13 +314,21 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
     { vehicleId: data?.complaint?.vehicleId ?? 0 },
     { enabled: !!data?.complaint?.vehicleId }
   );
-  const { data: bookingHist = [] } = trpc.lostFound.bookingHistory.useQuery(
-    {
-      bookingId: data?.complaint?.reservationRef || undefined,
-      plate: !data?.complaint?.reservationRef ? (data?.complaint?.vehiclePlate || undefined) : undefined,
-    },
-    { enabled: !!(data?.complaint?.reservationRef || data?.complaint?.vehiclePlate) }
+  const { data: apiTimeline, isLoading: timelineLoading } = trpc.complaints.bookingTimeline.useQuery(
+    { bookingId: data?.complaint?.reservationRef || "" },
+    { enabled: !!data?.complaint?.reservationRef }
   );
+  const timelineHist = useMemo(() => {
+    return (apiTimeline?.history || []).map((h: any) => ({
+      id: h.id,
+      changeType: h.changeType,
+      actionDate: h.actionTime,
+      userName: h.user?.firstName || h.agentName,
+      userLastName: h.user?.lastName || "",
+      parkName: h.booking?.parkName || "",
+      remarks: h.remarks || h.modifiedFields || "",
+    })).sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
+  }, [apiTimeline]);
   const { data: vehicles = [] } = trpc.operational.vehicles.list.useQuery();
   const { data: employees = [] } = trpc.rh.list.useQuery();
   const updateMut = trpc.complaints.update.useMutation();
@@ -328,9 +336,6 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
   const uploadPhotoMut = trpc.complaints.uploadPhoto.useMutation();
   const deletePhotoMut = trpc.complaints.deletePhoto.useMutation();
   const utils = trpc.useUtils();
-
-  const importHistMut = trpc.lostFound.importBookingHistory.useMutation();
-  const histFileRef = useRef<HTMLInputElement>(null);
 
   const [newMsg, setNewMsg] = useState("");
   const [isInternal, setIsInternal] = useState(false);
@@ -440,7 +445,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               <TabsTrigger value="messages">Mensagens ({data.messages.length})</TabsTrigger>
               <TabsTrigger value="photos">Fotos ({data.photos.length})</TabsTrigger>
               {c.vehicleId && <TabsTrigger value="vehicle">Viatura</TabsTrigger>}
-              <TabsTrigger value="booking-history">Histórico ({bookingHist.length})</TabsTrigger>
+              <TabsTrigger value="booking-history">Histórico ({timelineHist.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="details" className="space-y-4 mt-4">
@@ -570,45 +575,24 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
             <TabsContent value="booking-history" className="mt-4">
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Clock className="w-4 h-4" /> Quem mexeu no carro {c.reservationRef ? `— Reserva ${c.reservationRef}` : ""}
-                      </CardTitle>
-                      <div>
-                        <input ref={histFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = async () => {
-                            const base64 = (reader.result as string).split(",")[1];
-                            try {
-                              const result = await importHistMut.mutateAsync({ fileBase64: base64, filename: file.name });
-                              toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
-                              utils.lostFound.bookingHistory.invalidate();
-                            } catch (err: any) {
-                              toast.error(`Erro: ${err.message}`);
-                            }
-                          };
-                          reader.readAsDataURL(file);
-                          e.target.value = "";
-                        }} />
-                        <Button variant="outline" size="sm" onClick={() => histFileRef.current?.click()} disabled={importHistMut.isPending}>
-                          <FileSpreadsheet className="w-4 h-4 mr-1" />
-                          {importHistMut.isPending ? "A importar..." : "Importar Excel"}
-                        </Button>
-                      </div>
-                    </div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Clock className="w-4 h-4" /> Histórico da Reserva {c.reservationRef ? `— ${c.reservationRef}` : ""}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {bookingHist.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Sem histórico importado para esta reserva. Clica em "Importar Excel" para carregar o ficheiro do backoffice.</p>
+                    {!c.reservationRef ? (
+                      <p className="text-sm text-muted-foreground">Sem ID de reserva associado a esta reclamação.</p>
+                    ) : timelineLoading ? (
+                      <div className="flex justify-center py-6"><div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" /></div>
+                    ) : timelineHist.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sem histórico encontrado na API para esta reserva.</p>
                     ) : (
                       <div className="relative pl-6 space-y-0">
-                        {bookingHist.map((h: any, i: number) => {
+                        {timelineHist.map((h: any, i: number) => {
                           const cfg = CHANGE_TYPE_CONFIG[h.changeType] || { label: h.changeType, color: "bg-gray-100 text-gray-800" };
                           return (
                             <div key={h.id} className="relative pb-4">
-                              {i < bookingHist.length - 1 && (
+                              {i < timelineHist.length - 1 && (
                                 <div className="absolute left-[-16px] top-3 bottom-0 w-px bg-border" />
                               )}
                               <div className="absolute left-[-20px] top-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-background" />
@@ -732,6 +716,46 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
   );
 }
 
+// ─── RESERVATION PREVIEW (auto-fetches timeline from API) ────────────────────
+
+function ReservationPreview({ bookingId }: { bookingId: string }) {
+  const { data, isLoading } = trpc.complaints.bookingTimeline.useQuery(
+    { bookingId },
+    { enabled: bookingId.length >= 4 }
+  );
+
+  if (!bookingId || bookingId.length < 4) return null;
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground mt-2 animate-pulse">A carregar histórico da API...</p>;
+  }
+
+  const history = data?.history || [];
+
+  if (history.length === 0) {
+    return <p className="text-xs text-amber-600 mt-2">Nenhum histórico encontrado para este ID.</p>;
+  }
+
+  return (
+    <div className="mt-2 max-h-40 overflow-y-auto space-y-1 border rounded p-2 bg-white dark:bg-gray-900">
+      <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{history.length} eventos encontrados</p>
+      {history.slice(0, 10).map((h: any) => {
+        const cfg = CHANGE_TYPE_CONFIG[h.changeType] || { label: h.changeType, color: "bg-gray-100 text-gray-800" };
+        return (
+          <div key={h.id} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted">
+            <div className="flex items-center gap-1.5">
+              <Badge className={`${cfg.color} text-[10px] px-1`}>{cfg.label}</Badge>
+              <span>{h.user?.firstName || h.agentName || "Sistema"} {h.user?.lastName || ""}</span>
+            </div>
+            <span className="text-muted-foreground">{h.actionTime ? new Date(h.actionTime).toLocaleString("pt-PT") : "—"}</span>
+          </div>
+        );
+      })}
+      {history.length > 10 && <p className="text-xs text-muted-foreground">... e mais {history.length - 10} eventos</p>}
+    </div>
+  );
+}
+
 // ─── CREATE DIALOG ────────────────────────────────────────────────────────────
 
 function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
@@ -739,11 +763,7 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
   const { data: emps = [] } = trpc.rh.list.useQuery();
   const { data: projs = [] } = trpc.projects.list.useQuery();
   const createMut = trpc.complaints.create.useMutation();
-  const importHistMut = trpc.lostFound.importBookingHistory.useMutation();
-  const histFileRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
-
-  const [historyImported, setHistoryImported] = useState<{ imported: number; skipped: number } | null>(null);
   const [form, setForm] = useState({
     title: "", description: "", type: "damage" as string, priority: "medium" as string,
     clientName: "", clientEmail: "", clientPhone: "", reservationRef: "",
@@ -765,7 +785,7 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
     // First fill what we have from local DB
     setForm(f => ({
       ...f,
-      reservationRef: b.bookingNumber || b.externalId || f.reservationRef,
+      reservationRef: b.externalId || b.bookingNumber || f.reservationRef,
       reservationStart: b.checkIn ? b.checkIn.slice(0, 10) : f.reservationStart,
       reservationEnd: b.checkOut ? b.checkOut.slice(0, 10) : f.reservationEnd,
       projectId: b.projectId ? String(b.projectId) : f.projectId,
@@ -856,6 +876,7 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
 
   const handleSubmit = async () => {
     if (!form.title) { toast.error("Título obrigatório"); return; }
+    if (!form.reservationRef) { toast.error("ID da reserva é obrigatório"); return; }
     try {
       await createMut.mutateAsync({
         title: form.title,
@@ -969,10 +990,21 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
             <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
           </div>
           <Separator className="col-span-2" />
+          {/* Reservation ID — highlighted */}
+          <div className="col-span-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200">
+            <Label className="text-emerald-700 dark:text-emerald-300 font-medium">ID da Reserva (Multipark) *</Label>
+            <p className="text-xs text-muted-foreground mb-1">O histórico completo é carregado automaticamente da API</p>
+            <Input
+              value={form.reservationRef}
+              onChange={e => setForm(f => ({ ...f, reservationRef: e.target.value }))}
+              placeholder="Ex: 6789abc..."
+              className="font-mono"
+            />
+            <ReservationPreview bookingId={form.reservationRef} />
+          </div>
           <div><Label>Nome do Cliente</Label><Input value={form.clientName} onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))} /></div>
           <div><Label>Email</Label><Input type="email" value={form.clientEmail} onChange={e => setForm(f => ({ ...f, clientEmail: e.target.value }))} /></div>
           <div><Label>Telefone</Label><Input value={form.clientPhone} onChange={e => setForm(f => ({ ...f, clientPhone: e.target.value }))} /></div>
-          <div><Label>Ref. Reserva</Label><Input value={form.reservationRef} onChange={e => setForm(f => ({ ...f, reservationRef: e.target.value }))} /></div>
           <div><Label>Matrícula</Label><Input value={form.vehiclePlate} onChange={e => setForm(f => ({ ...f, vehiclePlate: e.target.value }))} /></div>
           <div><Label>Início Reserva</Label><Input type="date" value={form.reservationStart} onChange={e => setForm(f => ({ ...f, reservationStart: e.target.value }))} /></div>
           <div><Label>Fim Reserva</Label><Input type="date" value={form.reservationEnd} onChange={e => setForm(f => ({ ...f, reservationEnd: e.target.value }))} /></div>
@@ -1013,40 +1045,6 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
           <div>
             <Label>Prazo SLA (horas)</Label>
             <Input type="number" value={form.slaHours} onChange={e => setForm(f => ({ ...f, slaHours: e.target.value }))} />
-          </div>
-          {/* Booking history upload */}
-          <div className="col-span-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-green-700 dark:text-green-300 font-medium">Histórico da reserva (Excel)</Label>
-                <p className="text-xs text-muted-foreground">Importa o ficheiro Excel do backoffice com o histórico de quem mexeu no carro</p>
-              </div>
-              <label>
-                <input ref={histFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = async () => {
-                    const base64 = (reader.result as string).split(",")[1];
-                    try {
-                      const result = await importHistMut.mutateAsync({ fileBase64: base64, filename: file.name });
-                      setHistoryImported({ imported: result.imported, skipped: result.skipped });
-                      toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
-                    } catch (err: any) {
-                      toast.error(`Erro: ${err.message}`);
-                    }
-                  };
-                  reader.readAsDataURL(file);
-                  e.target.value = "";
-                }} />
-                <Button variant="outline" size="sm" asChild disabled={importHistMut.isPending}>
-                  <span><FileSpreadsheet className="w-4 h-4 mr-1" />{importHistMut.isPending ? "A importar..." : "Importar Excel"}</span>
-                </Button>
-              </label>
-            </div>
-            {historyImported && (
-              <p className="text-xs text-green-700 mt-1">{historyImported.imported} registos importados, {historyImported.skipped} duplicados ignorados</p>
-            )}
           </div>
         </div>
         <DialogFooter>

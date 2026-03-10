@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   PieChart,
   Pie,
   Cell,
@@ -21,6 +23,8 @@ import {
   TrendingUp,
   TrendingDown,
   Loader2,
+  CheckCircle2,
+  Wallet,
 } from "lucide-react";
 import { format } from "date-fns";
 import { pt } from "date-fns/locale";
@@ -134,6 +138,20 @@ export default function FinanceiroDashboard() {
   const emAtraso = expenseStats?.overdue?.total ?? 0;
   const margem = receitaPeriodo - despesasMes;
 
+  // Expense KPIs
+  const totalDespesasAnual = expenseStats?.yearly?.total ?? 0;
+  const totalDespesasCount = expenseStats?.yearly?.count ?? 0;
+  const pagoDespesas = totalDespesasAnual - pendente - emAtraso;
+
+  // Expense status data for mini bar
+  const statusData = [
+    { name: "Pago", value: Math.max(0, pagoDespesas), color: "#10b981" },
+    { name: "Pendente", value: pendente, color: "#f59e0b" },
+    { name: "Em Atraso", value: emAtraso, color: "#ef4444" },
+  ].filter(s => s.value > 0);
+
+  const totalStatusValue = statusData.reduce((s, d) => s + d.value, 0);
+
   // Revenue by city (donut)
   const byCityData = (bookingStats?.byCity ?? []).map((c: any) => ({
     name: c.name ?? "Desconhecido",
@@ -206,6 +224,135 @@ export default function FinanceiroDashboard() {
         period={filters.period}
         onPeriodChange={filters.setPeriod}
       />
+
+      {/* ═══ DESPESAS DASHBOARD ═══ */}
+      <Card className="border-dashed">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-red-500" />
+            Dashboard de Despesas
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {expenseLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+            </div>
+          ) : (
+            <>
+              {/* Expense KPIs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Euro className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs text-muted-foreground">Total Despesas</span>
+                  </div>
+                  <p className="text-xl font-bold">{fmt(totalDespesasAnual)}</p>
+                  <p className="text-xs text-muted-foreground">{totalDespesasCount} registos</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs text-muted-foreground">Pago</span>
+                  </div>
+                  <p className="text-xl font-bold text-green-600">{fmt(Math.max(0, pagoDespesas))}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-3.5 w-3.5 text-yellow-500" />
+                    <span className="text-xs text-muted-foreground">Pendente</span>
+                  </div>
+                  <p className="text-xl font-bold text-yellow-600">{fmt(pendente)}</p>
+                  <p className="text-xs text-muted-foreground">{expenseStats?.pending?.count ?? 0} despesa(s)</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="text-xs text-muted-foreground">Em Atraso</span>
+                  </div>
+                  <p className="text-xl font-bold text-red-600">{fmt(emAtraso)}</p>
+                  <p className="text-xs text-muted-foreground">{expenseStats?.overdue?.count ?? 0} despesa(s)</p>
+                </div>
+              </div>
+
+              {/* Status progress bar */}
+              {totalStatusValue > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    {statusData.map(s => (
+                      <div key={s.name} className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                        <span>{s.name}: {((s.value / totalStatusValue) * 100).toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="h-3 rounded-full overflow-hidden flex bg-muted">
+                    {statusData.map(s => (
+                      <div
+                        key={s.name}
+                        className="h-full transition-all"
+                        style={{
+                          width: `${(s.value / totalStatusValue) * 100}%`,
+                          backgroundColor: s.color,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Category + Monthly mini charts side by side */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Monthly trend mini bar */}
+                {(expenseStats?.monthlyTrend ?? []).length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Despesas Mensais</p>
+                    <ResponsiveContainer width="100%" height={140}>
+                      <BarChart data={(expenseStats?.monthlyTrend ?? []).map((m: any) => ({ month: m.month, total: m.total ?? 0 }))} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
+                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748b" }} />
+                        <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={v => `${v}€`} width={50} />
+                        <Tooltip formatter={(v: any) => [fmt(parseFloat(String(v))), "Total"]} contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", fontSize: "12px" }} />
+                        <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                {/* Category breakdown mini */}
+                {categoryData.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Por Categoria (Top 5)</p>
+                    <div className="space-y-1.5">
+                      {categoryData
+                        .sort((a: any, b: any) => b.value - a.value)
+                        .slice(0, 5)
+                        .map((c: any, i: number) => {
+                          const maxVal = categoryData[0]?.value || 1;
+                          return (
+                            <div key={c.name} className="flex items-center gap-2">
+                              <span className="text-xs w-28 truncate text-muted-foreground">{c.name}</span>
+                              <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${(c.value / maxVal) * 100}%`,
+                                    backgroundColor: COLORS[i % COLORS.length],
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium w-20 text-right">{fmt(c.value)}</span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ═══ DASHBOARD FINANCEIRO GERAL ═══ */}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

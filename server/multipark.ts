@@ -2,12 +2,15 @@
  * MultiPark Backoffice API Client
  * 
  * Discovered endpoints:
- * - GET    /health                → Health check (public)
- * - GET    /availability          → Check parking availability (requires vehicleType + parkingType)
- * - POST   /bookings             → Create booking
- * - PUT    /bookings/:id         → Update booking
- * - GET    /api/v1/parks         → List parks (public, different base)
- * 
+ * - GET    /health                          → Health check (public)
+ * - GET    /availability                    → Check parking availability (requires vehicleType + parkingType)
+ * - POST   /bookings                       → Create booking
+ * - PUT    /bookings/:id                   → Update booking
+ * - GET    /bookings/:id/history           → Booking history (timeline of actions)
+ * - GET    /agent/history                  → Agent history (all actions by agent in period)
+ * - GET    /bookings/checkoutDrivers       → Checkout drivers ranking for a period
+ * - GET    /api/v1/parks                   → List parks (public, different base)
+ *
  * Auth: X-Api-Key header for bookings-api endpoints
  */
 
@@ -350,4 +353,84 @@ export async function testConnection(): Promise<{ ok: boolean; message: string; 
   } catch (error: any) {
     return { ok: false, message: `Erro: ${error.message}` };
   }
+}
+
+// ─── Booking history & agent tracking ───
+
+export interface BookingHistoryEntry {
+  id: string;
+  changeType: string; // CHECK_IN, CHECK_OUT, MOVEMENT, UPDATE, CREATED, CHECKING_IN, CHECKING_OUT, PENDING_CHECKOUT, CANCELLED
+  actionTime: string;
+  remarks?: string;
+  agentName: string;
+  userId: string;
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  modifiedFields?: string; // JSON string
+  platform?: string;
+  booking?: {
+    id: string;
+    status: string;
+    checkIn: string;
+    checkOut?: string;
+    parkName: string;
+    licensePlate: string;
+  };
+}
+
+export interface CheckoutDriver {
+  name: string;
+  userId?: string;
+  count: number;
+}
+
+/** Get booking history (timeline of all actions on a booking) */
+export async function getBookingHistory(
+  bookingId: string,
+  apiKey?: string
+): Promise<{ bookingId: string; total: number; history: BookingHistoryEntry[] }> {
+  return multiparkRequest({
+    path: `/bookings/${bookingId}/history`,
+    apiKey,
+  });
+}
+
+/** Get agent history (all actions by a specific agent in a period) */
+export async function getAgentHistory(opts: {
+  startDate: string;
+  endDate: string;
+  agentName?: string;
+  userId?: string;
+  apiKey?: string;
+}): Promise<{ total: number; period: { startDate: string; endDate: string }; agentName: string; agentUserId: string; history: BookingHistoryEntry[] }> {
+  const params: Record<string, string> = {
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+  };
+  if (opts.userId) params.userId = opts.userId;
+  else if (opts.agentName) params.agentName = opts.agentName;
+  else throw new Error("Either userId or agentName must be provided");
+
+  return multiparkRequest({
+    path: "/agent/history",
+    params,
+    apiKey: opts.apiKey,
+  });
+}
+
+/** Get checkout drivers ranking for a period */
+export async function getCheckoutDrivers(
+  startDate: string,
+  endDate: string,
+  apiKey?: string
+): Promise<{ total: number; period: { startDate: string; endDate: string }; drivers: CheckoutDriver[] }> {
+  return multiparkRequest({
+    path: "/bookings/checkoutDrivers",
+    params: { startDate, endDate },
+    apiKey,
+  });
 }

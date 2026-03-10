@@ -227,7 +227,19 @@ export async function seedDefaultCategories() {
   const db = await getDb();
   if (!db) return;
   const existing = await db.select().from(expenseCategories).limit(1);
-  if (existing.length > 0) return;
+  if (existing.length > 0) {
+    // Rename "Terminal de Pagamento" → "Terminal" and add missing categories
+    await db.update(expenseCategories).set({ name: "Terminal" }).where(eq(expenseCategories.name, "Terminal de Pagamento"));
+    for (const cat of [
+      { name: "Bancos", department: "Financeiro", color: "#1d4ed8" },
+      { name: "Impostos", department: "Financeiro", color: "#dc2626" },
+      { name: "TI", department: "RH", color: "#0284c7" },
+    ]) {
+      const found = await db.select().from(expenseCategories).where(eq(expenseCategories.name, cat.name)).limit(1);
+      if (found.length === 0) await db.insert(expenseCategories).values(cat);
+    }
+    return;
+  }
 
   const defaults: InsertExpenseCategory[] = [
     { name: "Combustível", department: "Operacional", color: "#f59e0b" },
@@ -243,7 +255,10 @@ export async function seedDefaultCategories() {
     { name: "Água", department: "Instalações", color: "#06b6d4" },
     { name: "Eletricidade", department: "Instalações", color: "#eab308" },
     { name: "Telecomunicações", department: "Instalações", color: "#7c3aed" },
-    { name: "Terminal de Pagamento", department: "Financeiro", color: "#059669" },
+    { name: "Terminal", department: "Financeiro", color: "#059669" },
+    { name: "Bancos", department: "Financeiro", color: "#1d4ed8" },
+    { name: "Impostos", department: "Financeiro", color: "#dc2626" },
+    { name: "TI", department: "RH", color: "#0284c7" },
     { name: "Despesas Operacionais", department: "Operacional", color: "#d97706" },
     { name: "Outros", department: "Geral", color: "#94a3b8" },
   ];
