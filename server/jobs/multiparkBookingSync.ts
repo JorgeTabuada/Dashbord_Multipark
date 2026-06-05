@@ -258,17 +258,37 @@ export async function enrichBookingsBatch(limit = 30): Promise<{
   if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0 };
 
   const parks = getConfiguredParks();
-  // Cache: parkName lowercase → apiKey.
-  // parkName tem formato "Airpark - Lisboa" — usa-se para matchar parque+cidade.
+  // Normaliza nomes de cidade que vêm em variantes (EN vs PT).
+  const CITY_NORMALIZE: Record<string, string> = {
+    lisbon: "lisboa",
+    lisboa: "lisboa",
+    oporto: "porto",
+    porto: "porto",
+    faro: "faro",
+  };
+  // Cache: (parkName|city) lowercase → apiKey.
+  // Algumas reservas têm parkName="Airpark" e city="lisbon", outras têm
+  // parkName="Airpark - Lisboa" e city="Lisboa". Damos ambos os caminhos.
   const keyCache = new Map<string, string | null>();
-  function pickApiKey(parkName: string | null, _city: string | null): string | null {
+  function pickApiKey(parkName: string | null, city: string | null): string | null {
     if (!parkName) return null;
-    const cacheKey = parkName.toLowerCase();
+    const cacheKey = `${parkName.toLowerCase()}|${(city ?? "").toLowerCase()}`;
     if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
+
     const pl = parkName.toLowerCase();
-    const match = parks.find(p =>
+    const cityNorm = city ? (CITY_NORMALIZE[city.toLowerCase()] ?? city.toLowerCase()) : "";
+
+    // 1) parkName contém o nome do parque E a cidade
+    let match = parks.find(p =>
       pl.includes(p.name.toLowerCase()) && pl.includes(p.city.toLowerCase()),
     );
+    // 2) parkName tem só o nome; usa a coluna city para desempatar
+    if (!match && cityNorm) {
+      match = parks.find(p =>
+        pl.includes(p.name.toLowerCase()) && p.city.toLowerCase() === cityNorm,
+      );
+    }
+
     const key = match ? getParkApiKey(match) ?? null : null;
     keyCache.set(cacheKey, key);
     return key;
