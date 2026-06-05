@@ -227,6 +227,66 @@ async function runConcurrent<T>(items: T[], limit: number, fn: (item: T) => Prom
   );
 }
 
+/**
+ * Endpoint separado que enriquece um lote de reservas (deliveryType, flights,
+ * remarks) chamando /bookings/:id por reserva. Usa o parkId guardado em DB
+ * para escolher a chave de API correcta sem ter de tentar todos os parques.
+ * Limite default 30 para caber no timeout do Vercel.
+ */
+export async function enrichBookingsBatch(limit = 30): Promise<{
+  scanned: number;
+  enriched: number;
+  errors: number;
+}> {
+  const db = await getDb();
+  if (!db) return { scanned: 0, enriched: 0, errors: 0 };
+
+  // Mapa parkId (interno) → ParkConfig descobre-se sob procura, vamos tentar
+  // todos os parques para cada booking sem perder muito tempo.
+  const { isNull } = await import("drizzle-orm");
+
+  const pending = await db
+    .select({
+      externalId: multiparkBookings.externalId,
+      parkName: multiparkBookings.parkName,
+      city: multiparkBookings.city,
+    })
+    .from(multiparkBookings)
+    .where(isNull(multiparkBookings.enrichedAt))
+    .limit(limit);
+
+  if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0 };
+
+  const parks = getConfiguredParks();
+  // Cache: parkName lowercase → apiKey
+  const keyCache = new Map<string, string | null>();
+  function pickApiKey(parkName: string | null, city: string | null): string | null {
+    if (!parkName) return null;
+    const cacheKey = `${parkName}|${city ?? ""}`.toLowerCase();
+    if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
+    const pl = parkName.toLowerCase();
+    const match = parks.find(p => {
+      const matchName = pl.includes(p.name.toLowerCase());
+      const matchCity = !city || city.toLowerCase().includes(p.city.toLowerCase()) || p.city.toLowerCase().includes(city.toLowerCase());
+      return matchName && matchCity;
+    });
+    const key = match ? getParkApiKey(match) ?? null : null;
+    keyCache.set(cacheKey, key);
+    return key;
+  }
+
+  let enriched = 0;
+  let errs = 0;
+  await runConcurrent(pending, ENRICH_CONCURRENCY, async (p) => {
+    const apiKey = pickApiKey(p.parkName, p.city);
+    if (!apiKey) { errs++; return; }
+    const ok = await enrichBookingIfNeeded(p.externalId, apiKey);
+    if (ok) enriched++; else errs++;
+  });
+
+  return { scanned: pending.length, enriched, errors: errs };
+}
+
 // ─── Core sync function ──────────────────────────────────────────────────────
 
 export async function syncBookings(opts: {
@@ -239,7 +299,6 @@ export async function syncBookings(opts: {
   processed: number;
   created: number;
   updated: number;
-  enriched: number;
   errors: string[];
 }> {
   const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
@@ -248,7 +307,6 @@ export async function syncBookings(opts: {
   let totalProcessed = 0;
   let totalCreated = 0;
   let totalUpdated = 0;
-  let totalEnriched = 0;
   const errors: string[] = [];
 
   const parks = getConfiguredParks();
@@ -257,9 +315,6 @@ export async function syncBookings(opts: {
   for (const park of parksToSync) {
     const apiKey = park ? getParkApiKey(park) : undefined;
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
-
-    // IDs únicos a enriquecer para este parque (apanha de qualquer actionType)
-    const toEnrich = new Set<string>();
 
     for (const actionType of actionTypes) {
       try {
@@ -274,7 +329,6 @@ export async function syncBookings(opts: {
             totalProcessed++;
             if (result?.action === "created") totalCreated++;
             else totalUpdated++;
-            toEnrich.add(booking.id);
           } catch (err: any) {
             errors.push(`Booking ${booking.id}: ${err.message}`);
           }
@@ -283,24 +337,9 @@ export async function syncBookings(opts: {
         errors.push(`${parkLabel}/${actionType}: ${err.message}`);
       }
     }
-
-    // Enriquece com /bookings/:id (deliveryType, flights, remarks).
-    // Idempotente: salta as que já têm enrichedAt preenchido.
-    // Cap global por sync run para evitar timeout do Vercel (60s).
-    const remainingBudget = ENRICH_MAX_PER_SYNC - totalEnriched;
-    if (apiKey && toEnrich.size > 0 && remainingBudget > 0) {
-      const ids = Array.from(toEnrich).slice(0, remainingBudget);
-      let enrichedThisPark = 0;
-      await runConcurrent(ids, ENRICH_CONCURRENCY, async (id) => {
-        const ok = await enrichBookingIfNeeded(id, apiKey);
-        if (ok) enrichedThisPark++;
-      });
-      totalEnriched += enrichedThisPark;
-      if (enrichedThisPark > 0) {
-        console.log(`[BookingSync] ${parkLabel}: ${enrichedThisPark}/${ids.length} reservas enriquecidas (budget: ${remainingBudget})`);
-      }
-    }
   }
+  // Nota: enrichment com /bookings/:id corre num endpoint separado
+  // (multipark.enrichBatch) para evitar timeout do Vercel no sync.
 
   // Log the sync operation
   await createSyncLog({
@@ -318,7 +357,6 @@ export async function syncBookings(opts: {
     processed: totalProcessed,
     created: totalCreated,
     updated: totalUpdated - totalCreated,
-    enriched: totalEnriched,
     errors,
   };
 }

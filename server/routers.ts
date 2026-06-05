@@ -313,7 +313,7 @@ import {
   type VehicleType,
   type BookingActionType,
 } from "./multipark";
-import { syncBookings } from "./jobs/multiparkBookingSync";
+import { syncBookings, enrichBookingsBatch } from "./jobs/multiparkBookingSync";
 
 import {
   getZelloUsers,
@@ -3855,6 +3855,22 @@ export const appRouter = router({
           });
           return { success: false, processed: 0, created: 0, updated: 0, errors: [error.message] };
         }
+      }),
+
+    // Enrich a batch of unenriched bookings with /bookings/:id details
+    // (deliveryType, returnFlight, departingFlight, remarks).
+    enrichBatch: protectedProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(50).default(30) }).optional())
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const result = await enrichBookingsBatch(input?.limit ?? 30);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "enrich",
+          entity: "multipark_bookings",
+          details: `Enriquecidas ${result.enriched}/${result.scanned} (${result.errors} erros)`,
+        });
+        return result;
       }),
 
     // List synced bookings with filters

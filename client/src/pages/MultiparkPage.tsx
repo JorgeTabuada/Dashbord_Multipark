@@ -354,6 +354,7 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                     <th className="p-2">Matrícula</th>
                     <th className="p-2">Check-in</th>
                     <th className="p-2">Check-out</th>
+                    <th className="p-2">Recolha/Entrega</th>
                     <th className="p-2">Estado</th>
                     <th className="p-2 text-right">Preço</th>
                     <th className="p-2">Tipo</th>
@@ -377,6 +378,13 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                         <td className="p-2 font-mono">{b.licensePlate || "—"}</td>
                         <td className="p-2 text-xs">{fmtDateTime(b.checkIn)}</td>
                         <td className="p-2 text-xs">{fmtDateTime(b.checkOut)}</td>
+                        <td className="p-2 text-xs">
+                          {b.deliveryType ? (
+                            <Badge variant="outline" className="text-[10px]">{b.deliveryType}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="p-2">
                           <Badge className={statusCfg?.color || "bg-gray-100 text-gray-800"}>
                             {statusCfg?.label || status}
@@ -1164,7 +1172,22 @@ function SyncTab() {
 
   const { data: logs = [], isLoading, refetch } = trpc.multipark.syncLogs.useQuery();
   const syncMut = trpc.multipark.triggerSync.useMutation();
+  const enrichMut = trpc.multipark.enrichBatch.useMutation();
   const utils = trpc.useUtils();
+
+  const handleEnrich = async () => {
+    try {
+      const result = await enrichMut.mutateAsync({ limit: 30 });
+      if (result.scanned === 0) {
+        toast.info("Não há reservas por enriquecer.");
+      } else {
+        toast.success(`Enriquecidas ${result.enriched} de ${result.scanned} reservas (${result.errors} erros).`);
+      }
+      utils.multipark.bookings.invalidate();
+    } catch (err: any) {
+      toast.error(err.message || "Erro a enriquecer");
+    }
+  };
 
   const handleSync = async () => {
     if (!syncFrom || !syncTo) {
@@ -1224,6 +1247,21 @@ function SyncTab() {
           <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
             <p>A sincronização automática corre a cada 15 minutos (últimos 2 dias).</p>
             <p>Usa este formulário para importar histórico mais antigo ou forçar uma atualização.</p>
+          </div>
+
+          <div className="border-t pt-3 flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">Enriquecer reservas (recolha/entrega)</div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Vai à API individual de cada reserva e guarda <strong>deliveryType</strong>{" "}
+                (Terminal 1, Oriente, etc.), <strong>voos</strong> e <strong>notas do cliente</strong>.
+                Processa 30 reservas por execução. Corre várias vezes até não haver mais.
+              </p>
+            </div>
+            <Button onClick={handleEnrich} disabled={enrichMut.isPending} variant="outline" className="gap-2 shrink-0">
+              {enrichMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Enriquecer 30
+            </Button>
           </div>
         </CardContent>
       </Card>
