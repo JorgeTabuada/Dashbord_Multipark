@@ -36,6 +36,20 @@ export const SLOT_MINUTES = 20;
 export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 3
 export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR; // 72
 
+/**
+ * Quantos slots de 20min uma reserva consome consoante o deliveryType.
+ * - T1/VIP/sem info: 20min → consome 1 slot completo.
+ * - T2: 30min → consome 1 slot inteiro + meio do seguinte (1.5).
+ * - Outro (Partidas genérico, Oriente, Rossio, Faro, ...): 60min → 3 slots.
+ */
+export function deliverySlotSpread(deliveryType: string | null | undefined): number[] {
+  if (!deliveryType) return [1];
+  const dt = deliveryType.toLowerCase();
+  if (dt.includes("terminal 1") || dt === "vip" || dt.endsWith(" vip")) return [1];
+  if (dt.includes("terminal 2")) return [1, 0.5];
+  return [1, 1, 1]; // outro
+}
+
 export type ShiftId = "morning" | "night";
 
 // Manhã: 03:00 → 15:00 (12h). Noite: 15:00 → 03:00 do dia seguinte (12h).
@@ -190,6 +204,9 @@ export interface Slot20Row {
   slot: number; // 0, 1, or 2 (00-19, 20-39, 40-59 minutes)
   checkins: number;
   checkouts: number;
+  // Procura "pesada" — tem em conta T2 (30min) e Outro (60min) ocupando o slot
+  // mesmo quando a reserva começa noutro slot anterior.
+  weightedDemand: number;
   driversNeeded: number;
 }
 
@@ -662,9 +679,23 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       slot: s,
       checkins: 0,
       checkouts: 0,
+      weightedDemand: 0,
       driversNeeded: 0,
     })),
   }));
+
+  // Acumulador da procura "pesada" por slot global (0..71). Cada reserva
+  // espalha 1, 1.5 ou 3 unidades consoante o deliveryType.
+  const weightedBySlot: number[] = Array.from({ length: SLOTS_PER_DAY }, () => 0);
+
+  function addToSlot(startHour: number, startMinute: number, deliveryType: string | null) {
+    const startSlot = startHour * SLOTS_PER_HOUR + Math.floor(startMinute / SLOT_MINUTES);
+    const spread = deliverySlotSpread(deliveryType);
+    for (let i = 0; i < spread.length; i++) {
+      const s = startSlot + i;
+      if (s >= 0 && s < SLOTS_PER_DAY) weightedBySlot[s] += spread[i];
+    }
+  }
 
   for (const r of targetCheckins) {
     const hm = parseScheduledHM(r.checkInTime, r.checkIn);
@@ -672,6 +703,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkins++;
       hourly[hm.hour].slots[slot].checkins++;
+      addToSlot(hm.hour, hm.minute, r.deliveryType);
     }
   }
   for (const r of targetCheckouts) {
@@ -680,18 +712,24 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkouts++;
       hourly[hm.hour].slots[slot].checkouts++;
+      addToSlot(hm.hour, hm.minute, r.deliveryType);
     }
   }
   for (const row of hourly) {
-    // Driver demand at HOUR level still uses 3 cars/h rule
-    row.driversNeeded = Math.ceil((row.checkins + row.checkouts) / CARS_PER_HOUR_PER_DRIVER);
-    // Each 20min slot can absorb 1 car per driver (1 car / 20min = 3 cars/h sustained)
+    // Driver demand HORÁRIO: soma da procura pesada dos 3 slots, dividida
+    // por 3 (porque cada condutor "vale" 3 unidades de slot por hora).
+    let hourWeighted = 0;
     for (const s of row.slots) {
-      s.driversNeeded = Math.max(s.checkins, s.checkouts);
+      const idx = s.hour * SLOTS_PER_HOUR + s.slot;
+      s.weightedDemand = weightedBySlot[idx];
+      s.driversNeeded = Math.ceil(s.weightedDemand);
+      hourWeighted += s.weightedDemand;
     }
+    row.driversNeeded = Math.ceil(hourWeighted / SLOTS_PER_HOUR);
   }
 
-  const hourlyCars = hourly.map(h => h.checkins + h.checkouts);
+  // Para sugestão de turnos usa a procura pesada agregada por hora.
+  const hourlyCars = hourly.map(h => h.slots.reduce((acc, s) => acc + s.weightedDemand, 0));
   const cheapest = suggestShifts(hourlyCars, "junior");
   const bySingleLevel = DRIVER_LEVELS.map(l => {
     const r = suggestShifts(hourlyCars, l.id);

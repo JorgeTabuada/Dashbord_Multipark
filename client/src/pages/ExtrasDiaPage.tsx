@@ -202,6 +202,8 @@ export default function ExtrasDiaPage() {
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 Clica numa hora para ver os blocos de 20min. Clica num bloco para ver as reservas.
+                Condutores tem em conta o tipo de recolha: T2 = 30min (1.5 unidades), Outro = 60min (3 unidades), T1/VIP = 20min (1 unidade).
+                <span className="ml-1 text-amber-700">⚠</span> indica slots com procura aumentada.
               </p>
             </CardHeader>
             <CardContent>
@@ -924,7 +926,7 @@ function HourRow({
     checkins: number;
     checkouts: number;
     driversNeeded: number;
-    slots: { hour: number; slot: number; checkins: number; checkouts: number; driversNeeded: number }[];
+    slots: { hour: number; slot: number; checkins: number; checkouts: number; weightedDemand: number; driversNeeded: number }[];
   };
   targetDate: string;
   isPeak: boolean;
@@ -959,7 +961,7 @@ function SlotRow({
   slot,
   targetDate,
 }: {
-  slot: { hour: number; slot: number; checkins: number; checkouts: number; driversNeeded: number };
+  slot: { hour: number; slot: number; checkins: number; checkouts: number; weightedDemand: number; driversNeeded: number };
   targetDate: string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -982,7 +984,12 @@ function SlotRow({
         <td className="py-1 px-2 text-right text-emerald-700 text-xs">{slot.checkins || ""}</td>
         <td className="py-1 px-2 text-right text-orange-700 text-xs">{slot.checkouts || ""}</td>
         <td className="py-1 px-2 text-right text-xs">{total || ""}</td>
-        <td className="py-1 px-2 text-right text-xs text-muted-foreground">{slot.driversNeeded || ""}</td>
+        <td className="py-1 px-2 text-right text-xs text-muted-foreground">
+          {slot.driversNeeded || ""}
+          {slot.weightedDemand > total && total > 0 && (
+            <span className="ml-1 text-amber-700" title="Procura aumentada por T2/Outro">⚠</span>
+          )}
+        </td>
       </tr>
       {expanded && hasData && (
         <tr>
