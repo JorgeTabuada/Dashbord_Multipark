@@ -258,18 +258,17 @@ export async function enrichBookingsBatch(limit = 30): Promise<{
   if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0 };
 
   const parks = getConfiguredParks();
-  // Cache: parkName lowercase → apiKey
+  // Cache: parkName lowercase → apiKey.
+  // parkName tem formato "Airpark - Lisboa" — usa-se para matchar parque+cidade.
   const keyCache = new Map<string, string | null>();
-  function pickApiKey(parkName: string | null, city: string | null): string | null {
+  function pickApiKey(parkName: string | null, _city: string | null): string | null {
     if (!parkName) return null;
-    const cacheKey = `${parkName}|${city ?? ""}`.toLowerCase();
+    const cacheKey = parkName.toLowerCase();
     if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
     const pl = parkName.toLowerCase();
-    const match = parks.find(p => {
-      const matchName = pl.includes(p.name.toLowerCase());
-      const matchCity = !city || city.toLowerCase().includes(p.city.toLowerCase()) || p.city.toLowerCase().includes(city.toLowerCase());
-      return matchName && matchCity;
-    });
+    const match = parks.find(p =>
+      pl.includes(p.name.toLowerCase()) && pl.includes(p.city.toLowerCase()),
+    );
     const key = match ? getParkApiKey(match) ?? null : null;
     keyCache.set(cacheKey, key);
     return key;
@@ -309,18 +308,26 @@ export async function syncBookings(opts: {
   const parks = getConfiguredParks();
   const parksToSync = parks.length > 0 ? parks : [null]; // null = use global key
 
-  // Corre cada parque em paralelo (cada um faz os actionTypes em série) para
-  // reduzir o tempo total e caber no timeout do Vercel.
-  const perParkResults = await Promise.allSettled(parksToSync.map(async (park) => {
+  // Corre todas as combinações (parque × actionType) em paralelo. As chamadas
+  // /bookings/report têm rate-limit handling embutido (backoff 429) e a Vercel
+  // tem 60s — paralelizar tudo é a única forma de caber em janelas largas.
+  type Job = { park: ParkConfig | null; actionType: BookingActionType };
+  const jobs: Job[] = [];
+  for (const park of parksToSync) {
+    for (const actionType of actionTypes) {
+      jobs.push({ park, actionType });
+    }
+  }
+
+  const perParkResults = await Promise.allSettled(jobs.map(async ({ park, actionType }) => {
     const apiKey = park ? getParkApiKey(park) : undefined;
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
     let processed = 0, created = 0, updated = 0;
     const parkErrors: string[] = [];
 
-    for (const actionType of actionTypes) {
-      try {
-        const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
-        if (!report?.bookings?.length) continue;
+    try {
+      const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
+      if (report?.bookings?.length) {
         for (const booking of report.bookings) {
           try {
             const record = bookingToRecord(booking, projectMap);
@@ -332,9 +339,9 @@ export async function syncBookings(opts: {
             parkErrors.push(`Booking ${booking.id}: ${err.message}`);
           }
         }
-      } catch (err: any) {
-        parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
       }
+    } catch (err: any) {
+      parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
     }
     return { processed, created, updated, errors: parkErrors };
   }));
