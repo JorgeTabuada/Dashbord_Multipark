@@ -255,15 +255,32 @@ export function startBookingSyncScheduler() {
       const today = new Date();
       const twoDaysAgo = new Date(today);
       twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const thirtyDaysAhead = new Date(today);
+      thirtyDaysAhead.setDate(thirtyDaysAhead.getDate() + 30);
 
-      const startDate = twoDaysAgo.toISOString().split("T")[0];
-      const endDate = today.toISOString().split("T")[0];
+      const pastStart = twoDaysAgo.toISOString().split("T")[0];
+      const todayStr = today.toISOString().split("T")[0];
+      const futureEnd = thirtyDaysAhead.toISOString().split("T")[0];
 
-      console.log(`[BookingSync] Syncing ${startDate} to ${endDate}`);
-      const result = await syncBookings({ startDate, endDate });
+      // Past window: realized events (creation/checkin/checkout/cancelation) over the last 2 days.
+      console.log(`[BookingSync] Past window ${pastStart} → ${todayStr}`);
+      const past = await syncBookings({ startDate: pastStart, endDate: todayStr });
       console.log(
-        `[BookingSync] Done: ${result.processed} processed, ${result.created} new, ${result.updated} updated` +
-          (result.errors.length > 0 ? `, ${result.errors.length} errors` : "")
+        `[BookingSync] Past done: ${past.processed} processed, ${past.created} new, ${past.updated} updated` +
+          (past.errors.length > 0 ? `, ${past.errors.length} errors` : "")
+      );
+
+      // Future window: scheduled check-ins/check-outs for the next 30 days.
+      // Needed so /extras-dia can plan ahead with reservations booked any time.
+      console.log(`[BookingSync] Future window ${todayStr} → ${futureEnd}`);
+      const future = await syncBookings({
+        startDate: todayStr,
+        endDate: futureEnd,
+        actionTypes: ["checkin", "checkout"],
+      });
+      console.log(
+        `[BookingSync] Future done: ${future.processed} processed, ${future.created} new, ${future.updated} updated` +
+          (future.errors.length > 0 ? `, ${future.errors.length} errors` : "")
       );
     } catch (error) {
       console.error("[BookingSync] Scheduler error:", error);
