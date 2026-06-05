@@ -4,6 +4,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { createExternalApiRouter } from "../externalApi";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { sdk } from "./sdk";
+import { getBookingTryAllParks } from "../multipark";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -27,6 +29,35 @@ try {
   initError = err.stack || err.message || String(err);
   console.error("[API Init Error]", initError);
 }
+
+// Debug endpoint: fetch raw booking JSON straight from MultiPark API.
+// Admin-only (session cookie). Usage: /api/debug/booking?id=cm...
+app.get("/api/debug/booking", async (req, res) => {
+  try {
+    const user = await sdk.authenticateRequest(req);
+    if (!user || user.role !== "admin" && user.role !== "super_admin") {
+      return res.status(403).json({ error: "Forbidden — admin only" });
+    }
+    const id = String(req.query.id ?? "").trim();
+    if (!id) return res.status(400).json({ error: "Missing ?id=<externalId>" });
+
+    const found = await getBookingTryAllParks(id);
+    if (!found) {
+      return res.status(404).json({
+        error: "Reserva não encontrada em nenhum parque",
+        triedKeys: Object.keys(process.env).filter(k => k.startsWith("MULTIPARK_API_KEY_")),
+      });
+    }
+
+    return res.json({
+      park: `${found.parkConfig.name} (${found.parkConfig.city})`,
+      parkId: found.parkConfig.id,
+      booking: found.booking,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
 
 // Health check com diagnóstico de env vars críticas (sem expor valores)
 app.get("/api/health", (_req, res) => {
