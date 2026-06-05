@@ -702,18 +702,29 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   // espalha 1, 1.5 ou 3 unidades consoante o deliveryType.
   const weightedBySlot: number[] = Array.from({ length: SLOTS_PER_DAY }, () => 0);
 
-  function addToSlot(startHour: number, startMinute: number, deliveryType: string | null) {
+  function addToSlot(
+    startHour: number,
+    startMinute: number,
+    deliveryType: string | null,
+    type: "checkin" | "checkout",
+  ) {
     const startSlot = startHour * SLOTS_PER_HOUR + Math.floor(startMinute / SLOT_MINUTES);
-    const spread = deliverySlotSpread(deliveryType);
+    const cls = classifyDeliveryType(deliveryType);
+    // Regra: T2 só conta como 30min (1.5 slots) em CHECK-IN.
+    // Em check-out, T2 trata-se como T1 (20min normal).
+    let spread: number[];
+    if (cls === "t2" && type === "checkin") spread = [1, 0.5];
+    else if (cls === "other") spread = [1, 1, 1]; // Outro: aplica em ambos
+    else spread = [1];
     for (let i = 0; i < spread.length; i++) {
       const s = startSlot + i;
       if (s >= 0 && s < SLOTS_PER_DAY) weightedBySlot[s] += spread[i];
     }
   }
 
-  function markHourClass(hour: number, deliveryType: string | null) {
+  function markHourClass(hour: number, deliveryType: string | null, type: "checkin" | "checkout") {
     const cls = classifyDeliveryType(deliveryType);
-    if (cls === "t2") hourly[hour].hasT2 = true;
+    if (cls === "t2" && type === "checkin") hourly[hour].hasT2 = true;
     else if (cls === "other") hourly[hour].hasOther = true;
   }
 
@@ -723,8 +734,8 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkins++;
       hourly[hm.hour].slots[slot].checkins++;
-      addToSlot(hm.hour, hm.minute, r.deliveryType);
-      markHourClass(hm.hour, r.deliveryType);
+      addToSlot(hm.hour, hm.minute, r.deliveryType, "checkin");
+      markHourClass(hm.hour, r.deliveryType, "checkin");
     }
   }
   for (const r of targetCheckouts) {
@@ -733,8 +744,8 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkouts++;
       hourly[hm.hour].slots[slot].checkouts++;
-      addToSlot(hm.hour, hm.minute, r.deliveryType);
-      markHourClass(hm.hour, r.deliveryType);
+      addToSlot(hm.hour, hm.minute, r.deliveryType, "checkout");
+      markHourClass(hm.hour, r.deliveryType, "checkout");
     }
   }
   for (const row of hourly) {

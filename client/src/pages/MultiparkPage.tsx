@@ -61,14 +61,14 @@ const SECTION_CONFIG: Record<string, {
     actionType: "creation",
   },
   entradas: {
-    title: "Entradas",
-    subtitle: "Check-ins realizados no período seleccionado",
+    title: "Recolhas",
+    subtitle: "Recolhas realizadas no período seleccionado",
     icon: ArrowDownToLine,
     actionType: "checkin",
   },
   saidas: {
-    title: "Saídas",
-    subtitle: "Check-outs realizados no período seleccionado",
+    title: "Entregas",
+    subtitle: "Entregas realizadas no período seleccionado",
     icon: ArrowUpFromLine,
     actionType: "checkout",
   },
@@ -350,11 +350,9 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                   <tr className="bg-muted/50 text-left">
                     <th className="p-2">Reserva</th>
                     <th className="p-2">Parque</th>
-                    <th className="p-2">Cliente</th>
-                    <th className="p-2">Matrícula</th>
-                    <th className="p-2">Check-in</th>
-                    <th className="p-2">Check-out</th>
-                    <th className="p-2">Recolha/Entrega</th>
+                    <th className="p-2">Recolha</th>
+                    <th className="p-2">Entrega</th>
+                    <th className="p-2">Tipo Recolha/Entrega</th>
                     <th className="p-2">Estado</th>
                     <th className="p-2 text-right">Preço</th>
                     <th className="p-2">Tipo</th>
@@ -366,16 +364,18 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                     const statusCfg = STATUS_MAP[status];
                     const parkName = b.parkName || "—";
                     const parkCity = b.city || "";
+                    const isNonValet = (b.parkingType ?? "").toUpperCase() !== "VALET";
 
                     return (
-                      <tr key={b.id || i} className="border-t hover:bg-muted/30">
+                      <tr
+                        key={b.id || i}
+                        className={`border-t ${isNonValet ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-muted/30"}`}
+                      >
                         <td className="p-2 font-mono text-xs">{b.bookingNumber || b.externalId}</td>
                         <td className="p-2">
                           <span className="font-medium">{parkName}</span>
                           {parkCity && !parkName.includes(parkCity) && <span className="text-xs text-muted-foreground ml-1">{parkCity}</span>}
                         </td>
-                        <td className="p-2">{b.clientFirstName} {b.clientLastName}</td>
-                        <td className="p-2 font-mono">{b.licensePlate || "—"}</td>
                         <td className="p-2 text-xs">{fmtDateTime(b.checkIn)}</td>
                         <td className="p-2 text-xs">{fmtDateTime(b.checkOut)}</td>
                         <td className="p-2 text-xs">
@@ -391,7 +391,10 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                           </Badge>
                         </td>
                         <td className="p-2 text-right font-medium">{fmtEur(b.totalPrice)}</td>
-                        <td className="p-2 text-xs">{b.parkingType || "—"}</td>
+                        <td className="p-2 text-xs">
+                          {b.parkingType || "—"}
+                          {isNonValet && <span className="ml-1 text-red-600 font-semibold">⚠ não-valet</span>}
+                        </td>
                       </tr>
                     );
                   })}
@@ -477,8 +480,8 @@ function DashboardTab() {
   const topKpis = [
     { label: "Total Reservas", value: fmtNum(kpis.totalBookings), icon: ParkingCircle, color: "text-indigo-600 bg-indigo-100" },
     { label: "Receita Total", value: fmtCents(kpis.totalRevenue), icon: DollarSign, color: "text-green-600 bg-green-100" },
-    { label: "Check-ins", value: fmtNum(kpis.checkins), icon: ArrowDownToLine, color: "text-blue-600 bg-blue-100" },
-    { label: "Check-outs", value: fmtNum(kpis.checkouts), icon: ArrowUpFromLine, color: "text-purple-600 bg-purple-100" },
+    { label: "Recolhas", value: fmtNum(kpis.checkins), icon: ArrowDownToLine, color: "text-blue-600 bg-blue-100" },
+    { label: "Entregas", value: fmtNum(kpis.checkouts), icon: ArrowUpFromLine, color: "text-purple-600 bg-purple-100" },
     { label: "Reservados", value: fmtNum(kpis.reserved), icon: Calendar, color: "text-amber-600 bg-amber-100" },
     { label: "Cancelados", value: fmtNum(kpis.cancelled), icon: XCircle, color: "text-red-600 bg-red-100" },
   ];
