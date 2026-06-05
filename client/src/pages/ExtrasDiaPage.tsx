@@ -55,6 +55,18 @@ export default function ExtrasDiaPage() {
   const [baseDate, setBaseDate] = useState(todayISO());
 
   const { data, isLoading, error } = trpc.extrasDia.forecast.useQuery({ baseDate });
+  const targetDate = data?.targetDate ?? "";
+  const assignmentsQ = trpc.extrasDia.assignments.useQuery(
+    { date: targetDate },
+    { enabled: !!targetDate },
+  );
+  const assignments = assignmentsQ.data ?? [];
+
+  const actuals = useMemo(() => {
+    const cost = assignments.reduce((s, a) => s + a.cost, 0);
+    const hours = assignments.reduce((s, a) => s + a.hoursBilled, 0);
+    return { cost, hours, count: assignments.length };
+  }, [assignments]);
 
   const peakHour = useMemo(() => {
     if (!data) return null;
@@ -152,14 +164,23 @@ export default function ExtrasDiaPage() {
             />
             <KpiCard
               icon={<Users className="h-4 w-4 text-blue-600" />}
-              label="Condutores (pico)"
-              value={data.allocation.cheapest.peakDrivers}
-              hint={`${data.allocation.cheapest.totalDriverHours}h totais`}
+              label={actuals.count > 0 ? "Pessoas escaladas" : "Condutores (pico)"}
+              value={actuals.count > 0 ? actuals.count : data.allocation.cheapest.peakDrivers}
+              hint={
+                actuals.count > 0
+                  ? `${actuals.hours}h pagas · pico previsto ${data.allocation.cheapest.peakDrivers}`
+                  : `${data.allocation.cheapest.totalDriverHours}h totais`
+              }
             />
             <KpiCard
               icon={<Euro className="h-4 w-4 text-purple-600" />}
-              label="Custo mínimo (Júnior)"
-              value={fmtEur(data.allocation.cheapest.totalCost)}
+              label={actuals.count > 0 ? "Custo real" : "Estimativa (Júnior)"}
+              value={fmtEur(actuals.count > 0 ? actuals.cost : data.allocation.cheapest.totalCost)}
+              hint={
+                actuals.count > 0
+                  ? `Estimativa: ${fmtEur(data.allocation.cheapest.totalCost)}`
+                  : undefined
+              }
             />
           </div>
 
@@ -255,76 +276,99 @@ export default function ExtrasDiaPage() {
             </CardContent>
           </Card>
 
-          {/* Driver allocation */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Condutores sugeridos (3 carros/hora · turnos 3–12h)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="font-medium text-sm mb-2">Turnos propostos (Júnior — mais barato)</h3>
-                {data.allocation.cheapest.shifts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sem turnos necessários.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-xs uppercase text-muted-foreground">
-                          <th className="text-left py-2 px-2">#</th>
-                          <th className="text-left py-2 px-2">Tipo</th>
-                          <th className="text-right py-2 px-2">Início</th>
-                          <th className="text-right py-2 px-2">Fim</th>
-                          <th className="text-right py-2 px-2">Horas</th>
-                          <th className="text-right py-2 px-2">€/h</th>
-                          <th className="text-right py-2 px-2">Custo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.allocation.cheapest.shifts.map((s, i) => (
-                          <tr key={i} className="border-b">
-                            <td className="py-1.5 px-2 text-muted-foreground">{i + 1}</td>
-                            <td className="py-1.5 px-2">{s.label}</td>
-                            <td className="py-1.5 px-2 text-right font-mono">{fmtHour(s.startHour)}</td>
-                            <td className="py-1.5 px-2 text-right font-mono">{fmtHour(s.endHour)}</td>
-                            <td className="py-1.5 px-2 text-right">{s.hours}h</td>
-                            <td className="py-1.5 px-2 text-right">{fmtEur(s.hourlyRate)}</td>
-                            <td className="py-1.5 px-2 text-right font-semibold">{fmtEur(s.cost)}</td>
-                          </tr>
-                        ))}
-                        <tr className="font-semibold bg-muted/40">
-                          <td colSpan={4} className="py-2 px-2 text-right">Total</td>
-                          <td className="py-2 px-2 text-right">{data.allocation.cheapest.totalDriverHours}h</td>
-                          <td></td>
-                          <td className="py-2 px-2 text-right">{fmtEur(data.allocation.cheapest.totalCost)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <h3 className="font-medium text-sm mb-2">Comparação por nível</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {data.allocation.bySingleLevel.map(l => (
-                    <div
-                      key={l.level}
-                      className="border rounded-md p-3 bg-card"
-                    >
-                      <div className="text-xs text-muted-foreground">{l.label}</div>
-                      <div className="text-lg font-semibold">{fmtEur(l.totalCost)}</div>
-                      <div className="text-xs text-muted-foreground">{l.totalHours}h totais</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+          {/* Equipa do dia (real) — vem antes da estimativa */}
           <TeamSection targetDate={data.targetDate} />
+
+          {/* Estimativa de referência — vazia/colapsa quando há atribuições */}
+          {(() => {
+            const remainingSuggested = data.allocation.cheapest.shifts.slice(actuals.count);
+            const remainingHours = remainingSuggested.reduce((s, x) => s + x.hours, 0);
+            const remainingCost = remainingSuggested.reduce((s, x) => s + x.cost, 0);
+            const allCovered = data.allocation.cheapest.shifts.length > 0 && actuals.count >= data.allocation.cheapest.shifts.length;
+
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Estimativa de referência (3 carros/hora · turnos 3–12h)
+                  </CardTitle>
+                  {actuals.count > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {allCovered
+                        ? "Todos os slots previstos já estão cobertos pela equipa acima."
+                        : `${actuals.count} de ${data.allocation.cheapest.shifts.length} slots previstos cobertos pela equipa. Restam ${remainingSuggested.length} por escalar.`}
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {data.allocation.cheapest.shifts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem turnos necessários previstos.</p>
+                  ) : (
+                    <div>
+                      <h3 className="font-medium text-sm mb-2">
+                        {actuals.count > 0 ? "Slots ainda por cobrir" : "Turnos propostos (Júnior — mais barato)"}
+                      </h3>
+                      {remainingSuggested.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sem slots por cobrir.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-xs uppercase text-muted-foreground">
+                                <th className="text-left py-2 px-2">#</th>
+                                <th className="text-left py-2 px-2">Tipo</th>
+                                <th className="text-right py-2 px-2">Início</th>
+                                <th className="text-right py-2 px-2">Fim</th>
+                                <th className="text-right py-2 px-2">Horas</th>
+                                <th className="text-right py-2 px-2">€/h</th>
+                                <th className="text-right py-2 px-2">Custo</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {remainingSuggested.map((s, i) => (
+                                <tr key={i} className="border-b text-muted-foreground">
+                                  <td className="py-1.5 px-2">{actuals.count + i + 1}</td>
+                                  <td className="py-1.5 px-2">{s.label}</td>
+                                  <td className="py-1.5 px-2 text-right font-mono">{fmtHour(s.startHour)}</td>
+                                  <td className="py-1.5 px-2 text-right font-mono">{fmtHour(s.endHour)}</td>
+                                  <td className="py-1.5 px-2 text-right">{s.hours}h</td>
+                                  <td className="py-1.5 px-2 text-right">{fmtEur(s.hourlyRate)}</td>
+                                  <td className="py-1.5 px-2 text-right">{fmtEur(s.cost)}</td>
+                                </tr>
+                              ))}
+                              <tr className="font-semibold bg-muted/40">
+                                <td colSpan={4} className="py-2 px-2 text-right">Em falta</td>
+                                <td className="py-2 px-2 text-right">{remainingHours}h</td>
+                                <td></td>
+                                <td className="py-2 px-2 text-right">{fmtEur(remainingCost)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <h3 className="font-medium text-sm mb-2">Estimativa por nível (referência)</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {data.allocation.bySingleLevel.map(l => (
+                        <div
+                          key={l.level}
+                          className="border rounded-md p-3 bg-card"
+                        >
+                          <div className="text-xs text-muted-foreground">{l.label}</div>
+                          <div className="text-lg font-semibold">{fmtEur(l.totalCost)}</div>
+                          <div className="text-xs text-muted-foreground">{l.totalHours}h totais</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </>
       )}
     </div>
