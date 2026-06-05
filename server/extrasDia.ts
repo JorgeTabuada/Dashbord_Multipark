@@ -30,6 +30,10 @@ export type DriverLevelId = (typeof DRIVER_LEVELS)[number]["id"];
 export const CARS_PER_HOUR_PER_DRIVER = 3;
 export const MIN_SHIFT_HOURS = 3;
 export const MAX_SHIFT_HOURS = 12;
+export const TL_WORKING_DAYS_PER_MONTH = 15;
+export const SLOT_MINUTES = 20;
+export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 3
+export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR; // 72
 
 const CITY_PATTERN = "%lisb%"; // matches Lisboa, Lisbon, LISBON, lisbôa, ...
 const PARK_ID_PREFIX = "LISBON_%"; // backup: when city was not set on the row
@@ -64,6 +68,29 @@ function hourOf(ts: string | null | undefined): number | null {
   const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
   if (Number.isNaN(d.getTime())) return null;
   return d.getHours();
+}
+
+function minuteOf(ts: string | null | undefined): number | null {
+  if (!ts) return null;
+  const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getMinutes();
+}
+
+function parseScheduledHM(
+  timeStr: string | null,
+  fallbackIso: string | null,
+): { hour: number; minute: number } | null {
+  if (timeStr && /^\d{1,2}:\d{2}/.test(timeStr)) {
+    const [hh, mm] = timeStr.split(":");
+    const h = parseInt(hh, 10);
+    const m = parseInt(mm, 10);
+    if (h >= 0 && h < 24 && m >= 0 && m < 60) return { hour: h, minute: m };
+  }
+  const h = hourOf(fallbackIso);
+  const m = minuteOf(fallbackIso);
+  if (h !== null && m !== null) return { hour: h, minute: m };
+  return null;
 }
 
 function bookingHasLavagem(rawJson: string | null): boolean {
@@ -146,6 +173,15 @@ export interface HourlyRow {
   checkins: number;
   checkouts: number;
   driversNeeded: number;
+  slots: Slot20Row[]; // 3 slots per hour
+}
+
+export interface Slot20Row {
+  hour: number;
+  slot: number; // 0, 1, or 2 (00-19, 20-39, 40-59 minutes)
+  checkins: number;
+  checkouts: number;
+  driversNeeded: number;
 }
 
 export interface DailyWash {
@@ -178,6 +214,12 @@ export interface ExtrasDiaForecast {
 }
 
 type BookingRow = {
+  id: number;
+  externalId: string;
+  bookingNumber: string | null;
+  clientFirstName: string | null;
+  clientLastName: string | null;
+  licensePlate: string | null;
   checkIn: string | null;
   checkOut: string | null;
   checkInTime: string | null;
@@ -186,6 +228,16 @@ type BookingRow = {
   parkName: string | null;
   city: string | null;
 };
+
+export interface BookingSummary {
+  id: number;
+  externalId: string;
+  bookingNumber: string | null;
+  clientName: string;
+  licensePlate: string | null;
+  parkName: string | null;
+  time: string; // HH:mm
+}
 
 async function fetchBookingsInRange(
   field: "checkIn" | "checkOut",
@@ -201,6 +253,12 @@ async function fetchBookingsInRange(
 
   return db
     .select({
+      id: multiparkBookings.id,
+      externalId: multiparkBookings.externalId,
+      bookingNumber: multiparkBookings.bookingNumber,
+      clientFirstName: multiparkBookings.clientFirstName,
+      clientLastName: multiparkBookings.clientLastName,
+      licensePlate: multiparkBookings.licensePlate,
       checkIn: multiparkBookings.checkIn,
       checkOut: multiparkBookings.checkOut,
       checkInTime: multiparkBookings.checkInTime,
@@ -221,14 +279,6 @@ async function fetchBookingsInRange(
     .limit(20000);
 }
 
-function parseScheduledHour(timeStr: string | null, fallbackIso: string | null): number | null {
-  if (timeStr && /^\d{1,2}:\d{2}/.test(timeStr)) {
-    const h = parseInt(timeStr.split(":")[0], 10);
-    if (h >= 0 && h < 24) return h;
-  }
-  return hourOf(fallbackIso);
-}
-
 // ─── Assignments (gestor escala pessoas a turnos) ────────────────────────────
 
 export interface Assignment {
@@ -236,7 +286,8 @@ export interface Assignment {
   assignmentDate: string;
   employeeId: number | null;
   personName: string;
-  level: DriverLevelId;
+  level: DriverLevelId | null; // null when TL
+  isTeamLeader: boolean;
   startHour: number;
   endHour: number;
   sentHomeHour: number | null;
@@ -246,24 +297,36 @@ export interface Assignment {
 }
 
 function computeAssignmentCost(row: {
-  level: DriverLevelId;
+  level: DriverLevelId | null;
+  isTeamLeader: boolean;
   startHour: number;
   endHour: number;
   sentHomeHour: number | null;
+  tlDailyCost?: number; // monthlySalary / 15
 }): { hoursBilled: number; cost: number } {
   const end = row.sentHomeHour ?? row.endHour;
   const hours = Math.max(0, end - row.startHour);
+  if (row.isTeamLeader) {
+    // TL: fixed daily cost; ignore hours.
+    return { hoursBilled: hours, cost: row.tlDailyCost ?? 0 };
+  }
   const rate = DRIVER_LEVELS.find(l => l.id === row.level)?.hourlyRate ?? 0;
   return { hoursBilled: hours, cost: hours * rate };
 }
 
-function rowToAssignment(r: typeof extrasDiaAssignments.$inferSelect): Assignment {
-  const level = r.level as DriverLevelId;
+function rowToAssignment(
+  r: typeof extrasDiaAssignments.$inferSelect,
+  tlDailyCost?: number,
+): Assignment {
+  const isTL = r.isTeamLeader === 1;
+  const level = (r.level as DriverLevelId | null) ?? null;
   const computed = computeAssignmentCost({
     level,
+    isTeamLeader: isTL,
     startHour: r.startHour,
     endHour: r.endHour,
     sentHomeHour: r.sentHomeHour,
+    tlDailyCost,
   });
   return {
     id: r.id,
@@ -271,12 +334,28 @@ function rowToAssignment(r: typeof extrasDiaAssignments.$inferSelect): Assignmen
     employeeId: r.employeeId,
     personName: r.personName,
     level,
+    isTeamLeader: isTL,
     startHour: r.startHour,
     endHour: r.endHour,
     sentHomeHour: r.sentHomeHour,
     notes: r.notes,
     ...computed,
   };
+}
+
+async function getEmployeeDailyCost(employeeId: number | null): Promise<number> {
+  if (!employeeId) return 0;
+  const db = await getDb();
+  if (!db) return 0;
+  const [row] = await db
+    .select({ monthlySalary: employees.monthlySalary })
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1);
+  if (!row?.monthlySalary) return 0;
+  const monthly = parseFloat(String(row.monthlySalary));
+  if (!Number.isFinite(monthly)) return 0;
+  return monthly / TL_WORKING_DAYS_PER_MONTH;
 }
 
 export async function listAssignments(date: string): Promise<Assignment[]> {
@@ -287,7 +366,17 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
     .from(extrasDiaAssignments)
     .where(eq(extrasDiaAssignments.assignmentDate, date))
     .orderBy(asc(extrasDiaAssignments.startHour));
-  return rows.map(rowToAssignment);
+
+  // Resolve TL daily cost for each TL row (employees.monthlySalary / 15)
+  const result: Assignment[] = [];
+  for (const r of rows) {
+    let tlCost: number | undefined;
+    if (r.isTeamLeader === 1) {
+      tlCost = await getEmployeeDailyCost(r.employeeId);
+    }
+    result.push(rowToAssignment(r, tlCost));
+  }
+  return result;
 }
 
 export interface UpsertAssignmentInput {
@@ -295,7 +384,8 @@ export interface UpsertAssignmentInput {
   assignmentDate: string;
   employeeId?: number | null;
   personName: string;
-  level: DriverLevelId;
+  level?: DriverLevelId | null;
+  isTeamLeader?: boolean;
   startHour: number;
   endHour: number;
   sentHomeHour?: number | null;
@@ -307,11 +397,31 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
   const db = await getDb();
   if (!db) return null;
 
+  const isTL = !!input.isTeamLeader;
+
+  // If creating/updating a TL, ensure there's only one TL per day.
+  if (isTL) {
+    const existing = await db
+      .select({ id: extrasDiaAssignments.id })
+      .from(extrasDiaAssignments)
+      .where(
+        and(
+          eq(extrasDiaAssignments.assignmentDate, input.assignmentDate),
+          eq(extrasDiaAssignments.isTeamLeader, 1),
+        ),
+      );
+    const other = existing.find(e => e.id !== (input.id ?? -1));
+    if (other) {
+      throw new Error("Já existe um Team Leader para este dia. Apaga ou edita o existente.");
+    }
+  }
+
   const payload = {
     assignmentDate: input.assignmentDate,
     employeeId: input.employeeId ?? null,
     personName: input.personName,
-    level: input.level,
+    level: isTL ? null : (input.level ?? "junior"),
+    isTeamLeader: isTL ? 1 : 0,
     startHour: input.startHour,
     endHour: input.endHour,
     sentHomeHour: input.sentHomeHour ?? null,
@@ -325,7 +435,9 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
       .from(extrasDiaAssignments)
       .where(eq(extrasDiaAssignments.id, input.id))
       .limit(1);
-    return row ? rowToAssignment(row) : null;
+    if (!row) return null;
+    const tlCost = row.isTeamLeader === 1 ? await getEmployeeDailyCost(row.employeeId) : undefined;
+    return rowToAssignment(row, tlCost);
   }
 
   const [result] = await db
@@ -338,13 +450,54 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
     .from(extrasDiaAssignments)
     .where(eq(extrasDiaAssignments.id, newId))
     .limit(1);
-  return row ? rowToAssignment(row) : null;
+  if (!row) return null;
+  const tlCost = row.isTeamLeader === 1 ? await getEmployeeDailyCost(row.employeeId) : undefined;
+  return rowToAssignment(row, tlCost);
 }
 
 export async function deleteAssignment(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.delete(extrasDiaAssignments).where(eq(extrasDiaAssignments.id, id));
+}
+
+// ─── Drill-down: reservas num slot de 20min ──────────────────────────────────
+
+export async function getBookingsInSlot(
+  targetDate: string,
+  hour: number,
+  slot: number,
+  type: "checkin" | "checkout",
+): Promise<BookingSummary[]> {
+  const day = new Date(targetDate + "T00:00:00");
+  const dayStart = startOfDay(day);
+  const dayEnd = addDays(dayStart, 1);
+  const field = type === "checkin" ? "checkIn" : "checkOut";
+  const rows = await fetchBookingsInRange(field, dayStart, dayEnd);
+
+  const slotStart = slot * SLOT_MINUTES;
+  const slotEnd = slotStart + SLOT_MINUTES;
+
+  const out: BookingSummary[] = [];
+  for (const r of rows) {
+    const hm = type === "checkin"
+      ? parseScheduledHM(r.checkInTime, r.checkIn)
+      : parseScheduledHM(r.checkOutTime, r.checkOut);
+    if (!hm || hm.hour !== hour) continue;
+    if (hm.minute < slotStart || hm.minute >= slotEnd) continue;
+    const name = [r.clientFirstName, r.clientLastName].filter(Boolean).join(" ").trim();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    out.push({
+      id: r.id,
+      externalId: r.externalId,
+      bookingNumber: r.bookingNumber,
+      clientName: name || "—",
+      licensePlate: r.licensePlate,
+      parkName: r.parkName,
+      time: `${pad(hm.hour)}:${pad(hm.minute)}`,
+    });
+  }
+  return out.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 // ─── Driver candidates (para dropdown na UI) ─────────────────────────────────
@@ -432,18 +585,38 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     checkins: 0,
     checkouts: 0,
     driversNeeded: 0,
+    slots: Array.from({ length: SLOTS_PER_HOUR }, (_, s) => ({
+      hour: h,
+      slot: s,
+      checkins: 0,
+      checkouts: 0,
+      driversNeeded: 0,
+    })),
   }));
 
   for (const r of targetCheckins) {
-    const h = parseScheduledHour(r.checkInTime, r.checkIn);
-    if (h !== null) hourly[h].checkins++;
+    const hm = parseScheduledHM(r.checkInTime, r.checkIn);
+    if (hm) {
+      const slot = Math.floor(hm.minute / SLOT_MINUTES);
+      hourly[hm.hour].checkins++;
+      hourly[hm.hour].slots[slot].checkins++;
+    }
   }
   for (const r of targetCheckouts) {
-    const h = parseScheduledHour(r.checkOutTime, r.checkOut);
-    if (h !== null) hourly[h].checkouts++;
+    const hm = parseScheduledHM(r.checkOutTime, r.checkOut);
+    if (hm) {
+      const slot = Math.floor(hm.minute / SLOT_MINUTES);
+      hourly[hm.hour].checkouts++;
+      hourly[hm.hour].slots[slot].checkouts++;
+    }
   }
   for (const row of hourly) {
+    // Driver demand at HOUR level still uses 3 cars/h rule
     row.driversNeeded = Math.ceil((row.checkins + row.checkouts) / CARS_PER_HOUR_PER_DRIVER);
+    // Each 20min slot can absorb 1 car per driver (1 car / 20min = 3 cars/h sustained)
+    for (const s of row.slots) {
+      s.driversNeeded = Math.max(s.checkins, s.checkouts);
+    }
   }
 
   const hourlyCars = hourly.map(h => h.checkins + h.checkouts);

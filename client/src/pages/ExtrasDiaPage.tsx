@@ -24,6 +24,8 @@ import {
   Plus,
   Home,
   Trash2,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 const LEVELS = [
@@ -191,12 +193,16 @@ export default function ExtrasDiaPage() {
                 <Clock className="h-4 w-4" />
                 Por hora — {fmtDate(data.targetDate)}
               </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Clica numa hora para ver os blocos de 20min. Clica num bloco para ver as reservas.
+              </p>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-xs uppercase text-muted-foreground">
+                      <th className="text-left py-2 px-2 w-6"></th>
                       <th className="text-left py-2 px-2">Hora</th>
                       <th className="text-right py-2 px-2">Chegadas</th>
                       <th className="text-right py-2 px-2">Saídas</th>
@@ -207,31 +213,17 @@ export default function ExtrasDiaPage() {
                   <tbody>
                     {data.hourly
                       .filter(h => h.checkins + h.checkouts > 0)
-                      .map(row => {
-                        const total = row.checkins + row.checkouts;
-                        const isPeak = peakHour?.hour === row.hour;
-                        return (
-                          <tr
-                            key={row.hour}
-                            className={`border-b hover:bg-muted/40 ${isPeak ? "bg-blue-50/50" : ""}`}
-                          >
-                            <td className="py-1.5 px-2 font-mono">{fmtHour(row.hour)}</td>
-                            <td className="py-1.5 px-2 text-right text-emerald-700">
-                              {row.checkins || ""}
-                            </td>
-                            <td className="py-1.5 px-2 text-right text-orange-700">
-                              {row.checkouts || ""}
-                            </td>
-                            <td className="py-1.5 px-2 text-right font-semibold">{total}</td>
-                            <td className="py-1.5 px-2 text-right">
-                              <Badge variant="secondary">{row.driversNeeded}</Badge>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      .map(row => (
+                        <HourRow
+                          key={row.hour}
+                          row={row}
+                          targetDate={data.targetDate}
+                          isPeak={peakHour?.hour === row.hour}
+                        />
+                      ))}
                     {data.hourly.every(h => h.checkins + h.checkouts === 0) && (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="py-6 text-center text-muted-foreground">
                           Sem operações previstas neste dia.
                         </td>
                       </tr>
@@ -400,10 +392,14 @@ function TeamSection({ targetDate }: { targetDate: string }) {
   const assignments = assignmentsQuery.data ?? [];
   const candidates = candidatesQuery.data ?? [];
 
+  const tl = assignments.find(a => a.isTeamLeader);
+  const drivers = assignments.filter(a => !a.isTeamLeader);
+
   const totalCost = assignments.reduce((s, a) => s + a.cost, 0);
-  const totalHours = assignments.reduce((s, a) => s + a.hoursBilled, 0);
+  const totalHours = drivers.reduce((s, a) => s + a.hoursBilled, 0);
 
   const [adding, setAdding] = useState(false);
+  const [addingTL, setAddingTL] = useState(false);
 
   return (
     <Card>
@@ -431,6 +427,53 @@ function TeamSection({ targetDate }: { targetDate: string }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* TL banner */}
+        <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-amber-900">Team Leader (obrigatório)</div>
+              {tl ? (
+                <div className="font-semibold">
+                  {tl.personName}{" "}
+                  <span className="font-normal text-sm text-muted-foreground">
+                    · {fmtHour(tl.startHour)}–{fmtHour(tl.sentHomeHour ?? tl.endHour)} · {fmtEur(tl.cost)}/dia
+                  </span>
+                </div>
+              ) : (
+                <div className="text-sm text-amber-900">
+                  Ainda não há TL definido. Define para arrancar.
+                </div>
+              )}
+            </div>
+            {!tl && (
+              <Button size="sm" variant="outline" onClick={() => setAddingTL(v => !v)}>
+                {addingTL ? "Cancelar" : "Definir Team Leader"}
+              </Button>
+            )}
+            {tl && (
+              <Button size="sm" variant="ghost" onClick={() => del.mutate({ id: tl.id })}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+
+          {addingTL && !tl && (
+            <div className="mt-3">
+              <AssignmentForm
+                targetDate={targetDate}
+                candidates={candidates}
+                asTeamLeader
+                onSubmit={async (values) => {
+                  await upsert.mutateAsync(values);
+                  setAddingTL(false);
+                }}
+                onCancel={() => setAddingTL(false)}
+                submitting={upsert.isPending}
+              />
+            </div>
+          )}
+        </div>
+
         {adding && (
           <AssignmentForm
             targetDate={targetDate}
@@ -448,13 +491,13 @@ function TeamSection({ targetDate }: { targetDate: string }) {
           <div className="text-sm text-muted-foreground">A carregar...</div>
         )}
 
-        {!assignmentsQuery.isLoading && assignments.length === 0 && !adding && (
+        {!assignmentsQuery.isLoading && drivers.length === 0 && !adding && (
           <div className="text-sm text-muted-foreground py-4 text-center">
-            Nenhuma pessoa escalada. Clica em "Adicionar" para começar.
+            Nenhum condutor escalado. Clica em "Adicionar" para começar.
           </div>
         )}
 
-        {assignments.length > 0 && (
+        {drivers.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -470,7 +513,7 @@ function TeamSection({ targetDate }: { targetDate: string }) {
                 </tr>
               </thead>
               <tbody>
-                {assignments.map((a) => (
+                {drivers.map((a) => (
                   <AssignmentRow
                     key={a.id}
                     assignment={a}
@@ -492,7 +535,8 @@ interface AssignmentFormValues {
   assignmentDate: string;
   employeeId: number | null;
   personName: string;
-  level: LevelId;
+  level: LevelId | null;
+  isTeamLeader: boolean;
   startHour: number;
   endHour: number;
   sentHomeHour: number | null;
@@ -501,12 +545,14 @@ interface AssignmentFormValues {
 function AssignmentForm({
   targetDate,
   candidates,
+  asTeamLeader,
   onSubmit,
   onCancel,
   submitting,
 }: {
   targetDate: string;
   candidates: { id: number; fullName: string; suggestedLevel: LevelId }[];
+  asTeamLeader?: boolean;
   onSubmit: (values: AssignmentFormValues) => void | Promise<void>;
   onCancel: () => void;
   submitting: boolean;
@@ -514,13 +560,16 @@ function AssignmentForm({
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [personName, setPersonName] = useState("");
   const [level, setLevel] = useState<LevelId>("junior");
-  const [startHour, setStartHour] = useState(8);
-  const [endHour, setEndHour] = useState(13);
+  const [startHour, setStartHour] = useState(asTeamLeader ? 7 : 8);
+  const [endHour, setEndHour] = useState(asTeamLeader ? 19 : 13);
 
   const span = endHour - startHour;
   const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
   const previewCost = Math.max(0, span) * rate;
-  const valid = personName.trim().length > 0 && span >= 3 && span <= 12;
+  // TL must be linked to an employee (we need monthlySalary). Otherwise need a name.
+  const valid = asTeamLeader
+    ? employeeId != null && span >= 3 && span <= 12
+    : personName.trim().length > 0 && span >= 3 && span <= 12;
 
   return (
     <div className="border rounded-md p-3 bg-muted/30 space-y-3">
@@ -564,16 +613,22 @@ function AssignmentForm({
 
         <div className="space-y-1">
           <Label className="text-xs">Nível</Label>
-          <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {LEVELS.map(l => (
-                <SelectItem key={l.id} value={l.id}>
-                  {l.label} ({fmtEur(l.hourlyRate)}/h)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {asTeamLeader ? (
+            <div className="h-9 px-3 flex items-center text-sm border rounded-md bg-muted/60">
+              Team Leader
+            </div>
+          ) : (
+            <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LEVELS.map(l => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.label} ({fmtEur(l.hourlyRate)}/h)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
@@ -604,11 +659,20 @@ function AssignmentForm({
 
         <div className="text-sm">
           <div className="text-xs text-muted-foreground">Pré-visualização</div>
-          <div className="font-semibold">
-            {span}h × {fmtEur(rate)} = {fmtEur(previewCost)}
-          </div>
+          {asTeamLeader ? (
+            <div className="font-semibold">
+              Custo diário do TL (salário/15)
+            </div>
+          ) : (
+            <div className="font-semibold">
+              {span}h × {fmtEur(rate)} = {fmtEur(previewCost)}
+            </div>
+          )}
           {span < 3 && <div className="text-xs text-red-600">Mínimo 3h</div>}
           {span > 12 && <div className="text-xs text-red-600">Máximo 12h</div>}
+          {asTeamLeader && employeeId == null && (
+            <div className="text-xs text-red-600">TL tem de vir de RH (precisa de salário)</div>
+          )}
         </div>
       </div>
 
@@ -621,13 +685,14 @@ function AssignmentForm({
             assignmentDate: targetDate,
             employeeId,
             personName: personName.trim(),
-            level,
+            level: asTeamLeader ? null : level,
+            isTeamLeader: !!asTeamLeader,
             startHour,
             endHour,
             sentHomeHour: null,
           })}
         >
-          Adicionar
+          {asTeamLeader ? "Definir TL" : "Adicionar"}
         </Button>
       </div>
     </div>
@@ -645,7 +710,8 @@ function AssignmentRow({
     assignmentDate: string;
     employeeId: number | null;
     personName: string;
-    level: LevelId;
+    level: LevelId | null;
+    isTeamLeader: boolean;
     startHour: number;
     endHour: number;
     sentHomeHour: number | null;
@@ -659,7 +725,7 @@ function AssignmentRow({
 }) {
   const a = assignment;
   const [editing, setEditing] = useState(false);
-  const [level, setLevel] = useState<LevelId>(a.level);
+  const [level, setLevel] = useState<LevelId>((a.level ?? "junior") as LevelId);
   const [startHour, setStartHour] = useState(a.startHour);
   const [endHour, setEndHour] = useState(a.endHour);
   const [sentHomeHour, setSentHomeHour] = useState<number | null>(a.sentHomeHour);
@@ -754,6 +820,7 @@ function AssignmentRow({
                 employeeId: a.employeeId,
                 personName: a.personName,
                 level,
+                isTeamLeader: false,
                 startHour,
                 endHour,
                 sentHomeHour,
@@ -794,6 +861,157 @@ function KpiCard({
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Hour / Slot drill-down ──────────────────────────────────────────────────
+
+const fmtHM = (h: number, m: number) =>
+  `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+
+function HourRow({
+  row,
+  targetDate,
+  isPeak,
+}: {
+  row: {
+    hour: number;
+    checkins: number;
+    checkouts: number;
+    driversNeeded: number;
+    slots: { hour: number; slot: number; checkins: number; checkouts: number; driversNeeded: number }[];
+  };
+  targetDate: string;
+  isPeak: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const total = row.checkins + row.checkouts;
+  return (
+    <>
+      <tr
+        className={`border-b cursor-pointer hover:bg-muted/40 ${isPeak ? "bg-blue-50/50" : ""}`}
+        onClick={() => setExpanded(v => !v)}
+      >
+        <td className="py-1.5 px-2 text-muted-foreground">
+          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </td>
+        <td className="py-1.5 px-2 font-mono">{fmtHour(row.hour)}</td>
+        <td className="py-1.5 px-2 text-right text-emerald-700">{row.checkins || ""}</td>
+        <td className="py-1.5 px-2 text-right text-orange-700">{row.checkouts || ""}</td>
+        <td className="py-1.5 px-2 text-right font-semibold">{total}</td>
+        <td className="py-1.5 px-2 text-right">
+          <Badge variant="secondary">{row.driversNeeded}</Badge>
+        </td>
+      </tr>
+      {expanded && row.slots.map(s => (
+        <SlotRow key={s.slot} slot={s} targetDate={targetDate} />
+      ))}
+    </>
+  );
+}
+
+function SlotRow({
+  slot,
+  targetDate,
+}: {
+  slot: { hour: number; slot: number; checkins: number; checkouts: number; driversNeeded: number };
+  targetDate: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const minuteStart = slot.slot * 20;
+  const minuteEnd = minuteStart + 20;
+  const label = `${fmtHM(slot.hour, minuteStart)}–${fmtHM(slot.hour, minuteEnd)}`;
+  const total = slot.checkins + slot.checkouts;
+  const hasData = total > 0;
+
+  return (
+    <>
+      <tr
+        className={`border-b ${hasData ? "cursor-pointer hover:bg-muted/30" : ""} bg-muted/10`}
+        onClick={() => hasData && setExpanded(v => !v)}
+      >
+        <td className="py-1 px-2 pl-6 text-muted-foreground">
+          {hasData && (expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+        </td>
+        <td className="py-1 px-2 font-mono text-xs text-muted-foreground">{label}</td>
+        <td className="py-1 px-2 text-right text-emerald-700 text-xs">{slot.checkins || ""}</td>
+        <td className="py-1 px-2 text-right text-orange-700 text-xs">{slot.checkouts || ""}</td>
+        <td className="py-1 px-2 text-right text-xs">{total || ""}</td>
+        <td className="py-1 px-2 text-right text-xs text-muted-foreground">{slot.driversNeeded || ""}</td>
+      </tr>
+      {expanded && hasData && (
+        <tr>
+          <td colSpan={6} className="bg-blue-50/30 px-6 py-2">
+            <SlotBookings targetDate={targetDate} hour={slot.hour} slot={slot.slot} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function SlotBookings({
+  targetDate,
+  hour,
+  slot,
+}: {
+  targetDate: string;
+  hour: number;
+  slot: number;
+}) {
+  const checkinsQ = trpc.extrasDia.bookingsInSlot.useQuery(
+    { date: targetDate, hour, slot, type: "checkin" },
+  );
+  const checkoutsQ = trpc.extrasDia.bookingsInSlot.useQuery(
+    { date: targetDate, hour, slot, type: "checkout" },
+  );
+
+  const checkins = checkinsQ.data ?? [];
+  const checkouts = checkoutsQ.data ?? [];
+  const loading = checkinsQ.isLoading || checkoutsQ.isLoading;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+      <BookingList title="Chegadas" tone="emerald" items={checkins} loading={loading} />
+      <BookingList title="Saídas" tone="orange" items={checkouts} loading={loading} />
+    </div>
+  );
+}
+
+function BookingList({
+  title,
+  tone,
+  items,
+  loading,
+}: {
+  title: string;
+  tone: "emerald" | "orange";
+  items: { id: number; clientName: string; licensePlate: string | null; parkName: string | null; time: string; bookingNumber: string | null }[];
+  loading: boolean;
+}) {
+  const accent = tone === "emerald" ? "text-emerald-700" : "text-orange-700";
+  return (
+    <div>
+      <div className={`font-semibold mb-1 ${accent}`}>{title}</div>
+      {loading && <div className="text-muted-foreground">A carregar...</div>}
+      {!loading && items.length === 0 && (
+        <div className="text-muted-foreground">Sem reservas neste intervalo.</div>
+      )}
+      {items.length > 0 && (
+        <ul className="space-y-0.5">
+          {items.map(b => (
+            <li key={b.id} className="flex items-center gap-2">
+              <span className="font-mono">{b.time}</span>
+              <span className="font-mono text-muted-foreground">{b.licensePlate || "—"}</span>
+              <span>{b.clientName}</span>
+              {b.parkName && (
+                <span className="text-muted-foreground">· {b.parkName}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   upsertAssignment,
   deleteAssignment,
   listDriverCandidates,
+  getBookingsInSlot,
 } from "./extrasDia";
 import {
   upsertUser,
@@ -3935,7 +3936,8 @@ export const appRouter = router({
           assignmentDate: z.string(),
           employeeId: z.number().nullable().optional(),
           personName: z.string().min(1).max(128),
-          level: z.enum(["junior", "senior", "terminal", "master"]),
+          level: z.enum(["junior", "senior", "terminal", "master"]).nullable().optional(),
+          isTeamLeader: z.boolean().optional(),
           startHour: z.number().int().min(0).max(23),
           endHour: z.number().int().min(1).max(24),
           sentHomeHour: z.number().int().min(0).max(24).nullable().optional(),
@@ -3957,7 +3959,17 @@ export const appRouter = router({
             });
           }
         }
-        return upsertAssignment({ ...input, createdById: ctx.user.id });
+        if (input.isTeamLeader && !input.employeeId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Team Leader tem de ser um funcionário registado (salário usado no custo).",
+          });
+        }
+        try {
+          return await upsertAssignment({ ...input, createdById: ctx.user.id });
+        } catch (err: any) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err.message || "Erro ao guardar" });
+        }
       }),
 
     deleteAssignment: protectedProcedure
@@ -3965,6 +3977,19 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deleteAssignment(input.id);
         return { success: true };
+      }),
+
+    bookingsInSlot: protectedProcedure
+      .input(
+        z.object({
+          date: z.string(),
+          hour: z.number().int().min(0).max(23),
+          slot: z.number().int().min(0).max(2),
+          type: z.enum(["checkin", "checkout"]),
+        }),
+      )
+      .query(async ({ input }) => {
+        return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
       }),
   }),
 });
