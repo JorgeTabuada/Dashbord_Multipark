@@ -1865,7 +1865,36 @@ function ImportExtrasDialog({ open, onClose }: { open: boolean; onClose: () => v
     importMutation.mutate({ csv });
   };
 
-  const exampleCsv = "nome,nivel,salario_mensal,subsidio_alim_dia,nif,telefone,email\nJoão Silva,junior,800,7.63,123456789,912345678,joao@example.pt";
+  const TEMPLATE_HEADERS = [
+    "nome",
+    "nivel",
+    "salario_mensal",
+    "subsidio_alim_dia",
+    "nif",
+    "nib",
+    "telefone",
+    "email",
+    "morada",
+    "nacionalidade",
+    "data_nascimento",
+  ];
+  const exampleCsv =
+    TEMPLATE_HEADERS.join(",") +
+    "\nJoão Silva,junior,800,7.63,123456789,PT50001801234567890123456,912345678,joao@example.pt,Rua Exemplo 1,Portuguesa,1990-05-15";
+
+  const downloadTemplate = () => {
+    // BOM ensures Excel opens with UTF-8 (preserves ç, ã, etc.)
+    const csvBody = TEMPLATE_HEADERS.join(",") + "\n,,,,,,,,,,";
+    const blob = new Blob(["﻿" + csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelo_extras.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -1874,6 +1903,12 @@ function ImportExtrasDialog({ open, onClose }: { open: boolean; onClose: () => v
           <DialogTitle>Importar Extras de CSV</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={downloadTemplate}>
+              <Download className="w-3.5 h-3.5 mr-1" /> Descarregar modelo CSV
+            </Button>
+          </div>
+
           <div>
             <Label htmlFor="csv-file" className="text-xs">Ficheiro CSV</Label>
             <Input
