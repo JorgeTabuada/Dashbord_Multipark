@@ -176,6 +176,7 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
 // ─── Enrichment via /bookings/:id (apanha deliveryType, flights, remarks) ────
 
 const ENRICH_CONCURRENCY = 5;
+const ENRICH_MAX_PER_SYNC = 30; // cap to fit within Vercel function timeout
 
 function nowMysql(): string {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -285,8 +286,10 @@ export async function syncBookings(opts: {
 
     // Enriquece com /bookings/:id (deliveryType, flights, remarks).
     // Idempotente: salta as que já têm enrichedAt preenchido.
-    if (apiKey && toEnrich.size > 0) {
-      const ids = Array.from(toEnrich);
+    // Cap global por sync run para evitar timeout do Vercel (60s).
+    const remainingBudget = ENRICH_MAX_PER_SYNC - totalEnriched;
+    if (apiKey && toEnrich.size > 0 && remainingBudget > 0) {
+      const ids = Array.from(toEnrich).slice(0, remainingBudget);
       let enrichedThisPark = 0;
       await runConcurrent(ids, ENRICH_CONCURRENCY, async (id) => {
         const ok = await enrichBookingIfNeeded(id, apiKey);
@@ -294,7 +297,7 @@ export async function syncBookings(opts: {
       });
       totalEnriched += enrichedThisPark;
       if (enrichedThisPark > 0) {
-        console.log(`[BookingSync] ${parkLabel}: ${enrichedThisPark}/${ids.length} reservas enriquecidas`);
+        console.log(`[BookingSync] ${parkLabel}: ${enrichedThisPark}/${ids.length} reservas enriquecidas (budget: ${remainingBudget})`);
       }
     }
   }
