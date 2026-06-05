@@ -1177,11 +1177,15 @@ function SyncTab() {
 
   const handleEnrich = async () => {
     try {
-      const result = await enrichMut.mutateAsync({ limit: 30 });
+      const result = await enrichMut.mutateAsync({ limit: 100 });
       if (result.scanned === 0) {
         toast.info("Não há reservas por enriquecer.");
       } else {
-        toast.success(`Enriquecidas ${result.enriched} de ${result.scanned} reservas (${result.errors} erros).`);
+        const noKey = (result as any).noKey ?? 0;
+        toast.success(
+          `Enriquecidas ${result.enriched} de ${result.scanned} reservas` +
+          ` (${result.errors} erros API, ${noKey} sem chave).`
+        );
       }
       utils.multipark.bookings.invalidate();
     } catch (err: any) {
@@ -1255,12 +1259,12 @@ function SyncTab() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 Vai à API individual de cada reserva e guarda <strong>deliveryType</strong>{" "}
                 (Terminal 1, Oriente, etc.), <strong>voos</strong> e <strong>notas do cliente</strong>.
-                Processa 30 reservas por execução. Corre várias vezes até não haver mais.
+                Processa 100 reservas por execução. Corre várias vezes até não haver mais.
               </p>
             </div>
             <Button onClick={handleEnrich} disabled={enrichMut.isPending} variant="outline" className="gap-2 shrink-0">
               {enrichMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Enriquecer 30
+              Enriquecer 100
             </Button>
           </div>
         </CardContent>

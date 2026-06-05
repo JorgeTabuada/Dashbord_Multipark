@@ -186,6 +186,10 @@ function nowMysql(): string {
  * Chama /bookings/:id para obter os campos que /bookings/report não devolve
  * (deliveryType, returnFlight, departingFlight, remarks) e persiste em DB.
  * Idempotente: se enrichedAt já estiver preenchido, salta.
+ *
+ * Marca SEMPRE enrichedAt (mesmo em erro 404 ou key errada) para não voltar
+ * a tentar a mesma reserva ad infinitum — o batch ficaria preso a falhar
+ * sempre nos mesmos IDs.
  */
 async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promise<boolean> {
   const db = await getDb();
@@ -210,6 +214,11 @@ async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promis
     }).where(eq(multiparkBookings.externalId, externalId));
     return true;
   } catch {
+    // API falhou (404, key errada, etc.) — marca como tentado para sair da fila.
+    try {
+      await db.update(multiparkBookings).set({ enrichedAt: nowMysql() })
+        .where(eq(multiparkBookings.externalId, externalId));
+    } catch {}
     return false;
   }
 }
@@ -233,10 +242,11 @@ async function runConcurrent<T>(items: T[], limit: number, fn: (item: T) => Prom
  * para escolher a chave de API correcta sem ter de tentar todos os parques.
  * Limite default 30 para caber no timeout do Vercel.
  */
-export async function enrichBookingsBatch(limit = 30): Promise<{
+export async function enrichBookingsBatch(limit = 100): Promise<{
   scanned: number;
   enriched: number;
   errors: number;
+  noKey: number;
 }> {
   const db = await getDb();
   if (!db) return { scanned: 0, enriched: 0, errors: 0 };
@@ -296,14 +306,27 @@ export async function enrichBookingsBatch(limit = 30): Promise<{
 
   let enriched = 0;
   let errs = 0;
+  let noKey = 0;
   await runConcurrent(pending, ENRICH_CONCURRENCY, async (p) => {
     const apiKey = pickApiKey(p.parkName, p.city);
-    if (!apiKey) { errs++; return; }
+    if (!apiKey) {
+      noKey++;
+      // marca como tentado para sair da fila e não voltar a aparecer
+      const db = await getDb();
+      if (db) {
+        try {
+          await db.update(multiparkBookings)
+            .set({ enrichedAt: nowMysql() })
+            .where(eq(multiparkBookings.externalId, p.externalId));
+        } catch {}
+      }
+      return;
+    }
     const ok = await enrichBookingIfNeeded(p.externalId, apiKey);
     if (ok) enriched++; else errs++;
   });
 
-  return { scanned: pending.length, enriched, errors: errs };
+  return { scanned: pending.length, enriched, errors: errs, noKey };
 }
 
 // ─── Core sync function ──────────────────────────────────────────────────────

@@ -3860,15 +3860,15 @@ export const appRouter = router({
     // Enrich a batch of unenriched bookings with /bookings/:id details
     // (deliveryType, returnFlight, departingFlight, remarks).
     enrichBatch: protectedProcedure
-      .input(z.object({ limit: z.number().int().min(1).max(50).default(30) }).optional())
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(100) }).optional())
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
-        const result = await enrichBookingsBatch(input?.limit ?? 30);
+        const result = await enrichBookingsBatch(input?.limit ?? 100);
         await logActivity({
           userId: ctx.user.id,
           action: "enrich",
           entity: "multipark_bookings",
-          details: `Enriquecidas ${result.enriched}/${result.scanned} (${result.errors} erros)`,
+          details: `Enriquecidas ${result.enriched}/${result.scanned} (${result.errors} erros API, ${result.noKey} sem chave)`,
         });
         return result;
       }),
