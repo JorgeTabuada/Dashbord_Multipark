@@ -25,13 +25,14 @@ export interface ParkConfig {
   name: string;
   city: string;
   envKey: string;
+  closed?: boolean; // se true, sync e enrichment ignoram
 }
 
 export const PARK_CONFIGS: ParkConfig[] = [
   { id: "LISBON_AIRPARK", name: "Airpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_AIRPARK" },
   { id: "LISBON_REDPARK", name: "Redpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_REDPARK" },
   { id: "LISBON_SKYPARK", name: "Skypark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_SKYPARK" },
-  { id: "LISBON_TOP_PARKING", name: "Top-Parking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TOP_PARKING" },
+  { id: "LISBON_TOP_PARKING", name: "Top-Parking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TOP_PARKING", closed: true },
   { id: "FARO_AIRPARK", name: "Airpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_AIRPARK" },
   { id: "FARO_REDPARK", name: "Redpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_REDPARK" },
   { id: "FARO_SKYPARK", name: "Skypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_SKYPARK" },
@@ -45,7 +46,7 @@ export function getParkApiKey(parkConfig: ParkConfig): string | undefined {
 }
 
 export function getConfiguredParks(): ParkConfig[] {
-  return PARK_CONFIGS.filter(p => !!process.env[p.envKey]);
+  return PARK_CONFIGS.filter(p => !p.closed && !!process.env[p.envKey]);
 }
 
 // ─── Core request helper with retry + rate-limit handling ───
