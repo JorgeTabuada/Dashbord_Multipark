@@ -15,6 +15,7 @@
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { multiparkBookings, extrasDiaAssignments, employees } from "../drizzle/schema";
+import { getBookingTryAllParks } from "./multipark";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -235,6 +236,8 @@ type BookingRow = {
   rawJson: string | null;
   parkName: string | null;
   city: string | null;
+  deliveryType: string | null;
+  enrichedAt: string | null;
 };
 
 export interface BookingSummary {
@@ -245,6 +248,7 @@ export interface BookingSummary {
   licensePlate: string | null;
   parkName: string | null;
   time: string; // HH:mm
+  deliveryType: string | null;
 }
 
 async function fetchBookingsInRange(
@@ -274,6 +278,8 @@ async function fetchBookingsInRange(
       rawJson: multiparkBookings.rawJson,
       parkName: multiparkBookings.parkName,
       city: multiparkBookings.city,
+      deliveryType: multiparkBookings.deliveryType,
+      enrichedAt: multiparkBookings.enrichedAt,
     })
     .from(multiparkBookings)
     .where(
@@ -492,7 +498,8 @@ export async function getBookingsInSlot(
   const slotStart = slot * SLOT_MINUTES;
   const slotEnd = slotStart + SLOT_MINUTES;
 
-  const out: BookingSummary[] = [];
+  type Pending = { row: BookingRow; summary: BookingSummary };
+  const pendings: Pending[] = [];
   for (const r of rows) {
     const hm = type === "checkin"
       ? parseScheduledHM(r.checkInTime, r.checkIn)
@@ -501,17 +508,68 @@ export async function getBookingsInSlot(
     if (hm.minute < slotStart || hm.minute >= slotEnd) continue;
     const name = [r.clientFirstName, r.clientLastName].filter(Boolean).join(" ").trim();
     const pad = (n: number) => String(n).padStart(2, "0");
-    out.push({
-      id: r.id,
-      externalId: r.externalId,
-      bookingNumber: r.bookingNumber,
-      clientName: name || "—",
-      licensePlate: r.licensePlate,
-      parkName: r.parkName,
-      time: `${pad(hm.hour)}:${pad(hm.minute)}`,
+    pendings.push({
+      row: r,
+      summary: {
+        id: r.id,
+        externalId: r.externalId,
+        bookingNumber: r.bookingNumber,
+        clientName: name || "—",
+        licensePlate: r.licensePlate,
+        parkName: r.parkName,
+        time: `${pad(hm.hour)}:${pad(hm.minute)}`,
+        deliveryType: r.deliveryType,
+      },
     });
   }
-  return out.sort((a, b) => a.time.localeCompare(b.time));
+
+  // Enriquece em paralelo as reservas que ainda não foram enriquecidas
+  // (chama /bookings/:id que tem deliveryType, returnFlight, etc.) e persiste.
+  const toEnrich = pendings.filter(p => !p.row.enrichedAt);
+  if (toEnrich.length > 0) {
+    await Promise.allSettled(toEnrich.map(async p => {
+      const enriched = await enrichBookingFromApi(p.row.externalId);
+      if (enriched?.deliveryType) p.summary.deliveryType = enriched.deliveryType;
+    }));
+  }
+
+  return pendings.map(p => p.summary).sort((a, b) => a.time.localeCompare(b.time));
+}
+
+/**
+ * Chama /bookings/:id na API Multipark e persiste deliveryType/returnFlight/
+ * departingFlight/remarks na DB. Set enrichedAt=now para evitar repetir.
+ */
+async function enrichBookingFromApi(externalId: string): Promise<{
+  deliveryType: string | null;
+  returnFlight: string | null;
+  departingFlight: string | null;
+  remarks: string | null;
+} | null> {
+  try {
+    const found = await getBookingTryAllParks(externalId);
+    if (!found) return null;
+    const b: any = found.booking;
+    const deliveryType = typeof b.deliveryType === "string" ? b.deliveryType : null;
+    const returnFlight = typeof b.returnFlight === "string" && b.returnFlight ? b.returnFlight : null;
+    const departingFlight = typeof b.departingFlight === "string" && b.departingFlight ? b.departingFlight : null;
+    const remarks = typeof b.remarks === "string" && b.remarks ? b.remarks.slice(0, 512) : null;
+
+    const db = await getDb();
+    if (db) {
+      await db.update(multiparkBookings).set({
+        deliveryType,
+        returnFlight,
+        departingFlight,
+        remarks,
+        enrichedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      }).where(eq(multiparkBookings.externalId, externalId));
+    }
+
+    return { deliveryType, returnFlight, departingFlight, remarks };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Driver candidates (para dropdown na UI) ─────────────────────────────────

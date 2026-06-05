@@ -1031,7 +1031,7 @@ function BookingList({
 }: {
   title: string;
   tone: "emerald" | "orange";
-  items: { id: number; clientName: string; licensePlate: string | null; parkName: string | null; time: string; bookingNumber: string | null }[];
+  items: { id: number; clientName: string; licensePlate: string | null; parkName: string | null; time: string; bookingNumber: string | null; deliveryType: string | null }[];
   loading: boolean;
 }) {
   const accent = tone === "emerald" ? "text-emerald-700" : "text-orange-700";
@@ -1045,10 +1045,15 @@ function BookingList({
       {items.length > 0 && (
         <ul className="space-y-0.5">
           {items.map(b => (
-            <li key={b.id} className="flex items-center gap-2">
+            <li key={b.id} className="flex flex-wrap items-center gap-x-2">
               <span className="font-mono">{b.time}</span>
               <span className="font-mono text-muted-foreground">{b.licensePlate || "—"}</span>
               <span>{b.clientName}</span>
+              {b.deliveryType && (
+                <Badge variant="outline" className="text-[10px] py-0 h-4">
+                  {b.deliveryType}
+                </Badge>
+              )}
               {b.parkName && (
                 <span className="text-muted-foreground">· {b.parkName}</span>
               )}
