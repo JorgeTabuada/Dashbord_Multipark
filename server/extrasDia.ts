@@ -32,6 +32,7 @@ export const MIN_SHIFT_HOURS = 3;
 export const MAX_SHIFT_HOURS = 12;
 
 const CITY_PATTERN = "%lisb%"; // matches Lisboa, Lisbon, LISBON, lisbôa, ...
+const PARK_ID_PREFIX = "LISBON_%"; // backup: when city was not set on the row
 const LAVAGEM_RE = /lavag|wash/i;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -214,7 +215,7 @@ async function fetchBookingsInRange(
         gte(col, startStr),
         lte(col, endStr),
         sql`${multiparkBookings.status} != 'CANCELLED'`,
-        sql`LOWER(COALESCE(${multiparkBookings.city}, ${multiparkBookings.parkName}, '')) LIKE ${CITY_PATTERN}`,
+        sql`(LOWER(${multiparkBookings.city}) LIKE ${CITY_PATTERN} OR ${multiparkBookings.parkId} LIKE ${PARK_ID_PREFIX})`,
       ),
     )
     .limit(20000);
