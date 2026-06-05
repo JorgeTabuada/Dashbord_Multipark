@@ -202,8 +202,10 @@ export default function ExtrasDiaPage() {
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 Clica numa hora para ver os blocos de 20min. Clica num bloco para ver as reservas.
-                Condutores tem em conta o tipo de recolha: T2 = 30min (1.5 unidades), Outro = 60min (3 unidades), T1/VIP = 20min (1 unidade).
-                <span className="ml-1 text-amber-700">⚠</span> indica slots com procura aumentada.
+                <span className="inline-block w-3 h-3 rounded-sm bg-yellow-100 border border-yellow-300 align-text-bottom mx-1"></span>
+                hora com Terminal 2 (30min/reserva) ·
+                <span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300 align-text-bottom mx-1"></span>
+                hora com Outro (60min/reserva — Partidas, Oriente, Rossio, etc.)
               </p>
             </CardHeader>
             <CardContent>
@@ -926,6 +928,8 @@ function HourRow({
     checkins: number;
     checkouts: number;
     driversNeeded: number;
+    hasT2: boolean;
+    hasOther: boolean;
     slots: { hour: number; slot: number; checkins: number; checkouts: number; weightedDemand: number; driversNeeded: number }[];
   };
   targetDate: string;
@@ -933,10 +937,18 @@ function HourRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const total = row.checkins + row.checkouts;
+  // Prioridade: Outro (vermelho) > T2 (amarelo) > pico (azul) > default
+  const rowBg = row.hasOther
+    ? "bg-red-50 hover:bg-red-100/70"
+    : row.hasT2
+      ? "bg-yellow-50 hover:bg-yellow-100/70"
+      : isPeak
+        ? "bg-blue-50/50 hover:bg-muted/40"
+        : "hover:bg-muted/40";
   return (
     <>
       <tr
-        className={`border-b cursor-pointer hover:bg-muted/40 ${isPeak ? "bg-blue-50/50" : ""}`}
+        className={`border-b cursor-pointer ${rowBg}`}
         onClick={() => setExpanded(v => !v)}
       >
         <td className="py-1.5 px-2 text-muted-foreground">

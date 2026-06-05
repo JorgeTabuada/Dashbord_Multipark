@@ -43,11 +43,10 @@ export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR; // 72
  * - Outro (Partidas genérico, Oriente, Rossio, Faro, ...): 60min → 3 slots.
  */
 export function deliverySlotSpread(deliveryType: string | null | undefined): number[] {
-  if (!deliveryType) return [1];
-  const dt = deliveryType.toLowerCase();
-  if (dt.includes("terminal 1") || dt === "vip" || dt.endsWith(" vip")) return [1];
-  if (dt.includes("terminal 2")) return [1, 0.5];
-  return [1, 1, 1]; // outro
+  const cls = classifyDeliveryType(deliveryType);
+  if (cls === "t2") return [1, 0.5];
+  if (cls === "other") return [1, 1, 1];
+  return [1]; // t1 | vip | unknown
 }
 
 export type ShiftId = "morning" | "night";
@@ -196,7 +195,20 @@ export interface HourlyRow {
   checkins: number;
   checkouts: number;
   driversNeeded: number;
+  hasT2: boolean; // alguma reserva com Terminal 2
+  hasOther: boolean; // alguma reserva fora de T1/T2/VIP (Partidas, Oriente, Rossio, Faro, ...)
   slots: Slot20Row[]; // 3 slots per hour
+}
+
+export type DeliveryClass = "t1" | "t2" | "vip" | "other" | "unknown";
+
+export function classifyDeliveryType(dt: string | null | undefined): DeliveryClass {
+  if (!dt) return "unknown";
+  const x = dt.toLowerCase();
+  if (x.includes("terminal 1")) return "t1";
+  if (x.includes("terminal 2")) return "t2";
+  if (x === "vip" || x.endsWith(" vip")) return "vip";
+  return "other";
 }
 
 export interface Slot20Row {
@@ -674,6 +686,8 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     checkins: 0,
     checkouts: 0,
     driversNeeded: 0,
+    hasT2: false,
+    hasOther: false,
     slots: Array.from({ length: SLOTS_PER_HOUR }, (_, s) => ({
       hour: h,
       slot: s,
@@ -697,6 +711,12 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     }
   }
 
+  function markHourClass(hour: number, deliveryType: string | null) {
+    const cls = classifyDeliveryType(deliveryType);
+    if (cls === "t2") hourly[hour].hasT2 = true;
+    else if (cls === "other") hourly[hour].hasOther = true;
+  }
+
   for (const r of targetCheckins) {
     const hm = parseScheduledHM(r.checkInTime, r.checkIn);
     if (hm) {
@@ -704,6 +724,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       hourly[hm.hour].checkins++;
       hourly[hm.hour].slots[slot].checkins++;
       addToSlot(hm.hour, hm.minute, r.deliveryType);
+      markHourClass(hm.hour, r.deliveryType);
     }
   }
   for (const r of targetCheckouts) {
@@ -713,6 +734,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       hourly[hm.hour].checkouts++;
       hourly[hm.hour].slots[slot].checkouts++;
       addToSlot(hm.hour, hm.minute, r.deliveryType);
+      markHourClass(hm.hour, r.deliveryType);
     }
   }
   for (const row of hourly) {
