@@ -254,6 +254,24 @@ export const extraRates = mysqlTable("extra_rates", {
 	index("extra_rates_level_unique").on(table.level),
 ]);
 
+export const extrasDiaAssignments = mysqlTable("extras_dia_assignments", {
+	id: int().autoincrement().primaryKey(),
+	assignmentDate: varchar({ length: 10 }).notNull(),
+	employeeId: int(),
+	personName: varchar({ length: 128 }).notNull(),
+	level: mysqlEnum(['junior','senior','terminal','master']).default('junior').notNull(),
+	startHour: int().notNull(),
+	endHour: int().notNull(),
+	sentHomeHour: int(),
+	notes: varchar({ length: 255 }),
+	createdById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("idx_extras_dia_date").on(table.assignmentDate),
+]);
+
 export const faqs = mysqlTable("faqs", {
 	id: int().autoincrement().primaryKey(),
 	categoryId: int(),

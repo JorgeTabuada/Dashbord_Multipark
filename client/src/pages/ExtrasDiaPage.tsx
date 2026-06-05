@@ -3,7 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState, useMemo } from "react";
+import { toast } from "sonner";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -12,7 +21,21 @@ import {
   Euro,
   Clock,
   CalendarDays,
+  Plus,
+  Home,
+  Trash2,
 } from "lucide-react";
+
+const LEVELS = [
+  { id: "junior", label: "Júnior", hourlyRate: 4 },
+  { id: "senior", label: "Sénior", hourlyRate: 5 },
+  { id: "terminal", label: "Terminal", hourlyRate: 5.5 },
+  { id: "master", label: "Master", hourlyRate: 6 },
+] as const;
+type LevelId = (typeof LEVELS)[number]["id"];
+
+const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
+const HOURS_25 = Array.from({ length: 25 }, (_, i) => i);
 
 const fmtEur = (n: number) =>
   n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
@@ -300,9 +323,408 @@ export default function ExtrasDiaPage() {
               </div>
             </CardContent>
           </Card>
+
+          <TeamSection targetDate={data.targetDate} />
         </>
       )}
     </div>
+  );
+}
+
+// ─── Equipa do dia (atribuições) ───────────────────────────────────────────────
+
+function TeamSection({ targetDate }: { targetDate: string }) {
+  const utils = trpc.useUtils();
+  const assignmentsQuery = trpc.extrasDia.assignments.useQuery({ date: targetDate });
+  const candidatesQuery = trpc.extrasDia.candidates.useQuery();
+
+  const upsert = trpc.extrasDia.upsertAssignment.useMutation({
+    onSuccess: () => {
+      utils.extrasDia.assignments.invalidate({ date: targetDate });
+      toast.success("Turno guardado");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const del = trpc.extrasDia.deleteAssignment.useMutation({
+    onSuccess: () => {
+      utils.extrasDia.assignments.invalidate({ date: targetDate });
+      toast.success("Turno removido");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const assignments = assignmentsQuery.data ?? [];
+  const candidates = candidatesQuery.data ?? [];
+
+  const totalCost = assignments.reduce((s, a) => s + a.cost, 0);
+  const totalHours = assignments.reduce((s, a) => s + a.hoursBilled, 0);
+
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4 text-blue-600" />
+              Equipa do dia — {fmtDate(targetDate)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Atribui pessoas, edita horários e "manda para casa" quando não há trabalho.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Custo escalado</div>
+              <div className="text-lg font-bold">{fmtEur(totalCost)}</div>
+              <div className="text-xs text-muted-foreground">{totalHours}h pagas</div>
+            </div>
+            <Button size="sm" variant="default" onClick={() => setAdding(v => !v)}>
+              <Plus className="h-4 w-4 mr-1" /> {adding ? "Cancelar" : "Adicionar"}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {adding && (
+          <AssignmentForm
+            targetDate={targetDate}
+            candidates={candidates}
+            onSubmit={async (values) => {
+              await upsert.mutateAsync(values);
+              setAdding(false);
+            }}
+            onCancel={() => setAdding(false)}
+            submitting={upsert.isPending}
+          />
+        )}
+
+        {assignmentsQuery.isLoading && (
+          <div className="text-sm text-muted-foreground">A carregar...</div>
+        )}
+
+        {!assignmentsQuery.isLoading && assignments.length === 0 && !adding && (
+          <div className="text-sm text-muted-foreground py-4 text-center">
+            Nenhuma pessoa escalada. Clica em "Adicionar" para começar.
+          </div>
+        )}
+
+        {assignments.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs uppercase text-muted-foreground">
+                  <th className="text-left py-2 px-2">Pessoa</th>
+                  <th className="text-left py-2 px-2">Nível</th>
+                  <th className="text-right py-2 px-2">Início</th>
+                  <th className="text-right py-2 px-2">Fim</th>
+                  <th className="text-right py-2 px-2">Mandado p/ casa</th>
+                  <th className="text-right py-2 px-2">Horas pagas</th>
+                  <th className="text-right py-2 px-2">Custo</th>
+                  <th className="text-right py-2 px-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((a) => (
+                  <AssignmentRow
+                    key={a.id}
+                    assignment={a}
+                    onSave={(payload) => upsert.mutate({ ...payload, id: a.id })}
+                    onDelete={() => del.mutate({ id: a.id })}
+                    busy={upsert.isPending || del.isPending}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface AssignmentFormValues {
+  assignmentDate: string;
+  employeeId: number | null;
+  personName: string;
+  level: LevelId;
+  startHour: number;
+  endHour: number;
+  sentHomeHour: number | null;
+}
+
+function AssignmentForm({
+  targetDate,
+  candidates,
+  onSubmit,
+  onCancel,
+  submitting,
+}: {
+  targetDate: string;
+  candidates: { id: number; fullName: string; suggestedLevel: LevelId }[];
+  onSubmit: (values: AssignmentFormValues) => void | Promise<void>;
+  onCancel: () => void;
+  submitting: boolean;
+}) {
+  const [employeeId, setEmployeeId] = useState<number | null>(null);
+  const [personName, setPersonName] = useState("");
+  const [level, setLevel] = useState<LevelId>("junior");
+  const [startHour, setStartHour] = useState(8);
+  const [endHour, setEndHour] = useState(13);
+
+  const span = endHour - startHour;
+  const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
+  const previewCost = Math.max(0, span) * rate;
+  const valid = personName.trim().length > 0 && span >= 3 && span <= 12;
+
+  return (
+    <div className="border rounded-md p-3 bg-muted/30 space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Empregado (RH)</Label>
+          <Select
+            value={employeeId ? String(employeeId) : "none"}
+            onValueChange={(v) => {
+              if (v === "none") {
+                setEmployeeId(null);
+                return;
+              }
+              const id = parseInt(v, 10);
+              const c = candidates.find(c => c.id === id);
+              if (c) {
+                setEmployeeId(id);
+                setPersonName(c.fullName);
+                setLevel(c.suggestedLevel);
+              }
+            }}
+          >
+            <SelectTrigger><SelectValue placeholder="Escolher..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Nenhum (escrever nome) —</SelectItem>
+              {candidates.map(c => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.fullName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Nome</Label>
+          <Input
+            value={personName}
+            onChange={e => setPersonName(e.target.value)}
+            placeholder="Nome da pessoa"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Nível</Label>
+          <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LEVELS.map(l => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label} ({fmtEur(l.hourlyRate)}/h)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="space-y-1">
+          <Label className="text-xs">Início</Label>
+          <Select value={String(startHour)} onValueChange={v => setStartHour(parseInt(v, 10))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {HOURS_24.map(h => (
+                <SelectItem key={h} value={String(h)}>{fmtHour(h)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Fim</Label>
+          <Select value={String(endHour)} onValueChange={v => setEndHour(parseInt(v, 10))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {HOURS_25.map(h => (
+                <SelectItem key={h} value={String(h)}>{fmtHour(h)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="text-sm">
+          <div className="text-xs text-muted-foreground">Pré-visualização</div>
+          <div className="font-semibold">
+            {span}h × {fmtEur(rate)} = {fmtEur(previewCost)}
+          </div>
+          {span < 3 && <div className="text-xs text-red-600">Mínimo 3h</div>}
+          {span > 12 && <div className="text-xs text-red-600">Máximo 12h</div>}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} size="sm">Cancelar</Button>
+        <Button
+          size="sm"
+          disabled={!valid || submitting}
+          onClick={() => onSubmit({
+            assignmentDate: targetDate,
+            employeeId,
+            personName: personName.trim(),
+            level,
+            startHour,
+            endHour,
+            sentHomeHour: null,
+          })}
+        >
+          Adicionar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AssignmentRow({
+  assignment,
+  onSave,
+  onDelete,
+  busy,
+}: {
+  assignment: {
+    id: number;
+    assignmentDate: string;
+    employeeId: number | null;
+    personName: string;
+    level: LevelId;
+    startHour: number;
+    endHour: number;
+    sentHomeHour: number | null;
+    notes: string | null;
+    hoursBilled: number;
+    cost: number;
+  };
+  onSave: (payload: AssignmentFormValues) => void;
+  onDelete: () => void;
+  busy: boolean;
+}) {
+  const a = assignment;
+  const [editing, setEditing] = useState(false);
+  const [level, setLevel] = useState<LevelId>(a.level);
+  const [startHour, setStartHour] = useState(a.startHour);
+  const [endHour, setEndHour] = useState(a.endHour);
+  const [sentHomeHour, setSentHomeHour] = useState<number | null>(a.sentHomeHour);
+
+  const span = (sentHomeHour ?? endHour) - startHour;
+  const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
+  const computedCost = Math.max(0, span) * rate;
+
+  if (!editing) {
+    return (
+      <tr className="border-b hover:bg-muted/30">
+        <td className="py-2 px-2">{a.personName}</td>
+        <td className="py-2 px-2">
+          <Badge variant="secondary">{LEVELS.find(l => l.id === a.level)?.label}</Badge>
+        </td>
+        <td className="py-2 px-2 text-right font-mono">{fmtHour(a.startHour)}</td>
+        <td className="py-2 px-2 text-right font-mono">{fmtHour(a.endHour)}</td>
+        <td className="py-2 px-2 text-right font-mono">
+          {a.sentHomeHour != null ? fmtHour(a.sentHomeHour) : "—"}
+        </td>
+        <td className="py-2 px-2 text-right">{a.hoursBilled}h</td>
+        <td className="py-2 px-2 text-right font-semibold">{fmtEur(a.cost)}</td>
+        <td className="py-2 px-2 text-right">
+          <div className="flex justify-end gap-1">
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Editar</Button>
+            <Button size="sm" variant="ghost" onClick={onDelete} disabled={busy}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="border-b bg-muted/20">
+      <td className="py-2 px-2">{a.personName}</td>
+      <td className="py-2 px-2">
+        <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
+          <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {LEVELS.map(l => (
+              <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="py-2 px-2 text-right">
+        <Select value={String(startHour)} onValueChange={v => setStartHour(parseInt(v, 10))}>
+          <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {HOURS_24.map(h => <SelectItem key={h} value={String(h)}>{fmtHour(h)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="py-2 px-2 text-right">
+        <Select value={String(endHour)} onValueChange={v => setEndHour(parseInt(v, 10))}>
+          <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {HOURS_25.map(h => <SelectItem key={h} value={String(h)}>{fmtHour(h)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="py-2 px-2 text-right">
+        <Select
+          value={sentHomeHour == null ? "none" : String(sentHomeHour)}
+          onValueChange={v => setSentHomeHour(v === "none" ? null : parseInt(v, 10))}
+        >
+          <SelectTrigger className="h-8 w-24"><SelectValue placeholder="—" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">— Não —</SelectItem>
+            {HOURS_25
+              .filter(h => h >= startHour && h <= endHour)
+              .map(h => (
+                <SelectItem key={h} value={String(h)}>
+                  <span className="flex items-center gap-1"><Home className="h-3 w-3" />{fmtHour(h)}</span>
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="py-2 px-2 text-right">{Math.max(0, span)}h</td>
+      <td className="py-2 px-2 text-right font-semibold">{fmtEur(computedCost)}</td>
+      <td className="py-2 px-2 text-right">
+        <div className="flex justify-end gap-1">
+          <Button
+            size="sm"
+            disabled={busy || endHour - startHour < 3 || endHour - startHour > 12}
+            onClick={() => {
+              onSave({
+                assignmentDate: a.assignmentDate,
+                employeeId: a.employeeId,
+                personName: a.personName,
+                level,
+                startHour,
+                endHour,
+                sentHomeHour,
+              });
+              setEditing(false);
+            }}
+          >
+            Guardar
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+            Cancelar
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }
 

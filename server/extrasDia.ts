@@ -12,9 +12,9 @@
  * Driver levels are flat — all do everything — so the cheapest tier wins.
  */
 
-import { and, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { multiparkBookings } from "../drizzle/schema";
+import { multiparkBookings, extrasDiaAssignments, employees } from "../drizzle/schema";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -227,6 +227,175 @@ function parseScheduledHour(timeStr: string | null, fallbackIso: string | null):
     if (h >= 0 && h < 24) return h;
   }
   return hourOf(fallbackIso);
+}
+
+// ─── Assignments (gestor escala pessoas a turnos) ────────────────────────────
+
+export interface Assignment {
+  id: number;
+  assignmentDate: string;
+  employeeId: number | null;
+  personName: string;
+  level: DriverLevelId;
+  startHour: number;
+  endHour: number;
+  sentHomeHour: number | null;
+  notes: string | null;
+  hoursBilled: number;
+  cost: number;
+}
+
+function computeAssignmentCost(row: {
+  level: DriverLevelId;
+  startHour: number;
+  endHour: number;
+  sentHomeHour: number | null;
+}): { hoursBilled: number; cost: number } {
+  const end = row.sentHomeHour ?? row.endHour;
+  const hours = Math.max(0, end - row.startHour);
+  const rate = DRIVER_LEVELS.find(l => l.id === row.level)?.hourlyRate ?? 0;
+  return { hoursBilled: hours, cost: hours * rate };
+}
+
+function rowToAssignment(r: typeof extrasDiaAssignments.$inferSelect): Assignment {
+  const level = r.level as DriverLevelId;
+  const computed = computeAssignmentCost({
+    level,
+    startHour: r.startHour,
+    endHour: r.endHour,
+    sentHomeHour: r.sentHomeHour,
+  });
+  return {
+    id: r.id,
+    assignmentDate: r.assignmentDate,
+    employeeId: r.employeeId,
+    personName: r.personName,
+    level,
+    startHour: r.startHour,
+    endHour: r.endHour,
+    sentHomeHour: r.sentHomeHour,
+    notes: r.notes,
+    ...computed,
+  };
+}
+
+export async function listAssignments(date: string): Promise<Assignment[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(extrasDiaAssignments)
+    .where(eq(extrasDiaAssignments.assignmentDate, date))
+    .orderBy(asc(extrasDiaAssignments.startHour));
+  return rows.map(rowToAssignment);
+}
+
+export interface UpsertAssignmentInput {
+  id?: number;
+  assignmentDate: string;
+  employeeId?: number | null;
+  personName: string;
+  level: DriverLevelId;
+  startHour: number;
+  endHour: number;
+  sentHomeHour?: number | null;
+  notes?: string | null;
+  createdById?: number | null;
+}
+
+export async function upsertAssignment(input: UpsertAssignmentInput): Promise<Assignment | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const payload = {
+    assignmentDate: input.assignmentDate,
+    employeeId: input.employeeId ?? null,
+    personName: input.personName,
+    level: input.level,
+    startHour: input.startHour,
+    endHour: input.endHour,
+    sentHomeHour: input.sentHomeHour ?? null,
+    notes: input.notes ?? null,
+  };
+
+  if (input.id) {
+    await db.update(extrasDiaAssignments).set(payload).where(eq(extrasDiaAssignments.id, input.id));
+    const [row] = await db
+      .select()
+      .from(extrasDiaAssignments)
+      .where(eq(extrasDiaAssignments.id, input.id))
+      .limit(1);
+    return row ? rowToAssignment(row) : null;
+  }
+
+  const [result] = await db
+    .insert(extrasDiaAssignments)
+    .values({ ...payload, createdById: input.createdById ?? null })
+    .$returningId();
+  const newId = (result as any).id;
+  const [row] = await db
+    .select()
+    .from(extrasDiaAssignments)
+    .where(eq(extrasDiaAssignments.id, newId))
+    .limit(1);
+  return row ? rowToAssignment(row) : null;
+}
+
+export async function deleteAssignment(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(extrasDiaAssignments).where(eq(extrasDiaAssignments.id, id));
+}
+
+// ─── Driver candidates (para dropdown na UI) ─────────────────────────────────
+
+export interface DriverCandidate {
+  id: number;
+  fullName: string;
+  position: string;
+  extraLevel: number | null;
+  suggestedLevel: DriverLevelId;
+}
+
+const POSITION_TO_LEVEL: Record<string, DriverLevelId> = {
+  driver: "junior",
+  senior_driver: "senior",
+  team_leader: "terminal",
+  supervisor: "master",
+  director: "master",
+};
+
+function suggestLevel(position: string | null | undefined, extraLevel: number | null | undefined): DriverLevelId {
+  if (typeof extraLevel === "number") {
+    if (extraLevel >= 4) return "master";
+    if (extraLevel >= 3) return "terminal";
+    if (extraLevel >= 2) return "senior";
+    return "junior";
+  }
+  return POSITION_TO_LEVEL[(position ?? "").toLowerCase()] ?? "junior";
+}
+
+export async function listDriverCandidates(): Promise<DriverCandidate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: employees.id,
+      fullName: employees.fullName,
+      position: employees.position,
+      extraLevel: employees.extraLevel,
+      isActive: employees.isActive,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, 1))
+    .orderBy(asc(employees.fullName));
+  return rows.map(r => ({
+    id: r.id,
+    fullName: r.fullName,
+    position: r.position,
+    extraLevel: r.extraLevel,
+    suggestedLevel: suggestLevel(r.position, r.extraLevel),
+  }));
 }
 
 function countWashes(rows: BookingRow[]): number {

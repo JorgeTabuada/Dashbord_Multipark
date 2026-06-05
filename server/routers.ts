@@ -10,7 +10,13 @@ import { notifyOwner } from "./_core/notification";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { getBookingHistory, getAgentHistory, getCheckoutDrivers, getBookingsReport } from "./multipark";
-import { getExtrasDiaForecast } from "./extrasDia";
+import {
+  getExtrasDiaForecast,
+  listAssignments,
+  upsertAssignment,
+  deleteAssignment,
+  listDriverCandidates,
+} from "./extrasDia";
 import {
   upsertUser,
   getUserByOpenId,
@@ -3910,6 +3916,55 @@ export const appRouter = router({
       .input(z.object({ baseDate: z.string().optional() }).optional())
       .query(async ({ input }) => {
         return getExtrasDiaForecast(input?.baseDate);
+      }),
+
+    candidates: protectedProcedure.query(async () => {
+      return listDriverCandidates();
+    }),
+
+    assignments: protectedProcedure
+      .input(z.object({ date: z.string() }))
+      .query(async ({ input }) => {
+        return listAssignments(input.date);
+      }),
+
+    upsertAssignment: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().optional(),
+          assignmentDate: z.string(),
+          employeeId: z.number().nullable().optional(),
+          personName: z.string().min(1).max(128),
+          level: z.enum(["junior", "senior", "terminal", "master"]),
+          startHour: z.number().int().min(0).max(23),
+          endHour: z.number().int().min(1).max(24),
+          sentHomeHour: z.number().int().min(0).max(24).nullable().optional(),
+          notes: z.string().max(255).nullable().optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (input.endHour <= input.startHour) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Fim tem de ser depois do início" });
+        }
+        const span = input.endHour - input.startHour;
+        if (span < 3) throw new TRPCError({ code: "BAD_REQUEST", message: "Mínimo 3h por turno" });
+        if (span > 12) throw new TRPCError({ code: "BAD_REQUEST", message: "Máximo 12h por turno" });
+        if (input.sentHomeHour != null) {
+          if (input.sentHomeHour < input.startHour || input.sentHomeHour > input.endHour) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Hora 'mandar para casa' tem de estar dentro do turno",
+            });
+          }
+        }
+        return upsertAssignment({ ...input, createdById: ctx.user.id });
+      }),
+
+    deleteAssignment: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteAssignment(input.id);
+        return { success: true };
       }),
   }),
 });
