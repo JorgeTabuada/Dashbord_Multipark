@@ -28,9 +28,20 @@ try {
   console.error("[API Init Error]", initError);
 }
 
-// Health check
+// Health check com diagnóstico de env vars críticas (sem expor valores)
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: !initError, error: initError, env: !!process.env.DATABASE_URL });
+  res.json({
+    ok: !initError,
+    error: initError,
+    env: {
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      JWT_SECRET: !!process.env.JWT_SECRET,
+      GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+      VITE_APP_ID: !!process.env.VITE_APP_ID,
+      NODE_ENV: process.env.NODE_ENV ?? null,
+    },
+  });
 });
 
 // Handler for Vercel serverless
