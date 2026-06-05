@@ -1622,6 +1622,7 @@ export default function HRPage() {
   const [filterPosition, setFilterPosition] = useState<string>("all");
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [showPayroll, setShowPayroll] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const { data: employees = [], isLoading } = trpc.rh.list.useQuery({
     isActive: true,
@@ -1694,6 +1695,9 @@ export default function HRPage() {
           </Button>
           <Button variant="outline" onClick={() => setShowRates(true)}>
             <Euro className="w-4 h-4 mr-2" /> Taxas Extra
+          </Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload className="w-4 h-4 mr-2" /> Importar Extras (CSV)
           </Button>
           <Button onClick={() => setShowCreate(true)}>
             <UserPlus className="w-4 h-4 mr-2" /> Novo Colaborador
@@ -1816,7 +1820,121 @@ export default function HRPage() {
       )}
 
       <CreateEmployeeDialog open={showCreate} onClose={() => setShowCreate(false)} />
+      <ImportExtrasDialog open={showImport} onClose={() => setShowImport(false)} />
       <ExtraRatesDialog open={showRates} onClose={() => setShowRates(false)} />
     </div>
+  );
+}
+
+// ─── Importar extras via CSV ──────────────────────────────────────────────────
+
+function ImportExtrasDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [csv, setCsv] = useState("");
+  const [report, setReport] = useState<{
+    parsed: number;
+    created: number;
+    errors: { rowIndex: number; nome?: string; reason: string }[];
+    unknownColumns: string[];
+  } | null>(null);
+
+  const importMutation = trpc.rh.importExtras.useMutation({
+    onSuccess: (r) => {
+      setReport(r);
+      utils.rh.list.invalidate();
+      utils.rh.stats.invalidate();
+      if (r.created > 0) toast.success(`${r.created} extras criados`);
+      if (r.errors.length > 0) toast.warning(`${r.errors.length} linhas com erro`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    const text = await file.text();
+    setCsv(text);
+    setReport(null);
+  };
+
+  const handleImport = () => {
+    if (!csv.trim()) {
+      toast.error("Cola um CSV ou seleciona um ficheiro.");
+      return;
+    }
+    setReport(null);
+    importMutation.mutate({ csv });
+  };
+
+  const exampleCsv = "nome,nivel,salario_mensal,subsidio_alim_dia,nif,telefone,email\nJoão Silva,junior,800,7.63,123456789,912345678,joao@example.pt";
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Importar Extras de CSV</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div>
+            <Label htmlFor="csv-file" className="text-xs">Ficheiro CSV</Label>
+            <Input
+              id="csv-file"
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+              className="mt-1"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Cabeçalho obrigatório: <code>nome</code>, <code>nivel</code> (junior/senior/terminal/master).
+              Opcional: <code>salario_mensal</code>, <code>subsidio_alim_dia</code>, <code>nif</code>, <code>nib</code>,{" "}
+              <code>telefone</code>, <code>email</code>, <code>morada</code>, <code>nacionalidade</code>, <code>data_nascimento</code> (YYYY-MM-DD).
+            </p>
+          </div>
+
+          <div>
+            <Label className="text-xs">Ou cola conteúdo CSV</Label>
+            <textarea
+              className="mt-1 w-full font-mono text-xs border rounded-md p-2 min-h-[120px] bg-card"
+              value={csv}
+              onChange={(e) => { setCsv(e.target.value); setReport(null); }}
+              placeholder={exampleCsv}
+            />
+          </div>
+
+          {report && (
+            <div className="rounded-md border p-3 space-y-2 text-xs">
+              <div>
+                <strong>Resultado:</strong> {report.created} criados de {report.parsed} linhas.
+              </div>
+              {report.unknownColumns.length > 0 && (
+                <div className="text-amber-700">
+                  Colunas desconhecidas (ignoradas): {report.unknownColumns.join(", ")}
+                </div>
+              )}
+              {report.errors.length > 0 && (
+                <div className="text-red-700">
+                  <div className="font-medium">{report.errors.length} erro(s):</div>
+                  <ul className="space-y-0.5 mt-1">
+                    {report.errors.slice(0, 20).map((e, i) => (
+                      <li key={i}>
+                        Linha {e.rowIndex}{e.nome ? ` (${e.nome})` : ""}: {e.reason}
+                      </li>
+                    ))}
+                    {report.errors.length > 20 && (
+                      <li>...e mais {report.errors.length - 20}</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fechar</Button>
+          <Button onClick={handleImport} disabled={importMutation.isPending || !csv.trim()}>
+            {importMutation.isPending ? "A importar..." : "Importar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

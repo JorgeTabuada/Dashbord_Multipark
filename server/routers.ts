@@ -18,6 +18,7 @@ import {
   listDriverCandidates,
   getBookingsInSlot,
 } from "./extrasDia";
+import { importExtrasFromCsv } from "./extrasImport";
 import {
   upsertUser,
   getUserByOpenId,
@@ -1185,6 +1186,20 @@ export const appRouter = router({
         });
         await logActivity({ userId: ctx.user.id, action: "create", entity: "employee", details: `Colaborador criado: ${input.fullName}` });
         return { success: true };
+      }),
+
+    importExtras: protectedProcedure
+      .input(z.object({ csv: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const report = await importExtrasFromCsv(input.csv, ctx.user.id);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "import",
+          entity: "employee",
+          details: `Import extras CSV: ${report.created} criados, ${report.errors.length} erros (de ${report.parsed} linhas)`,
+        });
+        return report;
       }),
 
     update: protectedProcedure
