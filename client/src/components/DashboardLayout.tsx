@@ -168,6 +168,7 @@ const menuGroups: MenuGroup[] = [
       { icon: XCircle, label: "Cancelados", path: "/multipark/cancelados" },
       { icon: RefreshCw, label: "Sincronização", path: "/multipark/sync" },
       { icon: Wrench, label: "Serviços", path: "/servicos" },
+      { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia" },
     ],
   },
   {

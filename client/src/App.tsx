@@ -27,6 +27,7 @@ import InvoicesPage from "./pages/InvoicesPage";
 import PartnershipsPage from "./pages/PartnershipsPage";
 import AnnualPage from "./pages/AnnualPage";
 import MultiparkPage from "./pages/MultiparkPage";
+import ExtrasDiaPage from "./pages/ExtrasDiaPage";
 import InvitePage from "./pages/InvitePage";
 import ProjectCostsDashboard from "./pages/ProjectCostsDashboard";
 import DashboardPage from "./pages/DashboardPage";
@@ -143,6 +144,9 @@ function Router() {
       </Route>
       <Route path="/servicos">
         {() => (<DashboardLayout><ServicesPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/extras-dia">
+        {() => (<DashboardLayout><ExtrasDiaPage /></DashboardLayout>)}
       </Route>
       <Route path="/api-keys">
         {() => (<DashboardLayout><ApiKeysPage /></DashboardLayout>)}

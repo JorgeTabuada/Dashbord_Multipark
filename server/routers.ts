@@ -10,6 +10,7 @@ import { notifyOwner } from "./_core/notification";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { getBookingHistory, getAgentHistory, getCheckoutDrivers, getBookingsReport } from "./multipark";
+import { getExtrasDiaForecast } from "./extrasDia";
 import {
   upsertUser,
   getUserByOpenId,
@@ -3900,6 +3901,15 @@ export const appRouter = router({
           period: { startDate: input.startDate, endDate: input.endDate },
           bookings,
         };
+      }),
+  }),
+
+  // ── EXTRAS DIA — Daily forecast & driver allocation (Lisboa) ────────────────
+  extrasDia: router({
+    forecast: protectedProcedure
+      .input(z.object({ baseDate: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return getExtrasDiaForecast(input?.baseDate);
       }),
   }),
 });
