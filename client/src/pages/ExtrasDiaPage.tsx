@@ -87,7 +87,33 @@ export default function ExtrasDiaPage() {
                 · Hora de pico: <strong>{fmtHour(peakHour.hour)}</strong> ({peakHour.total} operações)
               </span>
             )}
+            <span className="ml-2">
+              · Parques: <strong>{data.parksQueried.length}</strong>
+            </span>
           </div>
+
+          {data.parksFailed.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3 text-xs">
+              <div className="font-medium mb-1">Avisos ({data.parksFailed.length})</div>
+              <ul className="space-y-0.5 text-amber-900">
+                {data.parksFailed.slice(0, 5).map((f, i) => (
+                  <li key={i}>
+                    <span className="font-mono">{f.park}</span>: {f.error}
+                  </li>
+                ))}
+                {data.parksFailed.length > 5 && (
+                  <li>... e mais {data.parksFailed.length - 5}</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {data.parksQueried.length === 0 && (
+            <div className="rounded-md border border-red-300 bg-red-50/60 p-3 text-sm">
+              Nenhuma chave de API Lisboa configurada. Define{" "}
+              <code className="font-mono">MULTIPARK_API_KEY_LISBON_*</code> nas env vars.
+            </div>
+          )}
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

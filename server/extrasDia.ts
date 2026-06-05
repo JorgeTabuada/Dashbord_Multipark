@@ -1,7 +1,7 @@
 /**
  * Extras Dia — Daily Forecast & Driver Allocation
  *
- * Lisbon-only forecast based on synced multipark bookings:
+ * Lisbon-only forecast that hits the MultiPark API directly (no DB sync needed):
  *   - Hourly check-ins / check-outs for tomorrow (or chosen base date + 1)
  *   - Lavagem (wash) counts for context days
  *   - Driver shift suggestion (3 cars/hour productivity, 3–12h shift bounds)
@@ -9,9 +9,13 @@
  * Driver levels are flat — all do everything — so the cheapest tier wins.
  */
 
-import { and, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "./db";
-import { multiparkBookings } from "../drizzle/schema";
+import {
+  PARK_CONFIGS,
+  getBookingsReportForPark,
+  getParkApiKey,
+  type MultiparkBooking,
+  type ParkConfig,
+} from "./multipark";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -45,40 +49,32 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
-function toMysqlDateTime(d: Date): string {
-  // MySQL DATETIME string: "YYYY-MM-DD HH:mm:ss" in local time
+function dateKey(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function hourOf(ts: string | null): number | null {
+function hourOf(ts: string | null | undefined): number | null {
   if (!ts) return null;
-  // ts can be "YYYY-MM-DD HH:mm:ss" or ISO. Parse defensively.
   const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
   if (Number.isNaN(d.getTime())) return null;
   return d.getHours();
 }
 
-function bookingHasLavagem(rawJson: string | null): boolean {
-  if (!rawJson) return false;
-  try {
-    const data = JSON.parse(rawJson);
-    const extras = data?.extraServices;
-    if (!Array.isArray(extras)) return false;
-    return extras.some((e: any) => {
-      const name = typeof e === "string" ? e : e?.name;
-      return typeof name === "string" && LAVAGEM_RE.test(name);
-    });
-  } catch {
-    return false;
-  }
+function bookingHasLavagem(booking: MultiparkBooking): boolean {
+  const extras = booking.extraServices;
+  if (!Array.isArray(extras)) return false;
+  return extras.some((e: any) => {
+    const name = typeof e === "string" ? e : e?.name;
+    return typeof name === "string" && LAVAGEM_RE.test(name);
+  });
 }
 
 // ─── Driver allocation ───────────────────────────────────────────────────────
 
 export interface DriverShift {
   startHour: number;
-  endHour: number; // exclusive
+  endHour: number;
   hours: number;
   level: DriverLevelId;
   label: string;
@@ -86,14 +82,6 @@ export interface DriverShift {
   cost: number;
 }
 
-/**
- * Build shifts that cover the hourly driver demand.
- *
- * Strategy: each "concurrent driver slot" gets one shift spanning the first
- * to last hour they are needed (extended to MIN_SHIFT_HOURS if shorter, split
- * into MAX_SHIFT_HOURS chunks if longer). All drivers allocated to the
- * cheapest level (Júnior) — caller can re-allocate if they want a mix.
- */
 export function suggestShifts(
   hourlyCars: number[],
   level: DriverLevelId = "junior",
@@ -114,11 +102,10 @@ export function suggestShifts(
     if (active.length === 0) continue;
 
     const start = active[0];
-    const end = active[active.length - 1] + 1; // exclusive
+    const end = active[active.length - 1] + 1;
     let span = end - start;
     if (span < MIN_SHIFT_HOURS) span = MIN_SHIFT_HOURS;
 
-    // Split into MAX_SHIFT_HOURS chunks if needed
     let cursor = start;
     while (span > 0) {
       const chunk = Math.min(span, MAX_SHIFT_HOURS);
@@ -141,34 +128,37 @@ export function suggestShifts(
   return { shifts, totalCost, peakDrivers: peak, totalDriverHours };
 }
 
-// ─── Forecast ────────────────────────────────────────────────────────────────
+// ─── Forecast (API direct, no DB) ────────────────────────────────────────────
 
 export interface HourlyRow {
   hour: number;
   checkins: number;
   checkouts: number;
-  driversNeeded: number; // ceil((checkins + checkouts) / 3)
+  driversNeeded: number;
 }
 
 export interface DailyWash {
-  date: string; // YYYY-MM-DD
-  exitsWithWash: number; // check-outs that have lavagem in extras
+  date: string;
+  exitsWithWash: number;
 }
 
 export interface ExtrasDiaForecast {
-  baseDate: string; // YYYY-MM-DD (the "today" the user picked)
-  targetDate: string; // YYYY-MM-DD (baseDate + 1) — main hourly view
+  baseDate: string;
+  targetDate: string;
   city: string;
-  hourly: HourlyRow[]; // 24 rows for targetDate
+  source: "api"; // marker
+  parksQueried: string[];
+  parksFailed: { park: string; error: string }[];
+  hourly: HourlyRow[];
   totals: {
     checkins: number;
     checkouts: number;
-    operations: number; // checkins + checkouts
+    operations: number;
   };
   washes: {
-    base: DailyWash; // baseDate exits with wash
-    target: DailyWash; // baseDate+1 exits with wash
-    next: DailyWash; // baseDate+2 exits with wash (cars to wash for D+2)
+    base: DailyWash;
+    target: DailyWash;
+    next: DailyWash;
   };
   allocation: {
     cheapest: ReturnType<typeof suggestShifts>;
@@ -176,43 +166,23 @@ export interface ExtrasDiaForecast {
   };
 }
 
-async function fetchBookingsInRange(field: "checkIn" | "checkOut", startInclusive: Date, endExclusive: Date) {
-  const db = await getDb();
-  if (!db) return [] as Array<{ checkIn: string | null; checkOut: string | null; rawJson: string | null; city: string | null; status: string | null }>;
-
-  const col = field === "checkIn" ? multiparkBookings.checkIn : multiparkBookings.checkOut;
-  const startStr = toMysqlDateTime(startInclusive);
-  const endStr = toMysqlDateTime(endExclusive);
-
-  return db
-    .select({
-      checkIn: multiparkBookings.checkIn,
-      checkOut: multiparkBookings.checkOut,
-      rawJson: multiparkBookings.rawJson,
-      city: multiparkBookings.city,
-      status: multiparkBookings.status,
-    })
-    .from(multiparkBookings)
-    .where(
-      and(
-        gte(col, startStr),
-        lte(col, endStr),
-        sql`${multiparkBookings.status} != 'CANCELLED'`,
-        sql`LOWER(${multiparkBookings.city}) = LOWER(${CITY})`,
-      ),
-    )
-    .limit(10000);
+function getLisbonParks(): ParkConfig[] {
+  return PARK_CONFIGS.filter(p => p.city === CITY && !!getParkApiKey(p));
 }
 
-function countWashes(rows: Array<{ rawJson: string | null }>): number {
-  let n = 0;
-  for (const r of rows) if (bookingHasLavagem(r.rawJson)) n++;
-  return n;
-}
-
-function dateKey(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/**
+ * Fetch bookings for one park + actionType + day. Filters out CANCELLED.
+ * The MultiPark API treats actionType=checkin/checkout as scheduled date.
+ */
+async function fetchBookings(
+  park: ParkConfig,
+  actionType: "checkin" | "checkout",
+  day: Date,
+): Promise<MultiparkBooking[]> {
+  const startDate = dateKey(day);
+  const endDate = dateKey(day);
+  const report = await getBookingsReportForPark(park, startDate, endDate, actionType);
+  return (report.bookings || []).filter(b => b.status !== "CANCELLED");
 }
 
 export async function getExtrasDiaForecast(baseDateInput?: string): Promise<ExtrasDiaForecast> {
@@ -220,17 +190,51 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   const baseStart = startOfDay(baseDate);
   const targetStart = addDays(baseStart, 1);
   const nextStart = addDays(baseStart, 2);
-  const nextEnd = addDays(baseStart, 3);
 
-  // Pull check-ins for target day (D+1) and check-outs for base/target/next.
-  const [targetCheckins, baseCheckouts, targetCheckouts, nextCheckouts] = await Promise.all([
-    fetchBookingsInRange("checkIn", targetStart, nextStart),
-    fetchBookingsInRange("checkOut", baseStart, targetStart),
-    fetchBookingsInRange("checkOut", targetStart, nextStart),
-    fetchBookingsInRange("checkOut", nextStart, nextEnd),
-  ]);
+  const parks = getLisbonParks();
+  const parksQueried = parks.map(p => `${p.name} ${p.city}`);
+  const parksFailed: { park: string; error: string }[] = [];
 
-  // Build 24 hourly buckets for D+1
+  // We need 4 collections across all Lisbon parks:
+  //   - target checkins (D+1) → hourly buckets
+  //   - base checkouts (D) → wash count
+  //   - target checkouts (D+1) → hourly buckets + wash count
+  //   - next checkouts (D+2) → wash count
+  type FetchKey = "targetCheckins" | "baseCheckouts" | "targetCheckouts" | "nextCheckouts";
+
+  const jobs: Array<{ key: FetchKey; park: ParkConfig; action: "checkin" | "checkout"; day: Date }> = [];
+  for (const park of parks) {
+    jobs.push({ key: "targetCheckins", park, action: "checkin", day: targetStart });
+    jobs.push({ key: "baseCheckouts", park, action: "checkout", day: baseStart });
+    jobs.push({ key: "targetCheckouts", park, action: "checkout", day: targetStart });
+    jobs.push({ key: "nextCheckouts", park, action: "checkout", day: nextStart });
+  }
+
+  const buckets: Record<FetchKey, MultiparkBooking[]> = {
+    targetCheckins: [],
+    baseCheckouts: [],
+    targetCheckouts: [],
+    nextCheckouts: [],
+  };
+
+  const results = await Promise.allSettled(
+    jobs.map(j => fetchBookings(j.park, j.action, j.day).then(bs => ({ key: j.key, park: j.park, bs }))),
+  );
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const j = jobs[i];
+    if (r.status === "fulfilled") {
+      buckets[r.value.key].push(...r.value.bs);
+    } else {
+      parksFailed.push({
+        park: `${j.park.name} ${j.park.city} (${j.action} ${dateKey(j.day)})`,
+        error: r.reason?.message || String(r.reason),
+      });
+    }
+  }
+
+  // Hourly buckets for D+1
   const hourly: HourlyRow[] = Array.from({ length: 24 }, (_, h) => ({
     hour: h,
     checkins: 0,
@@ -238,12 +242,13 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     driversNeeded: 0,
   }));
 
-  for (const r of targetCheckins) {
-    const h = hourOf(r.checkIn);
+  for (const b of buckets.targetCheckins) {
+    // MultiPark booking has `checkInTime` (HH:mm) or full `checkIn` ISO.
+    const h = parseScheduledHour(b.checkInTime, b.checkIn);
     if (h !== null) hourly[h].checkins++;
   }
-  for (const r of targetCheckouts) {
-    const h = hourOf(r.checkOut);
+  for (const b of buckets.targetCheckouts) {
+    const h = parseScheduledHour(b.checkOutTime, b.checkOut);
     if (h !== null) hourly[h].checkouts++;
   }
   for (const row of hourly) {
@@ -251,9 +256,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   }
 
   const hourlyCars = hourly.map(h => h.checkins + h.checkouts);
-
   const cheapest = suggestShifts(hourlyCars, "junior");
-
   const bySingleLevel = DRIVER_LEVELS.map(l => {
     const r = suggestShifts(hourlyCars, l.id);
     return { level: l.id, label: l.label, totalCost: r.totalCost, totalHours: r.totalDriverHours };
@@ -263,6 +266,9 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     baseDate: dateKey(baseStart),
     targetDate: dateKey(targetStart),
     city: CITY,
+    source: "api",
+    parksQueried,
+    parksFailed,
     hourly,
     totals: {
       checkins: hourly.reduce((s, h) => s + h.checkins, 0),
@@ -270,10 +276,19 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       operations: hourly.reduce((s, h) => s + h.checkins + h.checkouts, 0),
     },
     washes: {
-      base: { date: dateKey(baseStart), exitsWithWash: countWashes(baseCheckouts) },
-      target: { date: dateKey(targetStart), exitsWithWash: countWashes(targetCheckouts) },
-      next: { date: dateKey(nextStart), exitsWithWash: countWashes(nextCheckouts) },
+      base: { date: dateKey(baseStart), exitsWithWash: buckets.baseCheckouts.filter(bookingHasLavagem).length },
+      target: { date: dateKey(targetStart), exitsWithWash: buckets.targetCheckouts.filter(bookingHasLavagem).length },
+      next: { date: dateKey(nextStart), exitsWithWash: buckets.nextCheckouts.filter(bookingHasLavagem).length },
     },
     allocation: { cheapest, bySingleLevel },
   };
+}
+
+function parseScheduledHour(timeStr: string | null | undefined, fallbackIso: string | null | undefined): number | null {
+  // Prefer "HH:mm" string when present
+  if (timeStr && /^\d{1,2}:\d{2}/.test(timeStr)) {
+    const h = parseInt(timeStr.split(":")[0], 10);
+    if (h >= 0 && h < 24) return h;
+  }
+  return hourOf(fallbackIso ?? null);
 }
