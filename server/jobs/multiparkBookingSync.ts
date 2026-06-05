@@ -304,38 +304,52 @@ export async function syncBookings(opts: {
   const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
   const projectMap = await getProjectMap();
 
-  let totalProcessed = 0;
-  let totalCreated = 0;
-  let totalUpdated = 0;
   const errors: string[] = [];
 
   const parks = getConfiguredParks();
   const parksToSync = parks.length > 0 ? parks : [null]; // null = use global key
 
-  for (const park of parksToSync) {
+  // Corre cada parque em paralelo (cada um faz os actionTypes em série) para
+  // reduzir o tempo total e caber no timeout do Vercel.
+  const perParkResults = await Promise.allSettled(parksToSync.map(async (park) => {
     const apiKey = park ? getParkApiKey(park) : undefined;
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
+    let processed = 0, created = 0, updated = 0;
+    const parkErrors: string[] = [];
 
     for (const actionType of actionTypes) {
       try {
         const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
-
         if (!report?.bookings?.length) continue;
-
         for (const booking of report.bookings) {
           try {
             const record = bookingToRecord(booking, projectMap);
             const result = await upsertMultiparkBooking(record);
-            totalProcessed++;
-            if (result?.action === "created") totalCreated++;
-            else totalUpdated++;
+            processed++;
+            if (result?.action === "created") created++;
+            else updated++;
           } catch (err: any) {
-            errors.push(`Booking ${booking.id}: ${err.message}`);
+            parkErrors.push(`Booking ${booking.id}: ${err.message}`);
           }
         }
       } catch (err: any) {
-        errors.push(`${parkLabel}/${actionType}: ${err.message}`);
+        parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
       }
+    }
+    return { processed, created, updated, errors: parkErrors };
+  }));
+
+  let totalProcessed = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  for (const r of perParkResults) {
+    if (r.status === "fulfilled") {
+      totalProcessed += r.value.processed;
+      totalCreated += r.value.created;
+      totalUpdated += r.value.updated;
+      errors.push(...r.value.errors);
+    } else {
+      errors.push(`Park task failed: ${r.reason?.message ?? r.reason}`);
     }
   }
   // Nota: enrichment com /bookings/:id corre num endpoint separado
