@@ -3938,9 +3938,10 @@ export const appRouter = router({
           personName: z.string().min(1).max(128),
           level: z.enum(["junior", "senior", "terminal", "master"]).nullable().optional(),
           isTeamLeader: z.boolean().optional(),
-          startHour: z.number().int().min(0).max(23),
-          endHour: z.number().int().min(1).max(24),
-          sentHomeHour: z.number().int().min(0).max(24).nullable().optional(),
+          shift: z.enum(["morning", "night"]),
+          startHour: z.number().int().min(0).max(27),
+          endHour: z.number().int().min(1).max(27),
+          sentHomeHour: z.number().int().min(0).max(27).nullable().optional(),
           notes: z.string().max(255).nullable().optional(),
         }),
       )

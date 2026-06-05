@@ -39,6 +39,13 @@ type LevelId = (typeof LEVELS)[number]["id"];
 const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
 const HOURS_25 = Array.from({ length: 25 }, (_, i) => i);
 
+type ShiftId = "morning" | "night";
+
+const SHIFTS: { id: ShiftId; label: string; defaultStart: number; defaultEnd: number }[] = [
+  { id: "morning", label: "Manhã (03–15)", defaultStart: 3, defaultEnd: 15 },
+  { id: "night", label: "Noite (15–03)", defaultStart: 15, defaultEnd: 24 },
+];
+
 const fmtEur = (n: number) =>
   n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
 const fmtHour = (h: number) => `${String(h).padStart(2, "0")}h`;
@@ -269,7 +276,16 @@ export default function ExtrasDiaPage() {
           </Card>
 
           {/* Equipa do dia (real) — vem antes da estimativa */}
-          <TeamSection targetDate={data.targetDate} />
+          {SHIFTS.map(s => (
+            <TeamSection
+              key={s.id}
+              targetDate={data.targetDate}
+              shift={s.id}
+              shiftLabel={s.label}
+              defaultStart={s.defaultStart}
+              defaultEnd={s.defaultEnd}
+            />
+          ))}
 
           {/* Estimativa de referência — vazia/colapsa quando há atribuições */}
           {(() => {
@@ -369,7 +385,19 @@ export default function ExtrasDiaPage() {
 
 // ─── Equipa do dia (atribuições) ───────────────────────────────────────────────
 
-function TeamSection({ targetDate }: { targetDate: string }) {
+function TeamSection({
+  targetDate,
+  shift,
+  shiftLabel,
+  defaultStart,
+  defaultEnd,
+}: {
+  targetDate: string;
+  shift: ShiftId;
+  shiftLabel: string;
+  defaultStart: number;
+  defaultEnd: number;
+}) {
   const utils = trpc.useUtils();
   const assignmentsQuery = trpc.extrasDia.assignments.useQuery({ date: targetDate });
   const candidatesQuery = trpc.extrasDia.candidates.useQuery();
@@ -389,9 +417,10 @@ function TeamSection({ targetDate }: { targetDate: string }) {
     onError: (e) => toast.error(e.message),
   });
 
-  const assignments = assignmentsQuery.data ?? [];
+  const allAssignments = assignmentsQuery.data ?? [];
   const candidates = candidatesQuery.data ?? [];
 
+  const assignments = allAssignments.filter(a => a.shift === shift);
   const tl = assignments.find(a => a.isTeamLeader);
   const drivers = assignments.filter(a => !a.isTeamLeader);
 
@@ -407,8 +436,8 @@ function TeamSection({ targetDate }: { targetDate: string }) {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-blue-600" />
-              Equipa do dia — {fmtDate(targetDate)}
+              <Users className={`h-4 w-4 ${shift === "morning" ? "text-blue-600" : "text-indigo-600"}`} />
+              Equipa {shiftLabel} — {fmtDate(targetDate)}
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Atribui pessoas, edita horários e "manda para casa" quando não há trabalho.
@@ -463,6 +492,9 @@ function TeamSection({ targetDate }: { targetDate: string }) {
                 targetDate={targetDate}
                 candidates={candidates}
                 asTeamLeader
+                shift={shift}
+                defaultStart={defaultStart}
+                defaultEnd={defaultEnd}
                 onSubmit={async (values) => {
                   await upsert.mutateAsync(values);
                   setAddingTL(false);
@@ -478,6 +510,9 @@ function TeamSection({ targetDate }: { targetDate: string }) {
           <AssignmentForm
             targetDate={targetDate}
             candidates={candidates}
+            shift={shift}
+            defaultStart={defaultStart}
+            defaultEnd={defaultEnd}
             onSubmit={async (values) => {
               await upsert.mutateAsync(values);
               setAdding(false);
@@ -537,6 +572,7 @@ interface AssignmentFormValues {
   personName: string;
   level: LevelId | null;
   isTeamLeader: boolean;
+  shift: ShiftId;
   startHour: number;
   endHour: number;
   sentHomeHour: number | null;
@@ -546,6 +582,9 @@ function AssignmentForm({
   targetDate,
   candidates,
   asTeamLeader,
+  shift,
+  defaultStart,
+  defaultEnd,
   onSubmit,
   onCancel,
   submitting,
@@ -553,6 +592,9 @@ function AssignmentForm({
   targetDate: string;
   candidates: { id: number; fullName: string; suggestedLevel: LevelId }[];
   asTeamLeader?: boolean;
+  shift: ShiftId;
+  defaultStart: number;
+  defaultEnd: number;
   onSubmit: (values: AssignmentFormValues) => void | Promise<void>;
   onCancel: () => void;
   submitting: boolean;
@@ -560,8 +602,8 @@ function AssignmentForm({
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [personName, setPersonName] = useState("");
   const [level, setLevel] = useState<LevelId>("junior");
-  const [startHour, setStartHour] = useState(asTeamLeader ? 7 : 8);
-  const [endHour, setEndHour] = useState(asTeamLeader ? 19 : 13);
+  const [startHour, setStartHour] = useState(defaultStart);
+  const [endHour, setEndHour] = useState(defaultEnd);
 
   const span = endHour - startHour;
   const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
@@ -687,6 +729,7 @@ function AssignmentForm({
             personName: personName.trim(),
             level: asTeamLeader ? null : level,
             isTeamLeader: !!asTeamLeader,
+            shift,
             startHour,
             endHour,
             sentHomeHour: null,
@@ -712,6 +755,7 @@ function AssignmentRow({
     personName: string;
     level: LevelId | null;
     isTeamLeader: boolean;
+    shift: ShiftId;
     startHour: number;
     endHour: number;
     sentHomeHour: number | null;
@@ -821,6 +865,7 @@ function AssignmentRow({
                 personName: a.personName,
                 level,
                 isTeamLeader: false,
+                shift: a.shift,
                 startHour,
                 endHour,
                 sentHomeHour,

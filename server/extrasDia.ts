@@ -35,6 +35,14 @@ export const SLOT_MINUTES = 20;
 export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 3
 export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR; // 72
 
+export type ShiftId = "morning" | "night";
+
+// Manhã: 03:00 → 15:00 (12h). Noite: 15:00 → 03:00 do dia seguinte (12h).
+export const SHIFT_BOUNDS: Record<ShiftId, { startHour: number; endHour: number }> = {
+  morning: { startHour: 3, endHour: 15 },
+  night: { startHour: 15, endHour: 27 }, // 27 = 03h do dia seguinte
+};
+
 const CITY_PATTERN = "%lisb%"; // matches Lisboa, Lisbon, LISBON, lisbôa, ...
 const PARK_ID_PREFIX = "LISBON_%"; // backup: when city was not set on the row
 const LAVAGEM_RE = /lavag|wash/i;
@@ -288,6 +296,7 @@ export interface Assignment {
   personName: string;
   level: DriverLevelId | null; // null when TL
   isTeamLeader: boolean;
+  shift: ShiftId;
   startHour: number;
   endHour: number;
   sentHomeHour: number | null;
@@ -335,6 +344,7 @@ function rowToAssignment(
     personName: r.personName,
     level,
     isTeamLeader: isTL,
+    shift: (r.shift as ShiftId) ?? "morning",
     startHour: r.startHour,
     endHour: r.endHour,
     sentHomeHour: r.sentHomeHour,
@@ -386,6 +396,7 @@ export interface UpsertAssignmentInput {
   personName: string;
   level?: DriverLevelId | null;
   isTeamLeader?: boolean;
+  shift: ShiftId;
   startHour: number;
   endHour: number;
   sentHomeHour?: number | null;
@@ -399,7 +410,7 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
 
   const isTL = !!input.isTeamLeader;
 
-  // If creating/updating a TL, ensure there's only one TL per day.
+  // 1 TL per (date, shift).
   if (isTL) {
     const existing = await db
       .select({ id: extrasDiaAssignments.id })
@@ -407,12 +418,14 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
       .where(
         and(
           eq(extrasDiaAssignments.assignmentDate, input.assignmentDate),
+          eq(extrasDiaAssignments.shift, input.shift),
           eq(extrasDiaAssignments.isTeamLeader, 1),
         ),
       );
     const other = existing.find(e => e.id !== (input.id ?? -1));
     if (other) {
-      throw new Error("Já existe um Team Leader para este dia. Apaga ou edita o existente.");
+      const label = input.shift === "morning" ? "manhã" : "noite";
+      throw new Error(`Já existe um Team Leader para o turno da ${label} deste dia.`);
     }
   }
 
@@ -422,6 +435,7 @@ export async function upsertAssignment(input: UpsertAssignmentInput): Promise<As
     personName: input.personName,
     level: isTL ? null : (input.level ?? "junior"),
     isTeamLeader: isTL ? 1 : 0,
+    shift: input.shift,
     startHour: input.startHour,
     endHour: input.endHour,
     sentHomeHour: input.sentHomeHour ?? null,
