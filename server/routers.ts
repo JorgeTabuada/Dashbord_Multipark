@@ -9,7 +9,7 @@ import { invokeLLM } from "./_core/llm";
 import { notifyOwner } from "./_core/notification";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
-import { getBookingHistory, getAgentHistory, getCheckoutDrivers, getBookingsReport } from "./multipark";
+import { getBookingHistory, getAgentHistory, getCheckoutDrivers, getBookingsReport, getBookingTryAllParks } from "./multipark";
 import {
   getExtrasDiaForecast,
   listAssignments,
@@ -3562,6 +3562,25 @@ export const appRouter = router({
       requireRole(ctx.user.role, "admin");
       return mpTestConnection();
     }),
+
+    // Inspect raw booking JSON from API (tries all parks). Admin-only debug tool.
+    inspectBooking: protectedProcedure
+      .input(z.object({ externalId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const found = await getBookingTryAllParks(input.externalId);
+        if (!found) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Reserva não encontrada em nenhum parque (ou chaves de API em falta).",
+          });
+        }
+        return {
+          park: `${found.parkConfig.name} (${found.parkConfig.city})`,
+          parkId: found.parkConfig.id,
+          booking: found.booking,
+        };
+      }),
 
     // Check availability
     checkAvailability: protectedProcedure

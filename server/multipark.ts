@@ -254,9 +254,35 @@ export async function updateBooking(id: string, data: Partial<MultiparkBookingIn
   return multiparkRequest({ method: "PUT", path: `/bookings/${id}`, body: data });
 }
 
-/** Get booking by ID */
-export async function getBooking(id: string): Promise<MultiparkBooking> {
-  return multiparkRequest({ path: `/bookings/${id}` });
+/** Get booking by ID (optionally with specific park's API key) */
+export async function getBooking(id: string, apiKey?: string): Promise<MultiparkBooking> {
+  return multiparkRequest({ path: `/bookings/${id}`, apiKey });
+}
+
+/**
+ * Try to fetch a booking using each configured park API key until one succeeds.
+ * Returns the booking + the park that owned it. Useful when we don't know which
+ * park a booking belongs to in advance.
+ */
+export async function getBookingTryAllParks(id: string): Promise<{
+  booking: MultiparkBooking;
+  parkConfig: ParkConfig;
+} | null> {
+  const parks = getConfiguredParks();
+  for (const park of parks) {
+    try {
+      const apiKey = getParkApiKey(park);
+      if (!apiKey) continue;
+      const booking = await multiparkRequest<MultiparkBooking>({
+        path: `/bookings/${id}`,
+        apiKey,
+      });
+      if (booking?.id) return { booking, parkConfig: park };
+    } catch {
+      // try next park
+    }
+  }
+  return null;
 }
 
 /** Check if MultiPark API is configured */
