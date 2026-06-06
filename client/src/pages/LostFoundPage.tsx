@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import {
   Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
@@ -47,13 +48,34 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 
 const KANBAN_COLUMNS = ["new", "investigating", "found", "returned", "closed"] as const;
 
+const BASE_PATH = "/perdidos-achados";
+
 export default function LostFoundPage() {
   const { user } = useAuth();
-  const [view, setView] = useState<"kanban" | "detail" | "ranking" | "history">("kanban");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [location, setLocation] = useLocation();
   const [showCreate, setShowCreate] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Deriva a view do URL — assim clicar no sidebar (que faz setLocation
+  // para o path base) volta sempre ao kanban e o botão back do browser
+  // funciona.
+  const { view, selectedId } = useMemo(() => {
+    const tail = location.startsWith(BASE_PATH) ? location.slice(BASE_PATH.length).replace(/^\//, "") : "";
+    const [section, sub] = tail.split("/");
+    if (section === "historico") return { view: "history" as const, selectedId: null };
+    if (section === "cruzamento") return { view: "ranking" as const, selectedId: null };
+    if (section === "caso" && sub) {
+      const id = parseInt(sub, 10);
+      if (!isNaN(id)) return { view: "detail" as const, selectedId: id };
+    }
+    return { view: "kanban" as const, selectedId: null };
+  }, [location]);
+
+  const goKanban = () => setLocation(BASE_PATH);
+  const goHistory = () => setLocation(`${BASE_PATH}/historico`);
+  const goRanking = () => setLocation(`${BASE_PATH}/cruzamento`);
+  const goDetail = (id: number) => setLocation(`${BASE_PATH}/caso/${id}`);
 
   return (
     <>
@@ -64,20 +86,20 @@ export default function LostFoundPage() {
           setFilterType={setFilterType}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
-          onSelect={(id: number) => { setSelectedId(id); setView("detail"); }}
+          onSelect={goDetail}
           onNew={() => setShowCreate(true)}
-          onShowRanking={() => setView("ranking")}
-          onShowHistory={() => setView("history")}
+          onShowRanking={goRanking}
+          onShowHistory={goHistory}
         />
       ) : view === "ranking" ? (
-        <DriverRankingView onBack={() => setView("kanban")} />
+        <DriverRankingView onBack={goKanban} />
       ) : view === "history" ? (
-        <BookingHistoryView onBack={() => setView("kanban")} />
+        <BookingHistoryView onBack={goKanban} />
       ) : selectedId ? (
         <DetailView
           id={selectedId}
           user={user}
-          onBack={() => { setView("kanban"); setSelectedId(null); }}
+          onBack={goKanban}
         />
       ) : null}
       {showCreate && <CreateDialog user={user} onClose={() => setShowCreate(false)} />}

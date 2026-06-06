@@ -124,6 +124,9 @@ function Router() {
       <Route path="/formacao">
         {() => (<DashboardLayout><TrainingPage /></DashboardLayout>)}
       </Route>
+      <Route path="/perdidos-achados/:section*">
+        {() => (<DashboardLayout><LostFoundPage /></DashboardLayout>)}
+      </Route>
       <Route path="/perdidos-achados">
         {() => (<DashboardLayout><LostFoundPage /></DashboardLayout>)}
       </Route>

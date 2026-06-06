@@ -374,7 +374,9 @@ function DashboardLayoutContent({
                       <SidebarGroupContent>
                         <SidebarMenu>
                           {group.items.map(item => {
-                            const isActive = location === item.path;
+                            // Match exato ou sub-rotas (ex.: /perdidos-achados/historico
+                            // continua a iluminar "Perdidos e Achados").
+                            const isActive = location === item.path || location.startsWith(item.path + "/");
                             return (
                               <SidebarMenuItem key={item.path}>
                                 <SidebarMenuButton
