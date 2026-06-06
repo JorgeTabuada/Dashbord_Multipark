@@ -84,6 +84,7 @@ import {
   InsertGpsAlert,
   bookingHistory,
   multiparkBookingHistory,
+  extrasDiaAssignments,
 } from "../drizzle/schema";
 import type { LostFoundItem, LostFoundPhoto, LostFoundMessage } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -2245,20 +2246,58 @@ async function resolveProjectIds(projectId: number): Promise<number[]> {
   return Array.from(ids);
 }
 
-export async function getBillingData(filters: { from: string; to: string; projectId?: number }) {
-  const db = await getDb();
-  if (!db) return { deliveries: [], expensesPaid: [], expensesPending: [], forecast: [] };
+// Taxas €/hora para extras-dia (sincronizadas com server/extrasDia.ts)
+const EXTRAS_DIA_RATES: Record<string, number> = {
+  junior: 4, senior: 5, terminal: 5.5, master: 6,
+};
 
-  // Resolve project hierarchy
-  let projectIds: number[] | undefined;
-  if (filters.projectId) {
-    projectIds = await resolveProjectIds(filters.projectId);
+// SQL para formatar uma coluna timestamp para o bucket pretendido
+function bucketSqlExpr(col: any, granularity: "day" | "week" | "month" | "year") {
+  switch (granularity) {
+    case "week":  return sql<string>`DATE_FORMAT(${col}, '%x-W%v')`;
+    case "month": return sql<string>`DATE_FORMAT(${col}, '%Y-%m')`;
+    case "year":  return sql<string>`DATE_FORMAT(${col}, '%Y')`;
+    default:      return sql<string>`DATE_FORMAT(${col}, '%Y-%m-%d')`;
+  }
+}
+
+export async function getBillingData(filters: {
+  from: string;
+  to: string;
+  projectId?: number;
+  granularity?: "day" | "week" | "month" | "year";
+}) {
+  const db = await getDb();
+  const granularity = filters.granularity ?? "day";
+  if (!db) {
+    return {
+      summary: {
+        produced: 0, invoiced: 0,
+        expensesPaid: 0, expensesPending: 0,
+        extrasDiaCost: 0, marketingCost: 0, partnerCommissionsPaid: 0, partnerCommissionsPending: 0,
+        totalCostsPaid: 0, totalCostsAll: 0,
+        marginRealized: 0, marginAll: 0,
+      },
+      timeseries: [],
+      deliveries: [], expensesPaid: [], expensesPending: [], forecast: [],
+      invoices: [], extrasDia: [], marketing: [], partnerCommissions: [],
+      forecastBookings: [], forecastExpenses: [], forecastExtrasDia: [],
+    };
   }
 
-  // 1. Entregas (revenue from bookings) by project - checkout within period
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(new Date(filters.to + "T23:59:59"));
+  const fromDateOnly = filters.from;
+  const toDateOnly = filters.to;
+
+  // Hierarquia de projetos
+  let projectIds: number[] | undefined;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
+
+  // ─── 1. PRODUZIDO (reservas com checkout no período) ─────────────────────
   const deliveryConds: any[] = [
-    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
-    lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
     isNotNull(multiparkBookings.checkOut),
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
@@ -2278,12 +2317,33 @@ export async function getBillingData(filters: { from: string; to: string; projec
     .where(and(...deliveryConds))
     .groupBy(multiparkBookings.projectId, projects.name);
 
-  // 2. Despesas pagas no período
+  // ─── 2. FATURADO (invoices emitidas no período) ──────────────────────────
+  const invConds: any[] = [
+    gte(invoices.issueDate, fromStr),
+    lte(invoices.issueDate, toStr),
+    sql`${invoices.status} != 'cancelled'`,
+  ];
+  if (projectIds) invConds.push(inArray(invoices.projectId, projectIds));
+
+  const invoicedRows = await db
+    .select({
+      projectId: invoices.projectId,
+      projectName: projects.name,
+      count: sql<number>`COUNT(*)`,
+      totalAmount: sql<number>`COALESCE(SUM(${invoices.totalAmount}), 0)`,
+      paidAmount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'paid' THEN ${invoices.totalAmount} ELSE 0 END), 0)`,
+    })
+    .from(invoices)
+    .leftJoin(projects, eq(invoices.projectId, projects.id))
+    .where(and(...invConds))
+    .groupBy(invoices.projectId, projects.name);
+
+  // ─── 3. DESPESAS PAGAS (paidAt no período) ───────────────────────────────
   const paidConds: any[] = [
     eq(expenses.status, "paid"),
     isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, toMysqlDateTime(new Date(filters.from))),
-    lte(expenses.paidAt, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
+    gte(expenses.paidAt, fromStr),
+    lte(expenses.paidAt, toStr),
   ];
   if (projectIds) paidConds.push(inArray(expenses.projectId, projectIds));
 
@@ -2301,12 +2361,12 @@ export async function getBillingData(filters: { from: string; to: string; projec
     .where(and(...paidConds))
     .groupBy(expenses.projectId, projects.name, expenseCategories.name);
 
-  // 3. Despesas pendentes (a pagar) no período
+  // ─── 4. DESPESAS PENDENTES (vencimento no período) ───────────────────────
   const pendConds: any[] = [
     inArray(expenses.status, ["pending", "overdue"]),
     isNotNull(expenses.paymentDueDate),
-    gte(expenses.paymentDueDate, toMysqlDateTime(new Date(filters.from))),
-    lte(expenses.paymentDueDate, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
+    gte(expenses.paymentDueDate, fromStr),
+    lte(expenses.paymentDueDate, toStr),
   ];
   if (projectIds) pendConds.push(inArray(expenses.projectId, projectIds));
 
@@ -2325,12 +2385,97 @@ export async function getBillingData(filters: { from: string; to: string; projec
     .where(and(...pendConds))
     .groupBy(expenses.projectId, projects.name, expenseCategories.name, expenses.supplier);
 
-  // 4. Forecast: reservas futuras (checkin no futuro mas dentro do período)
+  // ─── 5. EXTRAS-DIA (custo da equipa diária) ──────────────────────────────
+  const extrasRows = await db
+    .select({
+      level: extrasDiaAssignments.level,
+      hours: sql<number>`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`,
+      headcount: sql<number>`COUNT(*)`,
+    })
+    .from(extrasDiaAssignments)
+    .where(
+      and(
+        gte(extrasDiaAssignments.assignmentDate, fromDateOnly),
+        lte(extrasDiaAssignments.assignmentDate, toDateOnly),
+      ),
+    )
+    .groupBy(extrasDiaAssignments.level);
+
+  const extrasDiaSummary = extrasRows.map((r) => {
+    const rate = EXTRAS_DIA_RATES[String(r.level ?? "junior")] ?? 4;
+    const hours = Number(r.hours ?? 0);
+    return {
+      level: r.level ?? "junior",
+      hours,
+      headcount: Number(r.headcount ?? 0),
+      cost: hours * rate,
+    };
+  });
+
+  // ─── 6. MARKETING (despesas marketing + spend de campanhas) ──────────────
+  const mktExpConds: any[] = [
+    gte(marketingExpenses.date, fromStr),
+    lte(marketingExpenses.date, toStr),
+  ];
+  if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
+
+  const mktExpRows = await db
+    .select({
+      projectId: marketingExpenses.projectId,
+      projectName: projects.name,
+      category: marketingExpenses.mktCategory,
+      totalAmount: sql<number>`COALESCE(SUM(${marketingExpenses.amount}), 0)`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(marketingExpenses)
+    .leftJoin(projects, eq(marketingExpenses.projectId, projects.id))
+    .where(and(...mktExpConds))
+    .groupBy(marketingExpenses.projectId, projects.name, marketingExpenses.mktCategory);
+
+  const mktAdsConds: any[] = [
+    gte(campaignDailyStats.date, fromStr),
+    lte(campaignDailyStats.date, toStr),
+  ];
+  if (projectIds) {
+    mktAdsConds.push(inArray(campaigns.projectId, projectIds));
+  }
+  const mktAdsRows = await db
+    .select({
+      projectId: campaigns.projectId,
+      projectName: projects.name,
+      totalSpend: sql<number>`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
+      conversions: sql<number>`COALESCE(SUM(${campaignDailyStats.conversions}), 0)`,
+    })
+    .from(campaignDailyStats)
+    .innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id))
+    .leftJoin(projects, eq(campaigns.projectId, projects.id))
+    .where(and(...mktAdsConds))
+    .groupBy(campaigns.projectId, projects.name);
+
+  // ─── 7. PARCEIROS (comissões a partners) ─────────────────────────────────
+  // partnership_invoices não tem projectId — agrupamos por estado.
+  const partnerInvRows = await db
+    .select({
+      status: partnershipInvoices.invoiceStatus,
+      totalAmount: sql<number>`COALESCE(SUM(${partnershipInvoices.amount}), 0)`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(partnershipInvoices)
+    .where(
+      and(
+        gte(partnershipInvoices.sentAt, fromStr),
+        lte(partnershipInvoices.sentAt, toStr),
+        sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`,
+      ),
+    )
+    .groupBy(partnershipInvoices.invoiceStatus);
+
+  // ─── 8. FORECAST: reservas futuras (checkin no futuro) ───────────────────
   const now = new Date();
-  const forecastFrom = now > new Date(filters.from) ? now.toISOString().slice(0, 10) : filters.from;
+  const forecastFrom = now > new Date(filters.from) ? toMysqlDateTime(now) : fromStr;
   const forecastConds: any[] = [
-    gte(multiparkBookings.checkIn, toMysqlDateTime(new Date(forecastFrom))),
-    lte(multiparkBookings.checkIn, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
+    gte(multiparkBookings.checkIn, forecastFrom),
+    lte(multiparkBookings.checkIn, toStr),
     isNull(multiparkBookings.checkOut),
     isNull(multiparkBookings.cancelledAt),
   ];
@@ -2348,11 +2493,124 @@ export async function getBillingData(filters: { from: string; to: string; projec
     .where(and(...forecastConds))
     .groupBy(multiparkBookings.projectId, projects.name);
 
+  // ─── 9. TIMESERIES (granularity: day/week/month/year) ────────────────────
+  const checkOutBucket = bucketSqlExpr(multiparkBookings.checkOut, granularity);
+  const issueBucket = bucketSqlExpr(invoices.issueDate, granularity);
+  const paidAtBucket = bucketSqlExpr(expenses.paidAt, granularity);
+  const checkInBucket = bucketSqlExpr(multiparkBookings.checkIn, granularity);
+  const mktDateBucket = bucketSqlExpr(marketingExpenses.date, granularity);
+  const adsDateBucket = bucketSqlExpr(campaignDailyStats.date, granularity);
+
+  const tsProduced = await db
+    .select({ bucket: checkOutBucket, total: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql<number>`COUNT(*)` })
+    .from(multiparkBookings)
+    .where(and(...deliveryConds))
+    .groupBy(checkOutBucket);
+
+  const tsInvoiced = await db
+    .select({ bucket: issueBucket, total: sql<number>`COALESCE(SUM(${invoices.totalAmount}), 0)` })
+    .from(invoices)
+    .where(and(...invConds))
+    .groupBy(issueBucket);
+
+  const tsExpensesPaid = await db
+    .select({ bucket: paidAtBucket, total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
+    .from(expenses)
+    .where(and(...paidConds))
+    .groupBy(paidAtBucket);
+
+  const tsForecast = await db
+    .select({ bucket: checkInBucket, total: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql<number>`COUNT(*)` })
+    .from(multiparkBookings)
+    .where(and(...forecastConds))
+    .groupBy(checkInBucket);
+
+  const tsMktExpenses = await db
+    .select({ bucket: mktDateBucket, total: sql<number>`COALESCE(SUM(${marketingExpenses.amount}), 0)` })
+    .from(marketingExpenses)
+    .where(and(...mktExpConds))
+    .groupBy(mktDateBucket);
+
+  const tsMktAds = await db
+    .select({ bucket: adsDateBucket, total: sql<number>`COALESCE(SUM(${campaignDailyStats.spend}), 0)` })
+    .from(campaignDailyStats)
+    .innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id))
+    .where(and(...mktAdsConds))
+    .groupBy(adsDateBucket);
+
+  // Merge timeseries em um único array (chave = bucket)
+  type TimeseriesPoint = {
+    bucket: string;
+    produced: number;
+    invoiced: number;
+    expensesPaid: number;
+    revenueForecast: number;
+    marketingCost: number;
+  };
+  const tsMap = new Map<string, TimeseriesPoint>();
+  function bump(arr: any[], key: keyof Omit<TimeseriesPoint, "bucket">) {
+    for (const r of arr) {
+      const bk = r.bucket;
+      if (!bk) continue;
+      const ex = tsMap.get(bk) ?? { bucket: bk, produced: 0, invoiced: 0, expensesPaid: 0, revenueForecast: 0, marketingCost: 0 };
+      (ex[key] as number) += Number(r.total ?? 0);
+      tsMap.set(bk, ex);
+    }
+  }
+  bump(tsProduced, "produced");
+  bump(tsInvoiced, "invoiced");
+  bump(tsExpensesPaid, "expensesPaid");
+  bump(tsForecast, "revenueForecast");
+  bump(tsMktExpenses, "marketingCost");
+  bump(tsMktAds, "marketingCost");
+
+  const timeseries = Array.from(tsMap.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
+
+  // ─── 10. SUMMARY ─────────────────────────────────────────────────────────
+  const produced = deliveryRows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
+  const invoiced = invoicedRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const expensesPaidTotal = expPaidRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const expensesPendingTotal = expPendRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const extrasDiaCost = extrasDiaSummary.reduce((s, r) => s + r.cost, 0);
+  const mktExpensesTotal = mktExpRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const mktAdsSpend = mktAdsRows.reduce((s, r) => s + Number(r.totalSpend ?? 0), 0);
+  const marketingCost = mktExpensesTotal + mktAdsSpend;
+  const partnerInvByStatus = new Map(partnerInvRows.map(r => [r.status as string, Number(r.totalAmount ?? 0)]));
+  const partnerCommissionsPaid = partnerInvByStatus.get("paid") ?? 0;
+  const partnerCommissionsPending = (partnerInvByStatus.get("sent") ?? 0) + (partnerInvByStatus.get("overdue") ?? 0) + (partnerInvByStatus.get("draft") ?? 0);
+
+  const totalCostsPaid = expensesPaidTotal + extrasDiaCost + marketingCost + partnerCommissionsPaid;
+  const totalCostsAll = totalCostsPaid + expensesPendingTotal + partnerCommissionsPending;
+
+  const summary = {
+    produced, invoiced,
+    expensesPaid: expensesPaidTotal,
+    expensesPending: expensesPendingTotal,
+    extrasDiaCost,
+    marketingCost,
+    partnerCommissionsPaid,
+    partnerCommissionsPending,
+    totalCostsPaid,
+    totalCostsAll,
+    marginRealized: produced - totalCostsPaid,
+    marginAll: produced - totalCostsAll,
+  };
+
   return {
+    summary,
+    timeseries,
+    granularity,
+    range: { from: filters.from, to: filters.to },
+    // Mantém os blocos antigos para back-compat / drilldown
     deliveries: deliveryRows,
     expensesPaid: expPaidRows,
     expensesPending: expPendRows,
     forecast: forecastRows,
+    // Novos blocos para drilldown
+    invoices: invoicedRows,
+    extrasDia: extrasDiaSummary,
+    marketing: { expenses: mktExpRows, ads: mktAdsRows },
+    partnerCommissions: partnerInvRows,
   };
 }
 

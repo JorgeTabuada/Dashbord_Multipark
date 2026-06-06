@@ -3503,6 +3503,7 @@ export const appRouter = router({
     }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
 
     billing: protectedProcedure.input(z.object({
+      granularity: z.enum(["day", "week", "month", "year"]).optional(),
       from: z.string(),
       to: z.string(),
       projectId: z.number().optional(),
