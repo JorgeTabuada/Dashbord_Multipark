@@ -256,6 +256,13 @@ export interface ExtrasDiaForecast {
     checkin: { covered: number; uncovered: number; indoor: number; unknown: number };
     checkout: { covered: number; uncovered: number; indoor: number; unknown: number };
   };
+  // Soma de extrasTotal das reservas no dia. Estimativa = reservas com
+  // data ainda no futuro; real = reservas com data já passada.
+  extrasValue: {
+    estimate: number;
+    real: number;
+    total: number;
+  };
   washes: {
     base: DailyWash;
     target: DailyWash;
@@ -284,6 +291,7 @@ type BookingRow = {
   deliveryType: string | null;
   enrichedAt: string | null;
   spotType: string | null;
+  extrasTotal: string | null; // decimal as string
 };
 
 export interface BookingSummary {
@@ -327,6 +335,7 @@ async function fetchBookingsInRange(
       deliveryType: multiparkBookings.deliveryType,
       enrichedAt: multiparkBookings.enrichedAt,
       spotType: multiparkBookings.spotType,
+      extrasTotal: multiparkBookings.extrasTotal,
     })
     .from(multiparkBookings)
     .where(
@@ -848,6 +857,25 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     }
   }
 
+  // Soma extrasTotal de reservas no dia operacional, dedup por externalId.
+  // Decide estimativa vs real comparando a data relevante com o "agora".
+  const extrasValue = { estimate: 0, real: 0, total: 0 };
+  const seenForExtras = new Set<string>();
+  const nowMs = Date.now();
+  function addExtras(r: BookingRow, dateStr: string | null) {
+    if (seenForExtras.has(r.externalId)) return;
+    seenForExtras.add(r.externalId);
+    const v = r.extrasTotal ? parseFloat(r.extrasTotal) : 0;
+    if (!Number.isFinite(v) || v === 0) return;
+    const d = dateStr ? new Date(dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T")) : null;
+    const isFuture = d && d.getTime() > nowMs;
+    if (isFuture) extrasValue.estimate += v;
+    else extrasValue.real += v;
+    extrasValue.total += v;
+  }
+  for (const r of targetCheckins) addExtras(r, r.checkIn);
+  for (const r of targetCheckouts) addExtras(r, r.checkOut);
+
   return {
     baseDate: dateKey(baseStart),
     targetDate: dateKey(targetStart),
@@ -863,6 +891,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     },
     spotTypeCounts,
     spotTypeByDirection,
+    extrasValue,
     washes: {
       base: { date: dateKey(baseStart), exitsWithWash: countWashes(baseCheckouts) },
       target: { date: dateKey(targetStart), exitsWithWash: countWashes(targetCheckouts) },
