@@ -4265,7 +4265,7 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
         lte(extrasDiaAssignments.assignmentDate, `${year}-12-31`),
       ),
     )
-    .groupBy(sql`MONTH(${extrasDiaAssignments.assignmentDate})`, extrasDiaAssignments.level);
+    .groupBy(sql`SUBSTRING(${extrasDiaAssignments.assignmentDate}, 6, 2)`, extrasDiaAssignments.level);
 
   const extrasDiaByMonth: Record<number, number> = {};
   for (const r of extrasRows) {
