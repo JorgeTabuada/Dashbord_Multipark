@@ -83,6 +83,7 @@ import {
   gpsAlerts,
   InsertGpsAlert,
   bookingHistory,
+  multiparkBookingHistory,
 } from "../drizzle/schema";
 import type { LostFoundItem, LostFoundPhoto, LostFoundMessage } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -4435,4 +4436,160 @@ export async function getBookingHistoryDriverStats() {
     .groupBy(bookingHistory.userName)
     .orderBy(desc(sql`COUNT(*)`));
   return rows;
+}
+
+// ─── MULTIPARK BOOKING HISTORY (local DB instead of remote API) ─────────────
+
+/**
+ * Ranking de condutores por número de CHECK_OUT no período (DB local).
+ * Substitui a chamada `/bookings/checkoutDrivers` da API Multipark.
+ */
+export async function getCheckoutDriversFromDb(
+  startDate: string,
+  endDate: string,
+): Promise<{ total: number; period: { startDate: string; endDate: string }; drivers: Array<{ name: string; userId?: string; count: number }> }> {
+  const db = await getDb();
+  if (!db) return { total: 0, period: { startDate, endDate }, drivers: [] };
+
+  const startStr = toMysqlDateTime(new Date(startDate));
+  const endStr = toMysqlDateTime(new Date(endDate + "T23:59:59"));
+
+  const rows = await db
+    .select({
+      agentName: multiparkBookingHistory.agentName,
+      agentUserId: multiparkBookingHistory.agentUserId,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(multiparkBookingHistory)
+    .where(
+      and(
+        sql`UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_OUT'`,
+        gte(multiparkBookingHistory.actionTime, startStr),
+        lte(multiparkBookingHistory.actionTime, endStr),
+        isNotNull(multiparkBookingHistory.agentName),
+      ),
+    )
+    .groupBy(multiparkBookingHistory.agentName, multiparkBookingHistory.agentUserId)
+    .orderBy(desc(sql`COUNT(*)`));
+
+  const drivers = rows
+    .filter((r) => r.agentName)
+    .map((r) => ({
+      name: r.agentName as string,
+      userId: r.agentUserId ?? undefined,
+      count: Number(r.count),
+    }));
+  const total = drivers.reduce((s, d) => s + d.count, 0);
+  return { total, period: { startDate, endDate }, drivers };
+}
+
+/**
+ * Histórico de um agente (todas as ações no período, com a reserva associada).
+ * Substitui `/agent/history` da API Multipark.
+ */
+export async function getAgentHistoryFromDb(opts: {
+  startDate: string;
+  endDate: string;
+  agentName?: string;
+  userId?: string;
+}): Promise<{
+  total: number;
+  period: { startDate: string; endDate: string };
+  agentName: string;
+  agentUserId: string;
+  history: Array<{
+    id: string;
+    changeType: string;
+    actionTime: string;
+    remarks?: string;
+    agentName: string;
+    userId: string;
+    modifiedFields?: string;
+    platform?: string;
+    booking?: {
+      id: string;
+      status: string;
+      checkIn: string;
+      checkOut?: string;
+      parkName: string;
+      licensePlate: string;
+    };
+  }>;
+}> {
+  const db = await getDb();
+  const empty = {
+    total: 0,
+    period: { startDate: opts.startDate, endDate: opts.endDate },
+    agentName: opts.agentName ?? "",
+    agentUserId: opts.userId ?? "",
+    history: [],
+  };
+  if (!db) return empty;
+  if (!opts.agentName && !opts.userId) return empty;
+
+  const startStr = toMysqlDateTime(new Date(opts.startDate));
+  const endStr = toMysqlDateTime(new Date(opts.endDate + "T23:59:59"));
+
+  const conds: any[] = [
+    gte(multiparkBookingHistory.actionTime, startStr),
+    lte(multiparkBookingHistory.actionTime, endStr),
+  ];
+  if (opts.userId) {
+    conds.push(eq(multiparkBookingHistory.agentUserId, opts.userId));
+  } else if (opts.agentName) {
+    conds.push(sql`LOWER(${multiparkBookingHistory.agentName}) LIKE LOWER(${"%" + opts.agentName + "%"})`);
+  }
+
+  const rows = await db
+    .select({
+      id: multiparkBookingHistory.historyId,
+      changeType: multiparkBookingHistory.changeType,
+      actionTime: multiparkBookingHistory.actionTime,
+      remarks: multiparkBookingHistory.remarks,
+      agentName: multiparkBookingHistory.agentName,
+      agentUserId: multiparkBookingHistory.agentUserId,
+      modifiedFields: multiparkBookingHistory.modifiedFields,
+      platform: multiparkBookingHistory.platform,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      bookingStatus: multiparkBookings.status,
+      bookingCheckIn: multiparkBookings.checkIn,
+      bookingCheckOut: multiparkBookings.checkOut,
+      bookingParkName: multiparkBookings.parkName,
+      bookingLicensePlate: multiparkBookings.licensePlate,
+    })
+    .from(multiparkBookingHistory)
+    .leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
+    .where(and(...conds))
+    .orderBy(desc(multiparkBookingHistory.actionTime))
+    .limit(500);
+
+  const history = rows.map((r) => ({
+    id: r.id,
+    changeType: r.changeType ?? "",
+    actionTime: r.actionTime ?? "",
+    remarks: r.remarks ?? undefined,
+    agentName: r.agentName ?? "",
+    userId: r.agentUserId ?? "",
+    modifiedFields: r.modifiedFields ?? undefined,
+    platform: r.platform ?? undefined,
+    booking: r.bookingExternalId
+      ? {
+          id: r.bookingExternalId,
+          status: r.bookingStatus ?? "",
+          checkIn: r.bookingCheckIn ?? "",
+          checkOut: r.bookingCheckOut ?? undefined,
+          parkName: r.bookingParkName ?? "",
+          licensePlate: r.bookingLicensePlate ?? "",
+        }
+      : undefined,
+  }));
+
+  const first = rows[0];
+  return {
+    total: history.length,
+    period: { startDate: opts.startDate, endDate: opts.endDate },
+    agentName: first?.agentName ?? opts.agentName ?? "",
+    agentUserId: first?.agentUserId ?? opts.userId ?? "",
+    history,
+  };
 }

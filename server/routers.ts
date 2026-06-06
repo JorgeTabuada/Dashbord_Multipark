@@ -9,7 +9,7 @@ import { invokeLLM } from "./_core/llm";
 import { notifyOwner } from "./_core/notification";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
-import { getBookingHistory, getAgentHistory, getCheckoutDrivers, getBookingsReport, getBookingTryAllParks } from "./multipark";
+import { getBookingHistory, getBookingsReport, getBookingTryAllParks } from "./multipark";
 import {
   getExtrasDiaForecast,
   listAssignments,
@@ -2836,22 +2836,24 @@ export const appRouter = router({
         message: "A sincroniza\u00e7\u00e3o Gmail corre automaticamente 2x/dia (0h e 12h). Para for\u00e7ar manualmente, contacta o administrador.",
       };
     }),
-    // Checkout drivers ranking from Multipark API
+    // Checkout drivers ranking (DB local — alimentada pelo sync da API Multipark)
     checkoutDrivers: protectedProcedure.input(z.object({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ input }) => {
-      return getCheckoutDrivers(input.startDate, input.endDate);
+      const { getCheckoutDriversFromDb } = await import("./db");
+      return getCheckoutDriversFromDb(input.startDate, input.endDate);
     }),
 
-    // Agent performance history from Multipark API
+    // Agent performance history (DB local — alimentada pelo sync da API Multipark)
     agentHistory: protectedProcedure.input(z.object({
       startDate: z.string(),
       endDate: z.string(),
       agentName: z.string().optional(),
       userId: z.string().optional(),
     })).query(async ({ input }) => {
-      return getAgentHistory({
+      const { getAgentHistoryFromDb } = await import("./db");
+      return getAgentHistoryFromDb({
         startDate: input.startDate,
         endDate: input.endDate,
         agentName: input.agentName,
