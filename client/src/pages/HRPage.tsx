@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -17,7 +20,7 @@ import {
   Upload, Trash2, Eye, ChevronLeft, Camera, MapPin,
   Euro, Building2, Phone, Mail, CreditCard, Shield,
   CheckCircle2, XCircle, AlertTriangle, Image, FolderOpen, Plus, Pencil, Save, X,
-  Download, Wallet, Banknote, ChevronRight, ArrowUpDown
+  Download, Wallet, Banknote, ChevronRight, ArrowUpDown, MoreVertical
 } from "lucide-react";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
@@ -774,6 +777,10 @@ function SchedulesTab({ employeeId }: { employeeId: number }) {
     onSuccess: () => { utils.rh.schedules.list.invalidate({ employeeId }); toast.success("Horário guardado!"); },
     onError: (e) => toast.error(e.message),
   });
+  const deleteSchedule = trpc.rh.schedules.delete.useMutation({
+    onSuccess: () => { utils.rh.schedules.list.invalidate({ employeeId }); toast.success("Horário removido"); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -838,6 +845,16 @@ function SchedulesTab({ employeeId }: { employeeId: number }) {
             >
               Guardar
             </Button>
+            {schedules.some(s => s.weekday === idx) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => deleteSchedule.mutate({ employeeId, weekday: idx })}
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            )}
           </div>
         );
       })}
@@ -1721,36 +1738,113 @@ export default function HRPage() {
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
+  const employeesList = filtered.filter(({ employee: e }) => e.position !== "extra");
+  const extrasList = filtered.filter(({ employee: e }) => e.position === "extra");
+
+  const renderCard = ({ employee: emp }: { employee: any }) => (
+    <Card
+      key={emp.id}
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => setSelectedId(emp.id)}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <Avatar className="w-12 h-12">
+            <AvatarImage src={emp.photoUrl ?? undefined} />
+            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+              {emp.fullName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold truncate">{emp.fullName}</p>
+            <Badge className={`text-xs mt-1 ${POSITION_COLORS[emp.position as Position]}`}>
+              {POSITION_LABELS[emp.position as Position]}
+              {emp.position === "extra" && emp.extraLevel ? ` N${emp.extraLevel}` : ""}
+            </Badge>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportEmployeesCSV}>
-            <Download className="w-4 h-4 mr-2" /> Exportar Lista
-          </Button>
-          <Button variant="outline" onClick={() => setShowPayroll(true)}>
-            <Wallet className="w-4 h-4 mr-2" /> Ordenados
-          </Button>
-          <Button variant="outline" onClick={() => setShowRates(true)}>
-            <Euro className="w-4 h-4 mr-2" /> Taxas Extra
-          </Button>
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload className="w-4 h-4 mr-2" /> Importar Extras (CSV)
-          </Button>
-          <Button onClick={() => setShowCreate(true)}>
+        <div className="mt-3 space-y-1">
+          {emp.email && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+              <Mail className="w-3 h-3 shrink-0" /> <span className="truncate">{emp.email}</span>
+            </p>
+          )}
+          {emp.department && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Building2 className="w-3 h-3" /> {emp.department}
+            </p>
+          )}
+          {emp.monthlySalary && (
+            <p className="text-xs font-medium text-green-700 flex items-center gap-1">
+              <Euro className="w-3 h-3" /> {parseFloat(String(emp.monthlySalary)).toFixed(2)}€/mês
+            </p>
+          )}
+          {emp.userId ? (
+            <p className="text-xs text-blue-600 flex items-center gap-1">
+              <Shield className="w-3 h-3" /> Conta ativa
+            </p>
+          ) : (
+            <p className="text-xs text-orange-500 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> Sem conta
+            </p>
+          )}
+          {(() => {
+            const status = (docStatus as Record<number, { total: number; present: number; missing: string[] }>)[emp.id];
+            const missing = status ? status.total - status.present : 7;
+            if (missing === 0) return (
+              <p className="text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Docs completos
+              </p>
+            );
+            return (
+              <p className="text-xs text-orange-600 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> {missing} doc{missing > 1 ? "s" : ""} em falta
+              </p>
+            );
+          })()}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto w-full">
+      {/* Header com novo colaborador destacado + dropdown de ações */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowCreate(true)} size="sm">
             <UserPlus className="w-4 h-4 mr-2" /> Novo Colaborador
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={exportEmployeesCSV}>
+                <Download className="w-4 h-4 mr-2" /> Exportar lista (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowPayroll(true)}>
+                <Wallet className="w-4 h-4 mr-2" /> Folha de Ordenados
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowRates(true)}>
+                <Euro className="w-4 h-4 mr-2" /> Taxas Extra
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowImport(true)}>
+                <Upload className="w-4 h-4 mr-2" /> Importar Extras (CSV)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       <HRStatsBar />
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             className="pl-9"
@@ -1760,7 +1854,7 @@ export default function HRPage() {
           />
         </div>
         <Select value={filterPosition} onValueChange={setFilterPosition}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Todos os postos" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Todos os postos" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os postos</SelectItem>
             {(Object.entries(POSITION_LABELS) as [Position, string][]).map(([k, v]) => (
@@ -1769,7 +1863,7 @@ export default function HRPage() {
           </SelectContent>
         </Select>
         <Select value={filterAccount} onValueChange={setFilterAccount}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Conta" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Conta" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as contas</SelectItem>
             <SelectItem value="with">Com conta</SelectItem>
@@ -1778,7 +1872,7 @@ export default function HRPage() {
         </Select>
       </div>
 
-      {/* Employee grid */}
+      {/* Tabs Colaboradores / Extras */}
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">A carregar colaboradores...</div>
       ) : filtered.length === 0 ? (
@@ -1790,74 +1884,34 @@ export default function HRPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(({ employee: emp }) => (
-            <Card
-              key={emp.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => setSelectedId(emp.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Avatar className="w-12 h-12">
-                    <AvatarImage src={emp.photoUrl ?? undefined} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                      {emp.fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{emp.fullName}</p>
-                    <Badge className={`text-xs mt-1 ${POSITION_COLORS[emp.position as Position]}`}>
-                      {POSITION_LABELS[emp.position as Position]}
-                      {emp.position === "extra" && emp.extraLevel ? ` N${emp.extraLevel}` : ""}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="mt-3 space-y-1">
-                  {emp.email && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Mail className="w-3 h-3" /> {emp.email}
-                    </p>
-                  )}
-                  {emp.department && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Building2 className="w-3 h-3" /> {emp.department}
-                    </p>
-                  )}
-                  {emp.monthlySalary && (
-                    <p className="text-xs font-medium text-green-700 flex items-center gap-1">
-                      <Euro className="w-3 h-3" /> {parseFloat(String(emp.monthlySalary)).toFixed(2)}€/mês
-                    </p>
-                  )}
-                  {emp.userId ? (
-                    <p className="text-xs text-blue-600 flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> Conta ativa
-                    </p>
-                  ) : (
-                    <p className="text-xs text-orange-500 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Sem conta
-                    </p>
-                  )}
-                  {/* Doc status badge */}
-                  {(() => {
-                    const status = (docStatus as Record<number, { total: number; present: number; missing: string[] }>)[emp.id];
-                    const missing = status ? status.total - status.present : 7;
-                    if (missing === 0) return (
-                      <p className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Docs completos
-                      </p>
-                    );
-                    return (
-                      <p className="text-xs text-orange-600 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> {missing} doc{missing > 1 ? "s" : ""} em falta
-                      </p>
-                    );
-                  })()}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Tabs defaultValue="employees">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="employees">
+              Colaboradores <Badge variant="secondary" className="ml-2">{employeesList.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="extras">
+              Extras <Badge variant="secondary" className="ml-2">{extrasList.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="employees" className="mt-4">
+            {employeesList.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">Sem colaboradores nesta categoria</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {employeesList.map(renderCard)}
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="extras" className="mt-4">
+            {extrasList.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">Sem extras nesta categoria</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {extrasList.map(renderCard)}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
 
       <CreateEmployeeDialog open={showCreate} onClose={() => setShowCreate(false)} />

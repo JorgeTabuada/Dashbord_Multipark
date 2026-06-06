@@ -74,6 +74,7 @@ import {
   getAllEmployeesDocumentStatus,
   getEmployeeSchedules,
   upsertSchedule,
+  deleteSchedule,
   getTimeRecords,
   createTimeRecord,
   getMonthlyHours,
@@ -1453,6 +1454,14 @@ export const appRouter = router({
           await upsertSchedule({ ...input, isWorkDay: input.isWorkDay ? 1 : 0 });
           return { success: true };
         }),
+
+      delete: protectedProcedure
+        .input(z.object({ employeeId: z.number(), weekday: z.number().min(0).max(6) }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await deleteSchedule(input.employeeId, input.weekday);
+          return { success: true };
+        }),
     }),
 
     // ── TIME RECORDS ────────────────────────────────────────────────────────────────────────────────
@@ -1479,7 +1488,22 @@ export const appRouter = router({
           notes: z.string().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
-          requireRole(ctx.user.role, "admin");
+          // admin pode picar a qualquer um; outros só ao próprio
+          if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+            const me = await getEmployeeByUserId(ctx.user.id);
+            if (!me || me.employee.id !== input.employeeId) {
+              throw new TRPCError({ code: "FORBIDDEN", message: "Só podes picar o teu próprio ponto" });
+            }
+          }
+          // Bloqueia dois check-ins seguidos sem check-out
+          const recent = await getTimeRecords(input.employeeId);
+          const last = recent[0];
+          if (last && last.type === "check_in") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Já tens uma entrada em aberto. Faz check-out primeiro.",
+            });
+          }
           let photoUrl: string | null = null;
           let photoKey: string | null = null;
           if (input.photoBase64 && input.mimeType) {
@@ -1517,7 +1541,21 @@ export const appRouter = router({
           notes: z.string().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
-          requireRole(ctx.user.role, "admin");
+          if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+            const me = await getEmployeeByUserId(ctx.user.id);
+            if (!me || me.employee.id !== input.employeeId) {
+              throw new TRPCError({ code: "FORBIDDEN", message: "Só podes picar o teu próprio ponto" });
+            }
+          }
+          // Exige check-in aberto
+          const records = await getTimeRecords(input.employeeId);
+          const last = records[0];
+          if (!last || last.type !== "check_in") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Não tens entrada em aberto. Faz check-in primeiro.",
+            });
+          }
           let photoUrl: string | null = null;
           let photoKey: string | null = null;
           if (input.photoBase64 && input.mimeType) {
@@ -1529,14 +1567,8 @@ export const appRouter = router({
             photoUrl = result.url;
             photoKey = key;
           }
-          // Calculate hours since last check-in
-          const records = await getTimeRecords(input.employeeId);
-          const lastCheckIn = records.find(r => r.type === "check_in");
-          let hoursWorked: string | null = null;
-          if (lastCheckIn) {
-            const diff = (new Date().getTime() - new Date(lastCheckIn.recordedAt).getTime()) / 3600000;
-            hoursWorked = diff.toFixed(2);
-          }
+          const diff = (new Date().getTime() - new Date(last.recordedAt).getTime()) / 3600000;
+          const hoursWorked = diff.toFixed(2);
           await createTimeRecord({
             employeeId: input.employeeId,
             type: "check_out",
@@ -1556,7 +1588,12 @@ export const appRouter = router({
       monthlyHours: protectedProcedure
         .input(z.object({ employeeId: z.number(), year: z.number(), month: z.number() }))
         .query(async ({ ctx, input }) => {
-          requireRole(ctx.user.role, "admin");
+          if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+            const me = await getEmployeeByUserId(ctx.user.id);
+            if (!me || me.employee.id !== input.employeeId) {
+              throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+            }
+          }
           return getMonthlyHours(input.employeeId, input.year, input.month);
         }),
     }),

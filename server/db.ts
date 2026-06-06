@@ -663,6 +663,14 @@ export async function getEmployeeSchedules(employeeId: number) {
   return db.select().from(schedules).where(eq(schedules.employeeId, employeeId)).orderBy(schedules.weekday);
 }
 
+export async function deleteSchedule(employeeId: number, weekday: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .delete(schedules)
+    .where(and(eq(schedules.employeeId, employeeId), eq(schedules.weekday, weekday)));
+}
+
 export async function upsertSchedule(data: InsertSchedule) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
