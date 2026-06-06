@@ -207,13 +207,27 @@ async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promis
   try {
     const detailed = await getBooking(externalId, apiKey);
     const b: any = detailed;
-    await db.update(multiparkBookings).set({
+
+    // Cliente + veículo só são preenchidos se vierem (o report mascara estes
+    // campos para reservas de parceiros; o /bookings/:id devolve-os reais).
+    const update: Record<string, any> = {
       deliveryType: typeof b.deliveryType === "string" && b.deliveryType ? b.deliveryType : null,
       returnFlight: typeof b.returnFlight === "string" && b.returnFlight ? b.returnFlight : null,
       departingFlight: typeof b.departingFlight === "string" && b.departingFlight ? b.departingFlight : null,
       remarks: typeof b.remarks === "string" && b.remarks ? b.remarks.slice(0, 512) : null,
       enrichedAt: nowMysql(),
-    }).where(eq(multiparkBookings.externalId, externalId));
+    };
+    if (b.client?.firstName) update.clientFirstName = b.client.firstName;
+    if (b.client?.lastName) update.clientLastName = b.client.lastName;
+    if (b.client?.email) update.clientEmail = b.client.email;
+    if (b.client?.phoneNumber) update.clientPhone = b.client.phoneNumber;
+    if (b.vehicle?.licensePlate) update.licensePlate = b.vehicle.licensePlate;
+    if (b.vehicle?.brand) update.vehicleBrand = b.vehicle.brand;
+    if (b.vehicle?.model) update.vehicleModel = b.vehicle.model;
+    if (b.vehicle?.color) update.vehicleColor = b.vehicle.color;
+    if (b.vehicle?.vehicleType) update.vehicleType = b.vehicle.vehicleType;
+
+    await db.update(multiparkBookings).set(update).where(eq(multiparkBookings.externalId, externalId));
     return true;
   } catch {
     // API falhou (404, key errada, etc.) — marca como tentado para sair da fila.
