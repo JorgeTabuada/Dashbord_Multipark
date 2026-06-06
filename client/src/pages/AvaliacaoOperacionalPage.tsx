@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ClipboardList, Download, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { ClipboardList, Download, RefreshCw, ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react";
 
 const fmtHour = (h: number) => {
   if (h < 24) return `${String(h).padStart(2, "0")}h`;
@@ -17,6 +17,13 @@ function todayISO(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** "Gelson Manuel Leão Sousa" → "Gelson Sousa" */
+function deriveShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return fullName.trim();
+  return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
 export default function AvaliacaoOperacionalPage() {
@@ -62,7 +69,10 @@ export default function AvaliacaoOperacionalPage() {
       )}
 
       {assignments.length > 0 && (
-        <BulkActions date={date} agents={assignments.map(a => a.personName)} />
+        <BulkActions
+          date={date}
+          agents={assignments.map(a => a.multiparkAgentName || deriveShortName(a.personName))}
+        />
       )}
 
       <div className="grid gap-3">
@@ -118,26 +128,56 @@ function BulkActions({ date, agents }: { date: string; agents: string[] }) {
 }
 
 function AgentCard({ assignment, date }: { assignment: any; date: string }) {
+  const utils = trpc.useUtils();
   const [expanded, setExpanded] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editValue, setEditValue] = useState("");
+
+  const resolvedShortName: string =
+    assignment.multiparkAgentName || deriveShortName(assignment.personName);
+
   const fetchMut = trpc.multipark.fetchAgentHistory.useMutation();
+  const setMappingMut = trpc.multipark.setMultiparkAgentMapping.useMutation({
+    onSuccess: () => {
+      utils.extrasDia.assignments.invalidate();
+      toast.success("Nome guardado");
+      setEditingName(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const summaryQ = trpc.multipark.agentHistorySummary.useQuery(
-    { agentName: assignment.personName, date },
+    { agentName: resolvedShortName, date },
     { enabled: expanded },
   );
 
   const handleFetch = async () => {
     try {
       const r = await fetchMut.mutateAsync({
-        agentName: assignment.personName,
+        agentName: resolvedShortName,
         date,
       });
       toast.success(
-        `${assignment.personName}: ${r.totalEntries} entries em ${r.parks} parques`,
+        `${resolvedShortName}: ${r.totalEntries} entries em ${r.parks} parques`,
       );
       summaryQ.refetch();
     } catch (e: any) {
       toast.error(e.message ?? "Erro");
     }
+  };
+
+  const startEdit = () => {
+    setEditValue(resolvedShortName);
+    setEditingName(true);
+  };
+  const saveEdit = () => {
+    if (!assignment.employeeId) {
+      toast.error("Este extra não está associado a um empregado RH — não dá para guardar override.");
+      return;
+    }
+    setMappingMut.mutate({
+      employeeId: assignment.employeeId,
+      multiparkAgentName: editValue.trim() || null,
+    });
   };
 
   return (
@@ -173,6 +213,55 @@ function AgentCard({ assignment, date }: { assignment: any; date: string }) {
                 {" · "}{assignment.hoursBilled}h pagas
                 {" · "}€{assignment.cost.toFixed(2)}
               </p>
+              <div className="mt-1 flex items-center gap-1 text-xs">
+                <span className="text-muted-foreground">API:</span>
+                {editingName ? (
+                  <>
+                    <Input
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="h-6 text-xs w-40"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={saveEdit}
+                      disabled={setMappingMut.isPending}
+                    >
+                      <Check className="h-3 w-3 text-emerald-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setEditingName(false)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-mono">{resolvedShortName}</span>
+                    {assignment.multiparkAgentName ? (
+                      <Badge variant="outline" className="text-[9px]">manual</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px] text-muted-foreground">auto</Badge>
+                    )}
+                    {assignment.employeeId && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-5 w-5 p-0"
+                        onClick={startEdit}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <Button size="sm" variant="outline" onClick={handleFetch} disabled={fetchMut.isPending}>

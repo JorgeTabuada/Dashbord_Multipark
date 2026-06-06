@@ -365,6 +365,19 @@ export interface Assignment {
   notes: string | null;
   hoursBilled: number;
   cost: number;
+  // Mapeamento Multipark (preenchido se employeeId está associado a empregado RH)
+  multiparkAgentName: string | null;
+  multiparkAgentUserId: string | null;
+}
+
+/**
+ * Derive "primeiro + último nome" de um nome completo. A API Multipark
+ * agent/history usa este formato. Pode ser sobrescrito por mapping manual.
+ */
+export function deriveShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return fullName.trim();
+  return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
 function computeAssignmentCost(row: {
@@ -388,6 +401,8 @@ function computeAssignmentCost(row: {
 function rowToAssignment(
   r: typeof extrasDiaAssignments.$inferSelect,
   tlDailyCost?: number,
+  multiparkAgentName?: string | null,
+  multiparkAgentUserId?: string | null,
 ): Assignment {
   const isTL = r.isTeamLeader === 1;
   const level = (r.level as DriverLevelId | null) ?? null;
@@ -411,6 +426,8 @@ function rowToAssignment(
     endHour: r.endHour,
     sentHomeHour: r.sentHomeHour,
     notes: r.notes,
+    multiparkAgentName: multiparkAgentName ?? null,
+    multiparkAgentUserId: multiparkAgentUserId ?? null,
     ...computed,
   };
 }
@@ -439,6 +456,26 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
     .where(eq(extrasDiaAssignments.assignmentDate, date))
     .orderBy(asc(extrasDiaAssignments.startHour));
 
+  // Pre-fetch dos empregados associados (mapeamento Multipark)
+  const empIds = Array.from(new Set(rows.map(r => r.employeeId).filter((x): x is number => x !== null)));
+  const empMap = new Map<number, { multiparkAgentName: string | null; multiparkAgentUserId: string | null }>();
+  if (empIds.length > 0) {
+    const empRows = await db
+      .select({
+        id: employees.id,
+        multiparkAgentName: employees.multiparkAgentName,
+        multiparkAgentUserId: employees.multiparkAgentUserId,
+      })
+      .from(employees)
+      .where(sql`${employees.id} IN (${sql.raw(empIds.join(","))})`);
+    for (const e of empRows) {
+      empMap.set(e.id, {
+        multiparkAgentName: e.multiparkAgentName,
+        multiparkAgentUserId: e.multiparkAgentUserId,
+      });
+    }
+  }
+
   // Resolve TL daily cost for each TL row (employees.monthlySalary / 15)
   const result: Assignment[] = [];
   for (const r of rows) {
@@ -446,7 +483,8 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
     if (r.isTeamLeader === 1) {
       tlCost = await getEmployeeDailyCost(r.employeeId);
     }
-    result.push(rowToAssignment(r, tlCost));
+    const map = r.employeeId ? empMap.get(r.employeeId) : undefined;
+    result.push(rowToAssignment(r, tlCost, map?.multiparkAgentName, map?.multiparkAgentUserId));
   }
   return result;
 }

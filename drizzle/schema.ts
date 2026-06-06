@@ -210,6 +210,8 @@ export const employees = mysqlTable("employees", {
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 	mealAllowancePerDay: decimal({ precision: 6, scale: 2 }),
+	multiparkAgentName: varchar({ length: 256 }),
+	multiparkAgentUserId: varchar({ length: 128 }),
 });
 
 export const expenseCategories = mysqlTable("expense_categories", {

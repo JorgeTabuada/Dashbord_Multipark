@@ -3950,6 +3950,26 @@ export const appRouter = router({
         return fetchAgentHistoryByName(input.agentName, input.date);
       }),
 
+    // Set multipark mapping para um empregado (nome curto + userId)
+    setMultiparkAgentMapping: protectedProcedure
+      .input(z.object({
+        employeeId: z.number(),
+        multiparkAgentName: z.string().max(256).nullable().optional(),
+        multiparkAgentUserId: z.string().max(128).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const db = await getDb(); if (!db) return { success: false };
+        const { employees } = await import("../drizzle/schema");
+        const { eq: deq } = await import("drizzle-orm");
+        const patch: any = {};
+        if (input.multiparkAgentName !== undefined) patch.multiparkAgentName = input.multiparkAgentName;
+        if (input.multiparkAgentUserId !== undefined) patch.multiparkAgentUserId = input.multiparkAgentUserId;
+        await db.update(employees).set(patch).where(deq(employees.id, input.employeeId));
+        return { success: true };
+      }),
+
     // Lista summary do que está guardado em multipark_booking_history para
     // um agente num dia (após fetchAgentHistory).
     agentHistorySummary: protectedProcedure
