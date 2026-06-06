@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Shield,
@@ -90,26 +90,7 @@ function KanbanView({ user, filterType, setFilterType, onSelect, onNew }: any) {
   const { data: complaints = [], isLoading } = trpc.complaints.list.useQuery(complaintsQueryInput);
   const { data: stats } = trpc.complaints.stats.useQuery();
   const updateMut = trpc.complaints.update.useMutation();
-  const importMut = trpc.lostFound.importBookingHistory.useMutation();
-  const fileRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      try {
-        const result = await importMut.mutateAsync({ fileBase64: base64, filename: file.name });
-        toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
-      } catch (err: any) {
-        toast.error(`Erro: ${err.message}`);
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
 
   const grouped = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -137,11 +118,6 @@ function KanbanView({ user, filterType, setFilterType, onSelect, onNew }: any) {
           <p className="text-muted-foreground">Gestão de tickets e reclamações de clientes</p>
         </div>
         <div className="flex gap-2">
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importMut.isPending}>
-            <Upload className="w-4 h-4 mr-2" />
-            {importMut.isPending ? "A importar..." : "Importar Histórico"}
-          </Button>
           <Button onClick={onNew}><Plus className="w-4 h-4 mr-2" /> Nova Reclamação</Button>
         </div>
       </div>
