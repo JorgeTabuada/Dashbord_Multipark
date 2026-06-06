@@ -3634,6 +3634,18 @@ export const appRouter = router({
         return getPartnerInvoicingSummary(input);
       }),
 
+    // Detalhe por tipo de parceiro — com colunas específicas do chargeModel
+    invoicingDetailByType: protectedProcedure
+      .input(z.object({
+        from: z.string(),
+        to: z.string(),
+        partnerType: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { getPartnerInvoicingDetailByType } = await import("./db");
+        return getPartnerInvoicingDetailByType(input);
+      }),
+
     deleteAlias: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {

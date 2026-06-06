@@ -17,8 +17,8 @@ import {
   Handshake, Euro, Building2, Crown, ArrowRightLeft,
   Plus, Pencil, Trash2, FileText, Settings, Link2, AlertTriangle, Wallet,
 } from "lucide-react";
-import { Link } from "wouter";
-import { PARTNER_TYPES, getPartnerType } from "@shared/partnerTypes";
+import { Link, useLocation } from "wouter";
+import { PARTNER_TYPES, getPartnerType, parsePartnerConfig, serializePartnerConfig } from "@shared/partnerTypes";
 
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(v);
 
@@ -34,10 +34,16 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
   const create = trpc.partnerships.create.useMutation({ onSuccess: () => { utils.partnerships.list.invalidate(); onClose(); } });
   const update = trpc.partnerships.update.useMutation({ onSuccess: () => { utils.partnerships.list.invalidate(); onClose(); } });
 
+  const initialCfg = useMemo(() => parsePartnerConfig(partner?.notes), [partner?.notes]);
+  const initialPlainNotes = useMemo(() => {
+    if (!partner?.notes) return "";
+    return partner.notes.trim().startsWith("{") ? "" : partner.notes;
+  }, [partner?.notes]);
+
   const [form, setForm] = useState({
     name: partner?.name ?? "",
     campaignKey: partner?.campaignKey ?? "",
-    partnerType: partner?.partnerType ?? "other",
+    partnerType: partner?.partnerType ?? "outro",
     contactName: partner?.contactName ?? "",
     contactEmail: partner?.contactEmail ?? "",
     contactPhone: partner?.contactPhone ?? "",
@@ -45,13 +51,42 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
     monthlyFee: partner?.monthlyFee ?? 0,
     nif: partner?.partnerNif ?? "",
     billingAgreement: partner?.billingAgreement ?? "",
-    notes: partner?.notes ?? "",
+    notes: initialPlainNotes,
+    operatesProjects: (initialCfg.operatesProjects ?? []) as number[],
+    cashbackPercent: initialCfg.cashbackPercent ?? 0,
+    prizeBudget: initialCfg.prizeBudget ?? 0,
   });
+
+  // Projetos para multi-select (operacional)
+  const { data: allProjects = [] } = trpc.projects.list.useQuery();
 
   const set = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
 
+  const isOperational = form.partnerType === "operacional";
+  const isOwnCampaign = form.partnerType === "campanha_propria";
+
+  const toggleProject = (id: number) => {
+    const has = form.operatesProjects.includes(id);
+    set("operatesProjects", has ? form.operatesProjects.filter((x) => x !== id) : [...form.operatesProjects, id]);
+  };
+
   const save = () => {
-    const payload = { ...form, commissionRate: Number(form.commissionRate), monthlyFee: Number(form.monthlyFee) };
+    const cfg = {
+      operatesProjects: isOperational ? form.operatesProjects : undefined,
+      cashbackPercent: isOwnCampaign ? Number(form.cashbackPercent) || undefined : undefined,
+      prizeBudget: isOwnCampaign ? Number(form.prizeBudget) || undefined : undefined,
+    };
+    const serializedNotes = serializePartnerConfig(cfg, form.notes ?? "");
+    const payload = {
+      ...form,
+      commissionRate: Number(form.commissionRate),
+      monthlyFee: Number(form.monthlyFee),
+      notes: serializedNotes,
+    };
+    // não enviar campos auxiliares
+    delete (payload as any).operatesProjects;
+    delete (payload as any).cashbackPercent;
+    delete (payload as any).prizeBudget;
     if (partner) {
       update.mutate({ id: partner.id, ...payload });
     } else {
@@ -137,6 +172,60 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
             <Label className="text-xs">Notas</Label>
             <Input value={form.notes} onChange={e => set("notes", e.target.value)} />
           </div>
+
+          {/* Operacional: lista de projetos operados */}
+          {isOperational && (
+            <div className="col-span-2 border rounded p-3 bg-amber-50/40 dark:bg-amber-950/20">
+              <Label className="text-xs font-medium block mb-1">Projetos operados</Label>
+              <p className="text-[10px] text-muted-foreground mb-2">
+                Selecciona os projetos onde este parceiro opera. A comissão será aplicada sobre
+                TODAS as reservas destes projetos (incl. sub-projetos), independentemente do campaign.
+                Permite dupla comissão (venda + operacional) na mesma reserva.
+              </p>
+              <div className="max-h-40 overflow-y-auto border rounded bg-white dark:bg-gray-900">
+                {(allProjects as any[]).map((p: any) => (
+                  <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.operatesProjects.includes(p.id)}
+                      onChange={() => toggleProject(p.id)}
+                    />
+                    <span className="text-xs">
+                      <Badge variant="outline" className="text-[9px] mr-1 capitalize">{p.level}</Badge>
+                      {p.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {form.operatesProjects.length} {form.operatesProjects.length === 1 ? "projeto seleccionado" : "projetos seleccionados"}
+              </p>
+            </div>
+          )}
+
+          {/* Campanha própria: cashback + prémios */}
+          {isOwnCampaign && (
+            <>
+              <div>
+                <Label className="text-xs">Cashback (%)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.cashbackPercent}
+                  onChange={e => set("cashbackPercent", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Prémios (€)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.prizeBudget}
+                  onChange={e => set("prizeBudget", e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -665,6 +754,7 @@ function InvoicingSummaryTab({
 }: {
   from: string; to: string; onChangeFrom: (v: string) => void; onChangeTo: (v: string) => void;
 }) {
+  const [, setLocation] = useLocation();
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const { data: rows = [], isLoading } = trpc.partnerships.invoicingSummary.useQuery({
@@ -767,7 +857,12 @@ function InvoicingSummaryTab({
                   {rows.map((r) => {
                     const t = getPartnerType(r.partnerType);
                     return (
-                      <tr key={r.partnershipId} className={`border-b hover:bg-muted/50 ${r.emAtraso > 0 ? "bg-red-50/40" : ""}`}>
+                      <tr
+                        key={r.partnershipId}
+                        className={`border-b hover:bg-muted/50 cursor-pointer ${r.emAtraso > 0 ? "bg-red-50/40" : ""}`}
+                        onClick={() => setLocation(`/parcerias/tipo/${t.id}`)}
+                        title={`Abrir ${t.label}`}
+                      >
                         <td className="p-2 font-medium">{r.partnerName}</td>
                         <td className="p-2">
                           <Badge variant="outline" className="text-[10px]">{t.label}</Badge>

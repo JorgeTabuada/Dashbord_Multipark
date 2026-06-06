@@ -3296,7 +3296,8 @@ export async function getPartnerInvoicingSummary(filters: {
   const monthFraction = periodDays / 30;
   const yearFraction = periodDays / 365;
 
-  // 1) Parcerias (com filtro opcional de tipo)
+  // 1) Parcerias (com filtro opcional de tipo). Inclui notes para extrair
+  //    config JSON (operatesProjects, cashbackPercent, prizeBudget).
   const partnerRows = await db
     .select({
       id: partnerships.id,
@@ -3304,11 +3305,14 @@ export async function getPartnerInvoicingSummary(filters: {
       partnerType: partnerships.partnerType,
       commissionRate: partnerships.commissionRate,
       monthlyFee: partnerships.monthlyFee,
+      notes: partnerships.notes,
     })
     .from(partnerships)
     .where(filters.partnerType ? eq(partnerships.partnerType, filters.partnerType) : undefined);
 
   if (partnerRows.length === 0) return [];
+
+  const { parsePartnerConfig } = await import("../shared/partnerTypes");
 
   // 2) Aliases para fazer match — mesmo padrão de getBillingData
   const aliasRows = await db.select({
@@ -3391,10 +3395,85 @@ export async function getPartnerInvoicingSummary(filters: {
     invByPartner.set(r.partnershipId, ex);
   }
 
+  // 6b) Para parceiros tipo "operacional" com operatesProjects definidos,
+  //     a comissão é calculada sobre TODAS as reservas dos projetos operados
+  //     (com checkout no período, não canceladas), expandindo a hierarquia
+  //     para cobrir filhos. Independente do campo `campaign`, o que permite
+  //     que uma mesma reserva acumule comissão de venda (via campaign) e
+  //     comissão operacional (via operatesProjects).
+  const operationalPartners = partnerRows
+    .filter((p) => (p.partnerType ?? "outro") === "operacional")
+    .map((p) => ({ p, cfg: parsePartnerConfig(p.notes ?? null) }))
+    .filter(({ cfg }) => Array.isArray(cfg.operatesProjects) && cfg.operatesProjects!.length > 0);
+
+  const operationalRevenueByPartner = new Map<number, { count: number; revenue: number }>();
+
+  if (operationalPartners.length > 0) {
+    // Reúne todos os projectIds (com hierarquia) que algum parceiro operacional cobre.
+    const allOperatedRaw = new Set<number>();
+    for (const { cfg } of operationalPartners) {
+      for (const pid of cfg.operatesProjects ?? []) allOperatedRaw.add(pid);
+    }
+    // Expande a hierarquia: o utilizador pode ter posto a Cidade Porto e
+    // espera que apanhe as marcas e parques abaixo.
+    const expanded = new Set<number>();
+    for (const root of allOperatedRaw) {
+      const ids = await resolveProjectIds(root);
+      for (const pid of ids) expanded.add(pid);
+    }
+
+    if (expanded.size > 0) {
+      const opBookings = await db
+        .select({
+          projectId: multiparkBookings.projectId,
+          count: sql<number>`COUNT(*)`,
+          revenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+        })
+        .from(multiparkBookings)
+        .where(
+          and(
+            isNotNull(multiparkBookings.checkOut),
+            isNull(multiparkBookings.cancelledAt),
+            gte(multiparkBookings.checkOut, fromStr),
+            lte(multiparkBookings.checkOut, toStr),
+            inArray(multiparkBookings.projectId, Array.from(expanded)),
+          ),
+        )
+        .groupBy(multiparkBookings.projectId);
+
+      const revenueByProject = new Map<number, { count: number; revenue: number }>();
+      for (const r of opBookings) {
+        if (r.projectId == null) continue;
+        revenueByProject.set(r.projectId, {
+          count: Number(r.count ?? 0),
+          revenue: Number(r.revenue ?? 0),
+        });
+      }
+
+      // Atribui a cada parceiro operacional a soma das reservas dos projetos
+      // que ele opera (expandidos).
+      for (const { p, cfg } of operationalPartners) {
+        let count = 0;
+        let revenue = 0;
+        const cover = new Set<number>();
+        for (const root of cfg.operatesProjects ?? []) {
+          const ids = await resolveProjectIds(root);
+          for (const pid of ids) cover.add(pid);
+        }
+        for (const pid of cover) {
+          const r = revenueByProject.get(pid);
+          if (r) { count += r.count; revenue += r.revenue; }
+        }
+        operationalRevenueByPartner.set(p.id, { count, revenue });
+      }
+    }
+  }
+
   // 7) Constrói resultado
   return partnerRows.map((p) => {
     const bk = bookingsByPartner.get(p.id) ?? { count: 0, revenue: 0 };
     const inv = invByPartner.get(p.id) ?? { faturado: 0, emAtraso: 0, emAtrasoCount: 0 };
+    const opRev = operationalRevenueByPartner.get(p.id);
 
     const commissionRate = Number(p.commissionRate ?? 0);
     const monthlyFee = Number(p.monthlyFee ?? 0);
@@ -3402,22 +3481,34 @@ export async function getPartnerInvoicingSummary(filters: {
 
     // Cálculo a faturar conforme tipo
     let aFaturar = 0;
+    let displayBookingsCount = bk.count;
+    let displayRevenue = bk.revenue;
+
     if (partnerType === "avenca_mensal") {
       aFaturar = monthlyFee * monthFraction;
     } else if (partnerType === "avenca_anual") {
-      // Assume monthlyFee guarda o valor anual quando o tipo é anual.
       aFaturar = monthlyFee * yearFraction;
+    } else if (partnerType === "operacional") {
+      // Usa o cálculo via operatesProjects se configurado; senão usa o
+      // campaign match (fallback). É legítimo um operacional ter ambos.
+      const revenue = opRev?.revenue ?? bk.revenue;
+      displayRevenue = revenue;
+      displayBookingsCount = opRev?.count ?? bk.count;
+      aFaturar = (revenue * commissionRate) / 100;
     } else if (
       partnerType === "agregador" ||
       partnerType === "agencia_viagem" ||
       partnerType === "hotel" ||
       partnerType === "companhia_aerea" ||
-      partnerType === "afiliado" ||
-      partnerType === "operacional"
+      partnerType === "afiliado"
     ) {
       aFaturar = (bk.revenue * commissionRate) / 100;
+    } else if (partnerType === "cliente_pro") {
+      // Cliente Pro: faturado no fim do mês com base nas reservas que ele
+      // gerou. A receita já tem desconto aplicado.
+      aFaturar = bk.revenue;
     }
-    // enterprise, campanha_propria, cliente_pro, outro → 0 por defeito.
+    // enterprise / campanha_propria / outro → não há a faturar automático
 
     const pendente = Math.max(0, aFaturar - inv.faturado);
 
@@ -3427,8 +3518,8 @@ export async function getPartnerInvoicingSummary(filters: {
       partnerType,
       commissionRate,
       monthlyFee,
-      bookingsCount: bk.count,
-      revenueGross: bk.revenue,
+      bookingsCount: displayBookingsCount,
+      revenueGross: displayRevenue,
       aFaturar,
       faturado: inv.faturado,
       emAtraso: inv.emAtraso,
@@ -3437,6 +3528,207 @@ export async function getPartnerInvoicingSummary(filters: {
     };
   })
     .sort((a, b) => b.aFaturar - a.aFaturar);
+}
+
+/**
+ * Detalhe de faturação por tipo de parceiro. Para cada parceiro desse tipo
+ * devolve campos próprios do chargeModel:
+ *  - commission_on_revenue / small_commission: revenue + commission
+ *  - monthly_fee / yearly_fee: monthlyFee (escalar)
+ *  - prepaid_with_discount: revenue + desconto agregado
+ *  - monthly_invoice_discount (Pro): revenue (a faturar no fim do mês)
+ *  - own_campaign: desconto + cashback + prémios (custo)
+ *  - operational: revenue via operatesProjects + commission
+ */
+export async function getPartnerInvoicingDetailByType(filters: {
+  from: string;
+  to: string;
+  partnerType: string;
+}): Promise<{
+  partnerType: string;
+  partners: Array<{
+    partnershipId: number;
+    partnerName: string;
+    commissionRate: number;
+    monthlyFee: number;
+    bookingsCount: number;
+    revenueGross: number;
+    discountTotal: number;
+    extrasTotal: number;
+    cashbackPercent: number;
+    cashbackAmount: number;
+    prizeBudget: number;
+    operatesProjectsCount: number;
+    aFaturar: number;
+    notes: string | null;
+  }>;
+}> {
+  const db = await getDb();
+  if (!db) return { partnerType: filters.partnerType, partners: [] };
+
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(new Date(filters.to + "T23:59:59"));
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const periodDays = Math.max(
+    1,
+    Math.floor((new Date(filters.to).getTime() - new Date(filters.from).getTime()) / msPerDay) + 1,
+  );
+  const monthFraction = periodDays / 30;
+  const yearFraction = periodDays / 365;
+
+  const { parsePartnerConfig } = await import("../shared/partnerTypes");
+
+  const partnerRows = await db
+    .select({
+      id: partnerships.id,
+      name: partnerships.name,
+      partnerType: partnerships.partnerType,
+      commissionRate: partnerships.commissionRate,
+      monthlyFee: partnerships.monthlyFee,
+      notes: partnerships.notes,
+    })
+    .from(partnerships)
+    .where(eq(partnerships.partnerType, filters.partnerType));
+
+  if (partnerRows.length === 0) return { partnerType: filters.partnerType, partners: [] };
+
+  // Aliases para o match de campaign
+  const aliasRows = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasValue: partnerAliases.aliasValue,
+  }).from(partnerAliases);
+
+  const keyToPartner = new Map<string, number>();
+  function reg(k: string | null | undefined, pid: number) {
+    if (!k) return; const x = k.trim().toLowerCase();
+    if (x && !keyToPartner.has(x)) keyToPartner.set(x, pid);
+  }
+  for (const p of partnerRows) reg(p.name, p.id);
+  for (const a of aliasRows) reg(a.aliasValue, a.partnershipId);
+
+  // Bookings agrupados por campaign (campanha → parceiro)
+  const bookingRows = await db
+    .select({
+      campaign: multiparkBookings.campaign,
+      projectId: multiparkBookings.projectId,
+      count: sql<number>`COUNT(*)`,
+      revenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+      discount: sql<number>`COALESCE(SUM(${multiparkBookings.discount}), 0)`,
+      extras: sql<number>`COALESCE(SUM(${multiparkBookings.extrasTotal}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(
+      and(
+        isNotNull(multiparkBookings.campaign),
+        isNotNull(multiparkBookings.checkOut),
+        isNull(multiparkBookings.cancelledAt),
+        gte(multiparkBookings.checkOut, fromStr),
+        lte(multiparkBookings.checkOut, toStr),
+      ),
+    )
+    .groupBy(multiparkBookings.campaign, multiparkBookings.projectId);
+
+  const byPartner = new Map<number, { count: number; revenue: number; discount: number; extras: number }>();
+  for (const b of bookingRows) {
+    const k = (b.campaign ?? "").trim().toLowerCase();
+    const pid = keyToPartner.get(k);
+    if (!pid) continue;
+    const ex = byPartner.get(pid) ?? { count: 0, revenue: 0, discount: 0, extras: 0 };
+    ex.count += Number(b.count ?? 0);
+    ex.revenue += Number(b.revenue ?? 0);
+    ex.discount += Number(b.discount ?? 0);
+    ex.extras += Number(b.extras ?? 0);
+    byPartner.set(pid, ex);
+  }
+
+  // Para operacional: agregação via projetos operados
+  const operationalRevenueByPartner = new Map<number, { count: number; revenue: number }>();
+  if (filters.partnerType === "operacional") {
+    for (const p of partnerRows) {
+      const cfg = parsePartnerConfig(p.notes ?? null);
+      const operatedRoots = cfg.operatesProjects ?? [];
+      if (operatedRoots.length === 0) continue;
+      const expanded = new Set<number>();
+      for (const root of operatedRoots) {
+        const ids = await resolveProjectIds(root);
+        for (const pid of ids) expanded.add(pid);
+      }
+      if (expanded.size === 0) continue;
+      const rows = await db
+        .select({
+          count: sql<number>`COUNT(*)`,
+          revenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+        })
+        .from(multiparkBookings)
+        .where(
+          and(
+            isNotNull(multiparkBookings.checkOut),
+            isNull(multiparkBookings.cancelledAt),
+            gte(multiparkBookings.checkOut, fromStr),
+            lte(multiparkBookings.checkOut, toStr),
+            inArray(multiparkBookings.projectId, Array.from(expanded)),
+          ),
+        );
+      operationalRevenueByPartner.set(p.id, {
+        count: Number(rows[0]?.count ?? 0),
+        revenue: Number(rows[0]?.revenue ?? 0),
+      });
+    }
+  }
+
+  const partners = partnerRows.map((p) => {
+    const cfg = parsePartnerConfig(p.notes ?? null);
+    const cashbackPercent = Number(cfg.cashbackPercent ?? 0);
+    const prizeBudget = Number(cfg.prizeBudget ?? 0);
+    const commissionRate = Number(p.commissionRate ?? 0);
+    const monthlyFee = Number(p.monthlyFee ?? 0);
+    const bk = byPartner.get(p.id) ?? { count: 0, revenue: 0, discount: 0, extras: 0 };
+    const opRev = operationalRevenueByPartner.get(p.id);
+
+    let bookingsCount = bk.count;
+    let revenueGross = bk.revenue;
+    let aFaturar = 0;
+    const cashbackAmount = (bk.revenue * cashbackPercent) / 100;
+
+    if (filters.partnerType === "operacional" && opRev) {
+      bookingsCount = opRev.count;
+      revenueGross = opRev.revenue;
+      aFaturar = (opRev.revenue * commissionRate) / 100;
+    } else if (filters.partnerType === "avenca_mensal") {
+      aFaturar = monthlyFee * monthFraction;
+    } else if (filters.partnerType === "avenca_anual") {
+      aFaturar = monthlyFee * yearFraction;
+    } else if (
+      filters.partnerType === "agregador" ||
+      filters.partnerType === "agencia_viagem" ||
+      filters.partnerType === "hotel" ||
+      filters.partnerType === "companhia_aerea" ||
+      filters.partnerType === "afiliado"
+    ) {
+      aFaturar = (bk.revenue * commissionRate) / 100;
+    } else if (filters.partnerType === "cliente_pro") {
+      aFaturar = bk.revenue;
+    }
+
+    return {
+      partnershipId: p.id,
+      partnerName: p.name,
+      commissionRate,
+      monthlyFee,
+      bookingsCount,
+      revenueGross,
+      discountTotal: bk.discount,
+      extrasTotal: bk.extras,
+      cashbackPercent,
+      cashbackAmount,
+      prizeBudget,
+      operatesProjectsCount: (cfg.operatesProjects ?? []).length,
+      aFaturar,
+      notes: p.notes ?? null,
+    };
+  }).sort((a, b) => b.aFaturar - a.aFaturar);
+
+  return { partnerType: filters.partnerType, partners };
 }
 
 export async function listPartnerAliases(partnershipId: number) {

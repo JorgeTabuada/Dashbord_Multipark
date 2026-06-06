@@ -132,3 +132,51 @@ export function getPartnerType(id: string | null | undefined): PartnerTypeDef {
   if (!id) return PARTNER_TYPE_BY_ID["outro"];
   return PARTNER_TYPE_BY_ID[id] ?? PARTNER_TYPE_BY_ID["outro"];
 }
+
+/**
+ * Configuração extra que vive em partnership.notes como JSON.
+ *   - operatesProjects: lista de projectIds que este parceiro opera (só
+ *     usado para tipo "operacional"; ex.: Top Parking opera as marcas Porto).
+ *     A comissão é aplicada sobre TODAS as reservas dos projetos da lista,
+ *     independentemente do campaign — permite dupla comissão (venda +
+ *     operacional na mesma reserva).
+ *   - cashbackPercent: % de cashback dado em campanhas próprias.
+ *   - prizeBudget: orçamento de prémios em campanhas próprias (€).
+ *
+ * Para back-compat, se o notes não for JSON válido, ignora-se e devolve
+ * objecto vazio.
+ */
+export type PartnerExtraConfig = {
+  operatesProjects?: number[];
+  cashbackPercent?: number;
+  prizeBudget?: number;
+};
+
+export function parsePartnerConfig(notes: string | null | undefined): PartnerExtraConfig {
+  if (!notes) return {};
+  const trimmed = notes.trim();
+  if (!trimmed.startsWith("{")) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed as PartnerExtraConfig;
+  } catch {
+    return {};
+  }
+}
+
+export function serializePartnerConfig(cfg: PartnerExtraConfig, plainNotes: string = ""): string {
+  const clean: PartnerExtraConfig = {};
+  if (Array.isArray(cfg.operatesProjects) && cfg.operatesProjects.length > 0) {
+    clean.operatesProjects = cfg.operatesProjects.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+  }
+  if (typeof cfg.cashbackPercent === "number" && Number.isFinite(cfg.cashbackPercent)) {
+    clean.cashbackPercent = cfg.cashbackPercent;
+  }
+  if (typeof cfg.prizeBudget === "number" && Number.isFinite(cfg.prizeBudget)) {
+    clean.prizeBudget = cfg.prizeBudget;
+  }
+  // Se config vazio e há plain notes → devolve o plain
+  if (Object.keys(clean).length === 0) return plainNotes;
+  return JSON.stringify(clean);
+}
