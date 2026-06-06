@@ -15,8 +15,9 @@ import {
 import { useState, useMemo } from "react";
 import {
   Handshake, Euro, Building2, Crown, ArrowRightLeft,
-  Plus, Pencil, Trash2, FileText, Settings,
+  Plus, Pencil, Trash2, FileText, Settings, Link2,
 } from "lucide-react";
+import { Link } from "wouter";
 
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(v);
 
@@ -429,9 +430,16 @@ export default function PartnershipsPage() {
         <TabsContent value="management" className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Configurar parceiros: campaign key, comissão, NIF e dados de contacto</p>
-            <Button size="sm" onClick={() => { setEditPartner(null); setDialogOpen(true); }}>
-              <Plus className="w-4 h-4 mr-1" /> Novo Parceiro
-            </Button>
+            <div className="flex gap-2">
+              <Link href="/parcerias/inferir">
+                <Button size="sm" variant="outline">
+                  <Link2 className="w-4 h-4 mr-1" /> Inferir da API
+                </Button>
+              </Link>
+              <Button size="sm" onClick={() => { setEditPartner(null); setDialogOpen(true); }}>
+                <Plus className="w-4 h-4 mr-1" /> Novo Parceiro
+              </Button>
+            </div>
           </div>
 
           {partnerList.length === 0 ? (
