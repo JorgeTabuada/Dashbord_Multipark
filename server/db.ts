@@ -2472,9 +2472,13 @@ export async function getBillingData(filters: {
     .where(and(...deliveryConds, isNotNull(multiparkBookings.campaign)))
     .groupBy(multiparkBookings.campaign, multiparkBookings.projectId, projects.name);
 
-  // Carrega partnerships com campaignKey. Se houver duplicados, escolhe o
-  // mais recentemente actualizado.
-  const partnershipsWithCampaign = await db
+  // Carrega TODAS as partnerships e os aliases associados. Cada parceiro
+  // tem geralmente vários códigos — um por (cidade × marca) — e tudo está em
+  // partner_aliases. Construímos um único map que aponta de qualquer chave
+  // possível (campaignKey, nome do parceiro, partnerId/paymentMethod alias)
+  // para a partnership, para que o match seja robusto independentemente
+  // do que ficou gravado em multipark_bookings.campaign.
+  const allPartners = await db
     .select({
       id: partnerships.id,
       name: partnerships.name,
@@ -2482,22 +2486,46 @@ export async function getBillingData(filters: {
       commissionRate: partnerships.commissionRate,
       updatedAt: partnerships.updatedAt,
     })
-    .from(partnerships)
-    .where(isNotNull(partnerships.campaignKey));
+    .from(partnerships);
 
-  const partnerByCampaign = new Map<string, { id: number; name: string; commissionRate: number; updatedAt: string }>();
-  for (const p of partnershipsWithCampaign) {
-    const key = (p.campaignKey ?? "").trim().toLowerCase();
-    if (!key) continue;
+  const allAliases = await db
+    .select({
+      partnershipId: partnerAliases.partnershipId,
+      aliasValue: partnerAliases.aliasValue,
+    })
+    .from(partnerAliases);
+
+  type PartnerSummary = { id: number; name: string; commissionRate: number; updatedAt: string };
+  const partnersById = new Map<number, PartnerSummary>();
+  for (const p of allPartners) {
+    partnersById.set(p.id, {
+      id: p.id,
+      name: p.name,
+      commissionRate: Number(p.commissionRate ?? 0),
+      updatedAt: p.updatedAt ?? "",
+    });
+  }
+
+  const partnerByCampaign = new Map<string, PartnerSummary>();
+  function registerKey(rawKey: string | null, partnerId: number) {
+    if (!rawKey) return;
+    const key = rawKey.trim().toLowerCase();
+    if (!key) return;
+    const partner = partnersById.get(partnerId);
+    if (!partner) return;
     const existing = partnerByCampaign.get(key);
-    if (!existing || (p.updatedAt ?? "") > (existing.updatedAt ?? "")) {
-      partnerByCampaign.set(key, {
-        id: p.id,
-        name: p.name,
-        commissionRate: Number(p.commissionRate ?? 0),
-        updatedAt: p.updatedAt ?? "",
-      });
+    if (!existing || partner.updatedAt > existing.updatedAt) {
+      partnerByCampaign.set(key, partner);
     }
+  }
+  // Regista campaignKey e nome
+  for (const p of allPartners) {
+    registerKey(p.campaignKey, p.id);
+    registerKey(p.name, p.id);
+  }
+  // Regista cada alias (partnerId ou paymentMethod)
+  for (const a of allAliases) {
+    registerKey(a.aliasValue, a.partnershipId);
   }
 
   // Consolida por (parceiro, projecto): se duas campaigns diferentes
@@ -3222,6 +3250,48 @@ export async function addPartnerAlias(
 export async function listPartnerAliases(partnershipId: number) {
   const db = await getDb(); if (!db) return [];
   return db.select().from(partnerAliases).where(eq(partnerAliases.partnershipId, partnershipId));
+}
+
+/**
+ * Para cada partnership, devolve o nº de aliases associados e a lista.
+ * Útil para mostrar na UI quantos códigos cada parceiro tem (cada
+ * parceiro normalmente tem vários — um por cidade × marca).
+ */
+export async function aliasCountsByPartner(): Promise<Array<{
+  partnershipId: number;
+  partnershipName: string | null;
+  partnerIds: string[];
+  paymentMethods: string[];
+  total: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      partnershipId: partnerAliases.partnershipId,
+      aliasType: partnerAliases.aliasType,
+      aliasValue: partnerAliases.aliasValue,
+      partnershipName: partnerships.name,
+    })
+    .from(partnerAliases)
+    .leftJoin(partnerships, eq(partnerships.id, partnerAliases.partnershipId));
+
+  const map = new Map<number, { partnershipName: string | null; partnerIds: string[]; paymentMethods: string[] }>();
+  for (const r of rows) {
+    const entry = map.get(r.partnershipId) ?? { partnershipName: r.partnershipName, partnerIds: [], paymentMethods: [] };
+    if (r.aliasType === "multipark_partner_id") entry.partnerIds.push(r.aliasValue);
+    else entry.paymentMethods.push(r.aliasValue);
+    map.set(r.partnershipId, entry);
+  }
+  return Array.from(map.entries())
+    .map(([id, v]) => ({
+      partnershipId: id,
+      partnershipName: v.partnershipName,
+      partnerIds: v.partnerIds,
+      paymentMethods: v.paymentMethods,
+      total: v.partnerIds.length + v.paymentMethods.length,
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 export async function deletePartnerAlias(id: number) {

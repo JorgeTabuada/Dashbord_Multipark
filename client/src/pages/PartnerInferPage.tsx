@@ -20,6 +20,7 @@ export default function PartnerInferPage() {
   const utils = trpc.useUtils();
   const inferQ = trpc.partnerships.inferList.useQuery();
   const partnersQ = trpc.partnerships.list.useQuery();
+  const aliasCountsQ = trpc.partnerships.aliasCounts.useQuery();
 
   const [linkTarget, setLinkTarget] = useState<{
     aliasType: "multipark_partner_id" | "payment_method";
@@ -31,6 +32,7 @@ export default function PartnerInferPage() {
 
   const inferred = inferQ.data ?? [];
   const partners = partnersQ.data ?? [];
+  const aliasCounts = aliasCountsQ.data ?? [];
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
@@ -40,10 +42,49 @@ export default function PartnerInferPage() {
           Inferir Parceiros
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          PartnerIds da API Multipark com nome sugerido a partir de paymentMethod e remarks.
-          Associa a um parceiro nosso para que o nome real apareça em vez de "Unknown User".
+          PartnerIds e paymentMethods da API Multipark com nome sugerido. Associa cada
+          código ao parceiro real — cada parceiro tem normalmente <strong>vários códigos</strong>
+          (um por cidade × marca), por isso podes usar "Associar a existente" várias vezes
+          para o mesmo parceiro.
         </p>
       </div>
+
+      {/* Resumo dos parceiros com mais aliases (lote de códigos) */}
+      {aliasCounts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Parceiros já com códigos associados ({aliasCounts.length})</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Cada parceiro pode acumular vários códigos. Vai aqui ver qual já tens para escolher "Associar a existente".
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {aliasCounts.map((p) => (
+                <div key={p.partnershipId} className="border rounded p-2 text-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium">{p.partnershipName ?? `#${p.partnershipId}`}</span>
+                    <Badge variant="secondary" className="text-xs">{p.total} {p.total === 1 ? "código" : "códigos"}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {p.partnerIds.slice(0, 3).map((id) => (
+                      <Badge key={id} variant="outline" className="text-[9px] font-mono">
+                        ID:{id.length > 12 ? id.slice(0, 12) + "…" : id}
+                      </Badge>
+                    ))}
+                    {p.paymentMethods.slice(0, 2).map((pm) => (
+                      <Badge key={pm} variant="outline" className="text-[9px]">pgto:{pm.slice(0, 12)}</Badge>
+                    ))}
+                    {p.total > 5 && (
+                      <Badge variant="outline" className="text-[9px]">+{p.total - 5}</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -123,9 +164,10 @@ export default function PartnerInferPage() {
           partners={partners}
           onClose={() => setLinkTarget(null)}
           onSaved={(updated) => {
-            toast.success(`Parceiro associado — ${updated} reservas atualizadas`);
+            toast.success(`Código associado — ${updated} reservas atualizadas`);
             utils.partnerships.inferList.invalidate();
             utils.partnerships.list.invalidate();
+            utils.partnerships.aliasCounts.invalidate();
             setLinkTarget(null);
           }}
         />

@@ -3614,6 +3614,14 @@ export const appRouter = router({
       .input(z.object({ partnershipId: z.number() }))
       .query(({ input }) => listPartnerAliases(input.partnershipId)),
 
+    // Aliases agregados por parceiro — mostra quantos códigos cada parceiro
+    // já tem associados (cada parceiro tem normalmente 1 código por
+    // cidade × marca, logo vários).
+    aliasCounts: protectedProcedure.query(async () => {
+      const { aliasCountsByPartner } = await import("./db");
+      return aliasCountsByPartner();
+    }),
+
     deleteAlias: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
