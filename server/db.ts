@@ -4251,10 +4251,11 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
     .groupBy(sql`MONTH(${campaignDailyStats.date})`);
 
   // ─── 5. Extras-dia (custo da equipa diária) por mês ─────────────────────
-  // Substring(assignmentDate, 6, 2) extrai o mês de "YYYY-MM-DD".
+  // assignmentDate é varchar("YYYY-MM-DD"). Agrupamos pelo dia e fazemos
+  // o bucket por mês em JS, evitando problemas com strict mode do MySQL.
   const extrasRows = await db
     .select({
-      month: sql<number>`CAST(SUBSTRING(${extrasDiaAssignments.assignmentDate}, 6, 2) AS UNSIGNED)`,
+      date: extrasDiaAssignments.assignmentDate,
       level: extrasDiaAssignments.level,
       hours: sql<number>`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`,
     })
@@ -4265,12 +4266,13 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
         lte(extrasDiaAssignments.assignmentDate, `${year}-12-31`),
       ),
     )
-    .groupBy(sql`SUBSTRING(${extrasDiaAssignments.assignmentDate}, 6, 2)`, extrasDiaAssignments.level);
+    .groupBy(extrasDiaAssignments.assignmentDate, extrasDiaAssignments.level);
 
   const extrasDiaByMonth: Record<number, number> = {};
   for (const r of extrasRows) {
     const rate = EXTRAS_DIA_RATES[String(r.level ?? "junior")] ?? 4;
-    const m = Number(r.month);
+    const m = Number((r.date ?? "").slice(5, 7));
+    if (!m) continue;
     extrasDiaByMonth[m] = (extrasDiaByMonth[m] ?? 0) + Number(r.hours) * rate;
   }
 
