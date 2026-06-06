@@ -1332,7 +1332,10 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
       fourteenthProvision: acc.fourteenthProvision + (r.fourteenthProvision ?? 0),
       mealAllowance: acc.mealAllowance + (r.mealAllowance ?? 0),
       totalPayment: acc.totalPayment + r.totalPayment,
-    }), { totalHours: 0, overtimeHours: 0, nightHours: 0, weekendHours: 0, baseSalary: 0, extraPayment: 0, overtimePayment: 0, nightPayment: 0, weekendPayment: 0, thirteenthProvision: 0, fourteenthProvision: 0, mealAllowance: 0, totalPayment: 0 });
+      tsuEmployee: acc.tsuEmployee + (r.tsuEmployee ?? 0),
+      irsEstimate: acc.irsEstimate + (r.irsEstimate ?? 0),
+      netEstimate: acc.netEstimate + (r.netEstimate ?? 0),
+    }), { totalHours: 0, overtimeHours: 0, nightHours: 0, weekendHours: 0, baseSalary: 0, extraPayment: 0, overtimePayment: 0, nightPayment: 0, weekendPayment: 0, thirteenthProvision: 0, fourteenthProvision: 0, mealAllowance: 0, totalPayment: 0, tsuEmployee: 0, irsEstimate: 0, netEstimate: 0 });
   }, [payroll]);
 
   const toggleSort = (field: string) => {
@@ -1550,8 +1553,16 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total a Pagar</p>
+            <p className="text-xs text-muted-foreground">Total Bruto</p>
             <p className="text-xl font-bold text-primary">{fmt(totals.totalPayment)}€</p>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-200 bg-amber-50/30">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">
+              Estimativa Líquido <span className="text-[10px] text-amber-700">(TSU 11% + IRS 15%)</span>
+            </p>
+            <p className="text-xl font-bold text-amber-700">{fmt(totals.netEstimate)}€</p>
           </CardContent>
         </Card>
       </div>
@@ -1586,6 +1597,7 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
                     <SortHeader field="fourteenthProvision">Prov. 14º</SortHeader>
                     <SortHeader field="mealAllowance">Sub. Alim.</SortHeader>
                     <SortHeader field="totalPayment">Total</SortHeader>
+                    <SortHeader field="netEstimate">Líq. est.</SortHeader>
                     <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">Recibo</th>
                   </tr>
                 </thead>
@@ -1612,6 +1624,7 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
                       <td className="px-3 py-2 text-right tabular-nums">{r.isExtra ? "—" : fmt(r.fourteenthProvision ?? 0) + "€"}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.isExtra ? "—" : fmt(r.mealAllowance ?? 0) + "€"}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-primary">{fmt(r.totalPayment)}€</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-700">{fmt(r.netEstimate ?? 0)}€</td>
                       <td className="px-3 py-2 text-center">
                         <Button
                           variant="ghost"
@@ -1653,6 +1666,7 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.fourteenthProvision)}€</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.mealAllowance)}€</td>
                     <td className="px-3 py-2 text-right tabular-nums font-bold text-primary">{fmt(totals.totalPayment)}€</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold text-amber-700">{fmt(totals.netEstimate)}€</td>
                     <td></td>
                   </tr>
                 </tfoot>

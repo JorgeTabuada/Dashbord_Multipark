@@ -546,6 +546,9 @@ export async function getActivityLogs(limit = 100) {
 import {
   employees,
   employeeDocuments,
+  employeeLeaves,
+  employeeSalaryHistory,
+  employeePenalties,
   schedules,
   timeRecords,
   extraRates,
@@ -592,10 +595,200 @@ export async function createEmployee(data: InsertEmployee) {
   return db.insert(employees).values(data);
 }
 
-export async function updateEmployee(id: number, data: Partial<InsertEmployee>) {
+export async function updateEmployee(id: number, data: Partial<InsertEmployee>, changedById?: number | null) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  // Se o salário ou subsídio mudaram, fecha o registo activo e cria um novo
+  if (data.monthlySalary !== undefined || data.mealAllowancePerDay !== undefined) {
+    const [current] = await db
+      .select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay })
+      .from(employees)
+      .where(eq(employees.id, id))
+      .limit(1);
+    const newSalary = data.monthlySalary !== undefined ? data.monthlySalary : current?.monthlySalary;
+    const newMeal = data.mealAllowancePerDay !== undefined ? data.mealAllowancePerDay : current?.mealAllowancePerDay;
+    const changed =
+      String(current?.monthlySalary ?? "") !== String(newSalary ?? "") ||
+      String(current?.mealAllowancePerDay ?? "") !== String(newMeal ?? "");
+    if (changed) {
+      const today = new Date().toISOString().slice(0, 10);
+      // Fecha o registo activo (effectiveUntil = ontem)
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      await db
+        .update(employeeSalaryHistory)
+        .set({ effectiveUntil: yesterday })
+        .where(and(eq(employeeSalaryHistory.employeeId, id), isNull(employeeSalaryHistory.effectiveUntil)));
+      // Cria o novo
+      await db.insert(employeeSalaryHistory).values({
+        employeeId: id,
+        monthlySalary: (newSalary as any) ?? null,
+        mealAllowancePerDay: (newMeal as any) ?? null,
+        effectiveFrom: today,
+        changedById: changedById ?? null,
+      });
+    }
+  }
   await db.update(employees).set(data).where(eq(employees.id, id));
+}
+
+// ─── RH: SALARY HISTORY ────────────────────────────────────────────────────
+/** Procura o salário vigente para um funcionário num dia específico
+ * (formato 'YYYY-MM-DD'). Volta para o registo activo ou — se ainda
+ * não há histórico — para os campos directos em employees. */
+export async function getEmployeeSalaryAt(employeeId: number, dateStr: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [hist] = await db
+    .select()
+    .from(employeeSalaryHistory)
+    .where(and(
+      eq(employeeSalaryHistory.employeeId, employeeId),
+      lte(employeeSalaryHistory.effectiveFrom, dateStr),
+      or(
+        isNull(employeeSalaryHistory.effectiveUntil),
+        gte(employeeSalaryHistory.effectiveUntil, dateStr),
+      )!,
+    ))
+    .orderBy(desc(employeeSalaryHistory.effectiveFrom))
+    .limit(1);
+  if (hist) return { monthlySalary: hist.monthlySalary, mealAllowancePerDay: hist.mealAllowancePerDay };
+  const [emp] = await db
+    .select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay })
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1);
+  return emp ?? null;
+}
+
+export async function getEmployeeSalaryHistory(employeeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(employeeSalaryHistory)
+    .where(eq(employeeSalaryHistory.employeeId, employeeId))
+    .orderBy(desc(employeeSalaryHistory.effectiveFrom));
+}
+
+// ─── RH: LEAVES (férias / baixas) ──────────────────────────────────────────
+export async function createEmployeeLeave(data: {
+  employeeId: number;
+  leaveType: "vacation" | "sick" | "unpaid" | "other";
+  fromDate: string;
+  toDate: string;
+  notes?: string | null;
+  createdById?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(employeeLeaves).values({
+    employeeId: data.employeeId,
+    leaveType: data.leaveType,
+    fromDate: data.fromDate,
+    toDate: data.toDate,
+    notes: data.notes ?? null,
+    createdById: data.createdById ?? null,
+  });
+}
+
+export async function getEmployeeLeaves(employeeId: number, year?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conds: any[] = [eq(employeeLeaves.employeeId, employeeId)];
+  if (year) {
+    conds.push(gte(employeeLeaves.toDate, `${year}-01-01`));
+    conds.push(lte(employeeLeaves.fromDate, `${year}-12-31`));
+  }
+  return db.select().from(employeeLeaves).where(and(...conds)).orderBy(desc(employeeLeaves.fromDate));
+}
+
+export async function deleteEmployeeLeave(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(employeeLeaves).where(eq(employeeLeaves.id, id));
+}
+
+/** Devolve um Set de dias (YYYY-MM-DD) em férias/baixa no intervalo do mês. */
+export async function getLeaveDaysForMonth(employeeId: number, year: number, month: number): Promise<Set<string>> {
+  const db = await getDb();
+  const out = new Set<string>();
+  if (!db) return out;
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const rows = await db
+    .select({ fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate })
+    .from(employeeLeaves)
+    .where(and(
+      eq(employeeLeaves.employeeId, employeeId),
+      lte(employeeLeaves.fromDate, end),
+      gte(employeeLeaves.toDate, start),
+    ));
+  for (const r of rows) {
+    const from = r.fromDate < start ? start : r.fromDate;
+    const to = r.toDate > end ? end : r.toDate;
+    const d = new Date(from + "T00:00:00");
+    const limit = new Date(to + "T00:00:00");
+    while (d <= limit) {
+      out.add(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return out;
+}
+
+// ─── RH: PENALIZAÇÕES ──────────────────────────────────────────────────────
+export async function createEmployeePenalty(data: {
+  employeeId: number;
+  reason: "no_show_extra_dia" | "speeding" | "lost_found_investigation" | "complaint_investigation" | "other";
+  severity?: "warning" | "penalty" | "serious";
+  points?: number;
+  relatedId?: number | null;
+  notes?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(employeePenalties).values({
+    employeeId: data.employeeId,
+    reason: data.reason,
+    severity: data.severity ?? "penalty",
+    points: data.points ?? 1,
+    relatedId: data.relatedId ?? null,
+    notes: data.notes ?? null,
+  });
+}
+
+export async function getOpenPenalties(employeeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(employeePenalties)
+    .where(and(eq(employeePenalties.employeeId, employeeId), isNull(employeePenalties.clearedAt)))
+    .orderBy(desc(employeePenalties.createdAt));
+}
+
+export async function getAllOpenPenaltiesByEmployee() {
+  const db = await getDb();
+  if (!db) return new Map<number, number>();
+  const rows = await db
+    .select({
+      employeeId: employeePenalties.employeeId,
+      totalPoints: sql<number>`COALESCE(SUM(${employeePenalties.points}), 0)`,
+    })
+    .from(employeePenalties)
+    .where(isNull(employeePenalties.clearedAt))
+    .groupBy(employeePenalties.employeeId);
+  return new Map(rows.map(r => [r.employeeId, Number(r.totalPoints)]));
+}
+
+export async function clearPenalty(id: number, clearedById: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(employeePenalties)
+    .set({ clearedAt: toMysqlDateTime(new Date()), clearedById })
+    .where(eq(employeePenalties.id, id));
 }
 
 export async function deleteEmployee(id: number) {
@@ -2273,7 +2466,7 @@ async function resolveProjectIds(projectId: number): Promise<number[]> {
 
 // Taxas €/hora para extras-dia (sincronizadas com server/extrasDia.ts)
 const EXTRAS_DIA_RATES: Record<string, number> = {
-  junior: 4, senior: 5, terminal: 5.5, master: 6,
+  junior: 4.5, senior: 5, terminal: 5.5, master: 6,
 };
 
 // SQL para formatar uma coluna timestamp para o bucket pretendido
@@ -4278,6 +4471,10 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
   // ─── 5. Extras-dia (custo da equipa diária) por mês ─────────────────────
   // assignmentDate é varchar("YYYY-MM-DD"). Agrupamos pelo dia e fazemos
   // o bucket por mês em JS, evitando problemas com strict mode do MySQL.
+  // CRÍTICO: filtra isTeamLeader=0 — os team leaders são adicionados ao
+  // extras-dia só para repartir o gasto diário do salário deles, mas o
+  // pagamento real é o salário mensal (entra em "salaries"). Sem isto
+  // estaríamos a contar o team leader duas vezes.
   const extrasRows = await db
     .select({
       date: extrasDiaAssignments.assignmentDate,
@@ -4289,6 +4486,7 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
       and(
         gte(extrasDiaAssignments.assignmentDate, `${year}-01-01`),
         lte(extrasDiaAssignments.assignmentDate, `${year}-12-31`),
+        eq(extrasDiaAssignments.isTeamLeader, 0),
       ),
     )
     .groupBy(extrasDiaAssignments.assignmentDate, extrasDiaAssignments.level);
@@ -5145,7 +5343,12 @@ export async function getPayrollData(year: number, month: number) {
 
   // Get extra rates
   const rates = await db.select().from(extraRates).orderBy(extraRates.level);
+  // Mapa por level numérico (compat) e por nome (sincronizado com extras-dia)
   const rateMap = new Map(rates.map(r => [r.level, parseFloat(String(r.hourlyRate))]));
+  const rateByName = new Map(rates.map(r => [String(r.levelName ?? ""), parseFloat(String(r.hourlyRate))]));
+
+  // Dia 1 do mês para snapshot de salário histórico
+  const monthFirstDay = `${year}-${String(month).padStart(2, "0")}-01`;
 
   // Get time records for the month
   const start = new Date(year, month - 1, 1);
@@ -5175,11 +5378,22 @@ export async function getPayrollData(year: number, month: number) {
   const NIGHT_RATE_MULTIPLIER = 1.25;     // 25% extra for night work (22h-7h)
   const WEEKEND_RATE_MULTIPLIER = 1.50;   // 50% extra for weekends/holidays
 
+  // Pré-carrega salário histórico + dias de férias para todos os funcionários, em paralelo
+  const empMeta = await Promise.all(emps.map(async ({ employee: emp }) => {
+    const snapshot = await getEmployeeSalaryAt(emp.id, monthFirstDay);
+    const leaveDays = await getLeaveDaysForMonth(emp.id, year, month);
+    return { empId: emp.id, snapshot, leaveDays };
+  }));
+  const metaById = new Map(empMeta.map(m => [m.empId, m]));
+
   return emps.map(({ employee: emp, project }) => {
     const empHours = hoursByEmployee.get(emp.id) ?? { totalHours: 0, days: new Set(), records: [] };
     const totalHours = Math.round(empHours.totalHours * 100) / 100;
     const daysWorked = empHours.days.size;
     const isExtra = emp.position === "extra";
+    const meta = metaById.get(emp.id);
+    const snapshot = meta?.snapshot;
+    const leaveDays = meta?.leaveDays ?? new Set<string>();
 
     let baseSalary = 0;
     let extraPayment = 0;
@@ -5192,15 +5406,20 @@ export async function getPayrollData(year: number, month: number) {
     let weekendHours = 0;
     let weekendPayment = 0;
     let mealAllowance = 0;
-    const mealAllowancePerDay = parseFloat(String(emp.mealAllowancePerDay ?? 0));
+    const mealAllowancePerDay = parseFloat(String(snapshot?.mealAllowancePerDay ?? emp.mealAllowancePerDay ?? 0));
 
     if (isExtra) {
-      // Extras: paid by hourly rate based on their level
-      const hourlyRate = rateMap.get(emp.extraLevel ?? 1) ?? 5.0;
+      // Extras: taxa horária por nível. Tenta primeiro pelo nome (sincronizado
+      // com extras-dia: junior/senior/terminal/master) e depois pelo nº legacy.
+      const levelNum = emp.extraLevel ?? 1;
+      const NAME_BY_LEVEL: Record<number, string> = { 1: "junior", 2: "senior", 3: "terminal", 4: "master" };
+      const fromName = rateByName.get(NAME_BY_LEVEL[levelNum] ?? "junior");
+      const hourlyRate = fromName ?? rateMap.get(levelNum) ?? 4.5;
       extraPayment = Math.round(totalHours * hourlyRate * 100) / 100;
     } else {
       // Regular employees: base salary + overtime + provisions + night/weekend
-      baseSalary = parseFloat(String(emp.monthlySalary ?? 0));
+      // Usa snapshot histórico (salário vigente no mês), não o salário actual.
+      baseSalary = parseFloat(String(snapshot?.monthlySalary ?? emp.monthlySalary ?? 0));
       const hourlyBase = baseSalary > 0 ? baseSalary / STANDARD_MONTHLY_HOURS : 0;
 
       // Classifica cada record em buckets MUTUAMENTE EXCLUSIVOS para evitar
@@ -5245,16 +5464,32 @@ export async function getPayrollData(year: number, month: number) {
       // 14th month provision (subsídio de férias): 1/12 of base salary per month
       fourteenthProvision = Math.round(baseSalary / 12 * 100) / 100;
 
-      // Meal allowance: value per day × days worked
-      mealAllowance = Math.round(mealAllowancePerDay * daysWorked * 100) / 100;
+      // Subsídio alimentação: só dias trabalhados que NÃO caiam em férias/baixa.
+      let workedDaysExcludingLeave = 0;
+      for (const day of empHours.days) {
+        if (!leaveDays.has(day)) workedDaysExcludingLeave += 1;
+      }
+      mealAllowance = Math.round(mealAllowancePerDay * workedDaysExcludingLeave * 100) / 100;
     }
 
-    // Total payment includes everything
-    // Note: overtime goes as "real seguros" in the payslip but is still part of total cost
+    // Total bruto
     const totalPayment = isExtra
       ? extraPayment
       : baseSalary + overtimePayment + nightPayment + weekendPayment +
         thirteenthProvision + fourteenthProvision + mealAllowance;
+
+    // Estimativa de líquido após impostos (NÃO é contabilidade fiscal real)
+    // - TSU empregado: 11% sobre vencimento + extras + acréscimos (NÃO sobre
+    //   subsídio de alimentação nem provisões 13º/14º)
+    // - IRS: 15% simplificado sobre a mesma base
+    const TSU_EMPLOYEE = 0.11;
+    const IRS_RATE = 0.15;
+    const taxableBase = isExtra
+      ? extraPayment
+      : baseSalary + overtimePayment + nightPayment + weekendPayment;
+    const tsuEmployee = Math.round(taxableBase * TSU_EMPLOYEE * 100) / 100;
+    const irsEstimate = Math.round(taxableBase * IRS_RATE * 100) / 100;
+    const netEstimate = Math.round((totalPayment - tsuEmployee - irsEstimate) * 100) / 100;
 
     return {
       employeeId: emp.id,
@@ -5282,7 +5517,16 @@ export async function getPayrollData(year: number, month: number) {
       mealAllowance,
       mealAllowancePerDay,
       totalPayment,
-      hourlyRate: isExtra ? (rateMap.get(emp.extraLevel ?? 1) ?? 5.0) : (baseSalary > 0 ? Math.round(baseSalary / STANDARD_MONTHLY_HOURS * 100) / 100 : 0),
+      // Estimativa líquido (não fiscal)
+      tsuEmployee,
+      irsEstimate,
+      netEstimate,
+      hourlyRate: isExtra
+        ? (() => {
+            const NAME_BY_LEVEL: Record<number, string> = { 1: "junior", 2: "senior", 3: "terminal", 4: "master" };
+            return rateByName.get(NAME_BY_LEVEL[emp.extraLevel ?? 1] ?? "junior") ?? rateMap.get(emp.extraLevel ?? 1) ?? 4.5;
+          })()
+        : (baseSalary > 0 ? Math.round(baseSalary / STANDARD_MONTHLY_HOURS * 100) / 100 : 0),
     };
   });
 }

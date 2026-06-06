@@ -258,7 +258,58 @@ export const employees = mysqlTable("employees", {
 	mealAllowancePerDay: decimal({ precision: 6, scale: 2 }),
 	multiparkAgentName: varchar({ length: 256 }),
 	multiparkAgentUserId: varchar({ length: 128 }),
+	docsWarningAt: timestamp({ mode: 'string' }),
+	loginBlocked: tinyint().default(0).notNull(),
+	loginBlockedReason: varchar({ length: 255 }),
 });
+
+export const employeeLeaves = mysqlTable("employee_leaves", {
+	id: int().autoincrement().primaryKey(),
+	employeeId: int().notNull(),
+	leaveType: mysqlEnum(['vacation','sick','unpaid','other']).default('vacation').notNull(),
+	fromDate: varchar({ length: 10 }).notNull(),
+	toDate: varchar({ length: 10 }).notNull(),
+	notes: varchar({ length: 255 }),
+	createdById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_employee_leaves_emp").on(table.employeeId),
+	index("idx_employee_leaves_dates").on(table.fromDate, table.toDate),
+]);
+
+export const employeeSalaryHistory = mysqlTable("employee_salary_history", {
+	id: int().autoincrement().primaryKey(),
+	employeeId: int().notNull(),
+	monthlySalary: decimal({ precision: 10, scale: 2 }),
+	mealAllowancePerDay: decimal({ precision: 6, scale: 2 }),
+	effectiveFrom: varchar({ length: 10 }).notNull(),
+	effectiveUntil: varchar({ length: 10 }),
+	changedById: int(),
+	notes: varchar({ length: 255 }),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_salary_history_emp").on(table.employeeId),
+	index("idx_salary_history_from").on(table.effectiveFrom),
+]);
+
+export const employeePenalties = mysqlTable("employee_penalties", {
+	id: int().autoincrement().primaryKey(),
+	employeeId: int().notNull(),
+	reason: mysqlEnum(['no_show_extra_dia','speeding','lost_found_investigation','complaint_investigation','other']).notNull(),
+	severity: mysqlEnum(['warning','penalty','serious']).default('penalty').notNull(),
+	points: int().default(1).notNull(),
+	relatedId: int(),
+	notes: varchar({ length: 512 }),
+	clearedAt: timestamp({ mode: 'string' }),
+	clearedById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_employee_penalties_emp").on(table.employeeId),
+	index("idx_employee_penalties_open").on(table.employeeId, table.clearedAt),
+]);
 
 export const expenseCategories = mysqlTable("expense_categories", {
 	id: int().autoincrement().primaryKey(),
@@ -294,12 +345,14 @@ export const expenses = mysqlTable("expenses", {
 export const extraRates = mysqlTable("extra_rates", {
 	id: int().autoincrement().primaryKey(),
 	level: int().notNull(),
+	levelName: varchar({ length: 32 }),
 	hourlyRate: decimal({ precision: 6, scale: 2 }).notNull(),
 	label: varchar({ length: 64 }),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 },
 (table) => [
 	index("extra_rates_level_unique").on(table.level),
+	index("idx_extra_rates_levelname").on(table.levelName),
 ]);
 
 export const extrasDiaAssignments = mysqlTable("extras_dia_assignments", {

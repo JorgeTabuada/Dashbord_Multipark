@@ -20,7 +20,7 @@ import { getBookingTryAllParks } from "./multipark";
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const DRIVER_LEVELS = [
-  { id: "junior", label: "Júnior", hourlyRate: 4 },
+  { id: "junior", label: "Júnior", hourlyRate: 4.5 },
   { id: "senior", label: "Sénior", hourlyRate: 5 },
   { id: "terminal", label: "Terminal", hourlyRate: 5.5 },
   { id: "master", label: "Master", hourlyRate: 6 },
