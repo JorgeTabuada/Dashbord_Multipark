@@ -66,7 +66,10 @@ export default function IncidentsPage() {
 
   const employeeMap = useMemo(() => {
     const map = new Map<number, string>();
-    employees.forEach((e: any) => map.set(e.id, e.fullName));
+    employees.forEach((row: any) => {
+      const emp = row.employee ?? row;
+      if (emp?.id != null) map.set(emp.id, emp.fullName);
+    });
     return map;
   }, [employees]);
 
@@ -93,10 +96,14 @@ export default function IncidentsPage() {
   };
 
   const syncGmail = trpc.reviews.syncFromGmail.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       utils.incidents.list.invalidate();
       utils.incidents.stats.invalidate();
-      toast.success(`Sync concluído: ${data.incidentsImported} ocorrências importadas, ${data.incidentsSkipped} ignoradas`);
+      if (data.message) {
+        toast.info(data.message);
+      } else {
+        toast.success(`Sync concluído: ${data.incidentsImported} ocorrências importadas, ${data.incidentsSkipped} ignoradas`);
+      }
     },
     onError: (err) => toast.error("Erro no sync: " + err.message),
   });
@@ -291,7 +298,7 @@ function CreateIncidentDialog({ employees, onClose }: { employees: any[]; onClos
     try {
       await createMut.mutateAsync({
         vehiclePlate: form.vehiclePlate || undefined,
-        employeeId: form.employeeId ? parseInt(form.employeeId) : undefined,
+        employeeId: form.employeeId && form.employeeId !== "none" ? parseInt(form.employeeId) : undefined,
         incidentType: form.incidentType,
         severity: form.severity,
         description: form.description,
@@ -341,9 +348,10 @@ function CreateIncidentDialog({ employees, onClose }: { employees: any[]; onClos
                 <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhum</SelectItem>
-                  {employees.map((e: any) => (
-                    <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>
-                  ))}
+                  {employees.map((row: any) => {
+                    const e = row.employee ?? row;
+                    return <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>;
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -441,9 +449,10 @@ function EditIncidentDialog({ incident, employees, onClose }: { incident: any; e
                 <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhum</SelectItem>
-                  {employees.map((e: any) => (
-                    <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>
-                  ))}
+                  {employees.map((row: any) => {
+                    const e = row.employee ?? row;
+                    return <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>;
+                  })}
                 </SelectContent>
               </Select>
             </div>

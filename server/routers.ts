@@ -3250,7 +3250,7 @@ export const appRouter = router({
       if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
       const { id, ...data } = input;
       if (data.status === "resolved") {
-        (data as any).resolvedAt = new Date();
+        (data as any).resolvedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
         (data as any).resolvedBy = ctx.user.id;
       }
       await updateIncident(id, data);
