@@ -58,6 +58,68 @@ async function getProjectMap(): Promise<Map<string, number>> {
   return map;
 }
 
+// ─── Alias resolver: lookup de partnerId/paymentMethod → nome do parceiro ──
+// Cada parceiro tem normalmente vários códigos (1 por cidade × marca). A
+// tabela partner_aliases guarda essas associações. Antes de gravar uma
+// reserva nova no sync, resolvemos o partnerId raw da API contra os aliases
+// e, se encontrarmos, definimos campaign = nome do parceiro automaticamente.
+// Assim deixa de ser preciso clicar "Associar" manualmente para cada nova
+// reserva com um código já conhecido.
+let aliasResolverCache: Map<string, string> | null = null;
+let aliasResolverCacheTime = 0;
+
+async function getAliasResolver(): Promise<Map<string, string>> {
+  if (aliasResolverCache && Date.now() - aliasResolverCacheTime < CACHE_TTL) {
+    return aliasResolverCache;
+  }
+  const db = await getDb();
+  const map = new Map<string, string>();
+  if (!db) {
+    aliasResolverCache = map;
+    aliasResolverCacheTime = Date.now();
+    return map;
+  }
+  const { partnerAliases, partnerships } = await import("../../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const rows = await db
+    .select({
+      aliasType: partnerAliases.aliasType,
+      aliasValue: partnerAliases.aliasValue,
+      partnerName: partnerships.name,
+    })
+    .from(partnerAliases)
+    .leftJoin(partnerships, eq(partnerships.id, partnerAliases.partnershipId));
+  for (const r of rows) {
+    if (!r.partnerName) continue;
+    const key = `${r.aliasType}:${(r.aliasValue ?? "").trim().toLowerCase()}`;
+    map.set(key, r.partnerName);
+  }
+  aliasResolverCache = map;
+  aliasResolverCacheTime = Date.now();
+  return map;
+}
+
+function resolvePartnerCampaign(
+  booking: MultiparkBooking,
+  pricing: any,
+  aliases: Map<string, string>,
+  fallback: string | null,
+): string | null {
+  // 1. Tenta o partnerId da Multipark (no rawJson, propriedade nivel topo)
+  const partnerId = (booking as any).partnerId ?? (booking as any).partner?.id ?? null;
+  if (partnerId) {
+    const hit = aliases.get(`multipark_partner_id:${String(partnerId).trim().toLowerCase()}`);
+    if (hit) return hit;
+  }
+  // 2. Tenta o paymentMethod
+  const pm = typeof pricing?.paymentMethod === "string" ? pricing.paymentMethod : null;
+  if (pm) {
+    const hit = aliases.get(`payment_method:${pm.trim().toLowerCase()}`);
+    if (hit) return hit;
+  }
+  return fallback;
+}
+
 function findProjectId(
   parkName: string | undefined,
   city: string | undefined,
@@ -126,13 +188,25 @@ function parseMultiparkDate(dateStr: string | undefined | null): string | null {
 
 // ─── Convert API booking to DB record ────────────────────────────────────────
 
-function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, number>) {
+function bookingToRecord(
+  booking: MultiparkBooking,
+  projectMap: Map<string, number>,
+  aliasResolver: Map<string, string>,
+) {
   const client = booking.customer || booking.client;
   const pricing = booking.pricing;
   const park = booking.park;
   const parkName = park?.name || booking.parkName;
   const city = park?.city;
   const projectId = findProjectId(parkName, city, projectMap);
+
+  // Resolução automática do parceiro: se a API ainda devolve "Unknown User"
+  // mas o partnerId/paymentMethod já está associado a um parceiro nosso, usa
+  // o nome do parceiro em vez do fallback.
+  const rawFallback = (booking as any).partnerName || booking.discountCode || booking.campaign || null;
+  const isUnknown = typeof rawFallback === "string" && /unknown/i.test(rawFallback);
+  const effectiveFallback = isUnknown ? null : rawFallback;
+  const resolvedCampaign = resolvePartnerCampaign(booking, pricing, aliasResolver, effectiveFallback);
 
   return {
     externalId: booking.id,
@@ -162,7 +236,7 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
     deliveryService: booking.deliveryService ? 1 : 0,
     deliveryAddress: booking.deliveryAddress || null,
     pickupAddress: booking.pickupAddress || null,
-    campaign: (booking as any).partnerName || booking.discountCode || booking.campaign || null,
+    campaign: resolvedCampaign,
     parkingPrice: pricing?.parkingPrice?.toString() ?? null,
     deliveryCharges: pricing?.deliveryCharges?.toString() ?? null,
     extrasTotal: pricing?.extraServicesTotal?.toString() ?? null,
@@ -633,6 +707,7 @@ export async function syncBookings(opts: {
 }> {
   const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
   const projectMap = await getProjectMap();
+  const aliasResolver = await getAliasResolver();
 
   const errors: string[] = [];
 
@@ -661,7 +736,7 @@ export async function syncBookings(opts: {
       if (report?.bookings?.length) {
         for (const booking of report.bookings) {
           try {
-            const record = bookingToRecord(booking, projectMap);
+            const record = bookingToRecord(booking, projectMap, aliasResolver);
             const result = await upsertMultiparkBooking(record);
             processed++;
             if (result?.action === "created") created++;

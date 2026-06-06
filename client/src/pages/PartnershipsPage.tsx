@@ -15,9 +15,10 @@ import {
 import { useState, useMemo } from "react";
 import {
   Handshake, Euro, Building2, Crown, ArrowRightLeft,
-  Plus, Pencil, Trash2, FileText, Settings, Link2,
+  Plus, Pencil, Trash2, FileText, Settings, Link2, AlertTriangle, Wallet,
 } from "lucide-react";
 import { Link } from "wouter";
+import { PARTNER_TYPES, getPartnerType } from "@shared/partnerTypes";
 
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(v);
 
@@ -90,23 +91,19 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
           </div>
           <div>
             <Label className="text-xs">Tipo</Label>
-            <Input
-              list="partner-types"
-              value={form.partnerType}
-              onChange={e => set("partnerType", e.target.value)}
-              placeholder="Escolher ou escrever..."
-            />
-            <datalist id="partner-types">
-              <option value="aggregator">Agregador</option>
-              <option value="agency">Agência</option>
-              <option value="corporate">Empresa</option>
-              <option value="pro_client">Cliente Pro</option>
-              <option value="retainer">Retainer</option>
-              <option value="hotel">Hotel</option>
-              <option value="gateway">Gateway online</option>
-              <option value="affiliate">Afiliado</option>
-              <option value="other">Outro</option>
-            </datalist>
+            <Select value={form.partnerType} onValueChange={(v) => set("partnerType", v)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar tipo..." /></SelectTrigger>
+              <SelectContent>
+                {PARTNER_TYPES.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.partnerType && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {getPartnerType(form.partnerType).description}
+              </p>
+            )}
           </div>
           <div>
             <Label className="text-xs">NIF</Label>
@@ -244,12 +241,18 @@ export default function PartnershipsPage() {
     <div className="space-y-6">
       <p className="text-muted-foreground">Parceiros, afiliados e reservas Pro da Multipark</p>
 
-      <Tabs defaultValue="analytics">
+      <Tabs defaultValue="summary">
         <TabsList>
+          <TabsTrigger value="summary"><Wallet className="w-3 h-3 mr-1" /> Resumo</TabsTrigger>
           <TabsTrigger value="analytics">Análise</TabsTrigger>
           <TabsTrigger value="management"><Settings className="w-3 h-3 mr-1" /> Gestão</TabsTrigger>
           <TabsTrigger value="billing"><FileText className="w-3 h-3 mr-1" /> Faturação</TabsTrigger>
         </TabsList>
+
+        {/* ── TAB: RESUMO DE FATURAÇÃO POR PARCEIRO ─────────────────────────── */}
+        <TabsContent value="summary" className="space-y-4">
+          <InvoicingSummaryTab from={billingFrom} to={billingTo} onChangeFrom={setBillingFrom} onChangeTo={setBillingTo} />
+        </TabsContent>
 
         {/* ── TAB: ANÁLISE ─────────────────────────────────────────────────── */}
         <TabsContent value="analytics" className="space-y-4">
@@ -651,6 +654,158 @@ export default function PartnershipsPage() {
           campaignOptions={campaignOptions as string[]}
         />
       )}
+    </div>
+  );
+}
+
+// ── INVOICING SUMMARY TAB ────────────────────────────────────────────────────
+
+function InvoicingSummaryTab({
+  from, to, onChangeFrom, onChangeTo,
+}: {
+  from: string; to: string; onChangeFrom: (v: string) => void; onChangeTo: (v: string) => void;
+}) {
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  const { data: rows = [], isLoading } = trpc.partnerships.invoicingSummary.useQuery({
+    from, to,
+    partnerType: typeFilter !== "all" ? typeFilter : undefined,
+  });
+
+  const totals = useMemo(() => {
+    return rows.reduce((acc, r) => {
+      acc.aFaturar += r.aFaturar;
+      acc.faturado += r.faturado;
+      acc.pendente += r.pendente;
+      acc.emAtraso += r.emAtraso;
+      return acc;
+    }, { aFaturar: 0, faturado: 0, pendente: 0, emAtraso: 0 });
+  }, [rows]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <Label className="text-xs mb-1 block">De</Label>
+          <Input type="date" value={from} onChange={e => onChangeFrom(e.target.value)} className="w-[140px] h-9" />
+        </div>
+        <div>
+          <Label className="text-xs mb-1 block">Até</Label>
+          <Input type="date" value={to} onChange={e => onChangeTo(e.target.value)} className="w-[140px] h-9" />
+        </div>
+        <div>
+          <Label className="text-xs mb-1 block">Tipo</Label>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              {PARTNER_TYPES.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <Euro className="w-3 h-3" /> A faturar
+          </p>
+          <p className="text-2xl font-bold text-blue-700">{fmt(totals.aFaturar)}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <FileText className="w-3 h-3" /> Já faturado
+          </p>
+          <p className="text-2xl font-bold text-emerald-700">{fmt(totals.faturado)}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <Wallet className="w-3 h-3" /> Pendente
+          </p>
+          <p className="text-2xl font-bold text-orange-700">{fmt(totals.pendente)}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> Em atraso
+          </p>
+          <p className="text-2xl font-bold text-red-700">{fmt(totals.emAtraso)}</p>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Resumo por parceiro</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            <strong>A faturar</strong> = comissão das reservas no período + avença mensal/anual rateada (se aplicável).
+            <strong> Pendente</strong> = a faturar − já faturado.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-10">A carregar...</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-10">Sem parceiros para mostrar.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                    <th className="p-2">Parceiro</th>
+                    <th className="p-2">Tipo</th>
+                    <th className="p-2 text-right">Reservas</th>
+                    <th className="p-2 text-right">Receita</th>
+                    <th className="p-2 text-right">A faturar</th>
+                    <th className="p-2 text-right">Faturado</th>
+                    <th className="p-2 text-right">Pendente</th>
+                    <th className="p-2 text-right">Em atraso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const t = getPartnerType(r.partnerType);
+                    return (
+                      <tr key={r.partnershipId} className={`border-b hover:bg-muted/50 ${r.emAtraso > 0 ? "bg-red-50/40" : ""}`}>
+                        <td className="p-2 font-medium">{r.partnerName}</td>
+                        <td className="p-2">
+                          <Badge variant="outline" className="text-[10px]">{t.label}</Badge>
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{r.bookingsCount}</td>
+                        <td className="p-2 text-right tabular-nums">{fmt(r.revenueGross)}</td>
+                        <td className="p-2 text-right tabular-nums font-medium text-blue-700">{fmt(r.aFaturar)}</td>
+                        <td className="p-2 text-right tabular-nums text-emerald-700">{fmt(r.faturado)}</td>
+                        <td className="p-2 text-right tabular-nums text-orange-700 font-medium">{fmt(r.pendente)}</td>
+                        <td className="p-2 text-right tabular-nums">
+                          {r.emAtraso > 0 ? (
+                            <span className="text-red-700 font-medium inline-flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              {fmt(r.emAtraso)}
+                              <span className="text-[10px] text-muted-foreground">({r.faturasEmAtrasoCount})</span>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-muted/50 font-bold border-t-2">
+                    <td className="p-2" colSpan={4}>TOTAL</td>
+                    <td className="p-2 text-right tabular-nums text-blue-700">{fmt(totals.aFaturar)}</td>
+                    <td className="p-2 text-right tabular-nums text-emerald-700">{fmt(totals.faturado)}</td>
+                    <td className="p-2 text-right tabular-nums text-orange-700">{fmt(totals.pendente)}</td>
+                    <td className="p-2 text-right tabular-nums text-red-700">{fmt(totals.emAtraso)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

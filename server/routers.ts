@@ -3622,6 +3622,18 @@ export const appRouter = router({
       return aliasCountsByPartner();
     }),
 
+    // Sumário de faturação por parceiro: a faturar / faturado / pendente / em atraso
+    invoicingSummary: protectedProcedure
+      .input(z.object({
+        from: z.string(),
+        to: z.string(),
+        partnerType: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getPartnerInvoicingSummary } = await import("./db");
+        return getPartnerInvoicingSummary(input);
+      }),
+
     deleteAlias: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
