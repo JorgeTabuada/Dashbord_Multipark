@@ -12,9 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import {
-  AlertTriangle, Plus, Clock, User, Car, Eye, Trash2, Pencil,
-  BarChart3, AlertCircle, CheckCircle2, XCircle, ShieldAlert,
-  TrendingDown, Activity, Mail, Loader2, Bot, MapPin
+  AlertTriangle, Plus, Clock, User, Car, Trash2, Pencil,
+  BarChart3, AlertCircle, CheckCircle2, ShieldAlert,
+  RefreshCw, Loader2, Bot, MapPin
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -95,14 +95,14 @@ export default function IncidentsPage() {
     toast.success("Ocorrência eliminada");
   };
 
-  const syncGmail = trpc.reviews.syncFromGmail.useMutation({
+  const syncMultipark = trpc.incidents.syncFromMultipark.useMutation({
     onSuccess: (data: any) => {
       utils.incidents.list.invalidate();
       utils.incidents.stats.invalidate();
-      if (data.message) {
-        toast.info(data.message);
+      if (data.imported === 0 && data.scanned === 0) {
+        toast.info("Sem novas ocorrências para importar");
       } else {
-        toast.success(`Sync concluído: ${data.incidentsImported} ocorrências importadas, ${data.incidentsSkipped} ignoradas`);
+        toast.success(`${data.imported} ocorrências importadas (${data.skipped} já existiam, ${data.scanned} analisadas)`);
       }
     },
     onError: (err) => toast.error("Erro no sync: " + err.message),
@@ -117,9 +117,9 @@ export default function IncidentsPage() {
             <p className="text-muted-foreground">Gestão e análise de ocorrências reportadas</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => syncGmail.mutate()} disabled={syncGmail.isPending}>
-              {syncGmail.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-              {syncGmail.isPending ? "A sincronizar..." : "Sincronizar Gmail"}
+            <Button variant="outline" onClick={() => syncMultipark.mutate(undefined)} disabled={syncMultipark.isPending}>
+              {syncMultipark.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {syncMultipark.isPending ? "A sincronizar..." : "Sincronizar Multipark"}
             </Button>
             <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-2" /> Nova Ocorrência</Button>
           </div>

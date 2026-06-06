@@ -4593,3 +4593,136 @@ export async function getAgentHistoryFromDb(opts: {
     history,
   };
 }
+
+// ─── INCIDENTS sync from Multipark booking history ──────────────────────────
+
+type IncidentClassification = {
+  incidentType: "vidro_aberto" | "mal_estacionado" | "dano" | "chave_errada" | "combustivel" | "limpeza" | "documentos" | "outro";
+  severity: "low" | "medium" | "high" | "critical";
+};
+
+function classifyRemarks(remarks: string): IncidentClassification {
+  const r = remarks.toLowerCase();
+  // dano cobre embates, batidas, riscos, amassadelas — high
+  if (/\bdano|amassad|risc|batid|embat|colis|raspad|partid|partiu|partir/.test(r)) {
+    return { incidentType: "dano", severity: "high" };
+  }
+  if (/\bvidro|janela\b/.test(r)) {
+    return { incidentType: "vidro_aberto", severity: "medium" };
+  }
+  if (/\bmal\s*estacion|fora\s*do\s*lugar|posi[cç][aã]o\s*errad/.test(r)) {
+    return { incidentType: "mal_estacionado", severity: "medium" };
+  }
+  if (/\bchav/.test(r)) {
+    return { incidentType: "chave_errada", severity: "medium" };
+  }
+  if (/\bcombust[ií]vel|gasolina|diesel|gas[oó]leo|tanque\s*vazio|sem\s*combust|reserva\s*combust/.test(r)) {
+    return { incidentType: "combustivel", severity: "medium" };
+  }
+  if (/\bsuj|limpez|limpar|nodoa|n[oó]doa|mancha/.test(r)) {
+    return { incidentType: "limpeza", severity: "low" };
+  }
+  if (/\bdocument|carta\s*de\s*condu|livrete|seguro/.test(r)) {
+    return { incidentType: "documentos", severity: "low" };
+  }
+  return { incidentType: "outro", severity: "low" };
+}
+
+/**
+ * Varre multipark_booking_history nos últimos `lookbackDays` dias e cria
+ * incidents para cada `remarks` significativo que ainda não tenha sido
+ * importado. Dedup via incidents.sourceEmailId = "mp:" + historyId.
+ */
+export async function syncIncidentsFromMultiparkHistory(opts: {
+  lookbackDays?: number;
+  reportedById?: number | null;
+} = {}): Promise<{
+  scanned: number;
+  imported: number;
+  skipped: number;
+  errors: string[];
+  details: string[];
+}> {
+  const db = await getDb();
+  const empty = { scanned: 0, imported: 0, skipped: 0, errors: [] as string[], details: [] as string[] };
+  if (!db) return empty;
+
+  const lookbackDays = opts.lookbackDays ?? 30;
+  const since = new Date();
+  since.setDate(since.getDate() - lookbackDays);
+  const sinceStr = toMysqlDateTime(since);
+
+  // Pega entradas com remarks não-triviais
+  const rows = await db
+    .select({
+      historyId: multiparkBookingHistory.historyId,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      remarks: multiparkBookingHistory.remarks,
+      actionTime: multiparkBookingHistory.actionTime,
+      agentName: multiparkBookingHistory.agentName,
+      changeType: multiparkBookingHistory.changeType,
+    })
+    .from(multiparkBookingHistory)
+    .where(
+      and(
+        isNotNull(multiparkBookingHistory.remarks),
+        gte(multiparkBookingHistory.actionTime, sinceStr),
+      ),
+    )
+    .orderBy(desc(multiparkBookingHistory.actionTime))
+    .limit(500);
+
+  const result = { ...empty };
+  for (const row of rows) {
+    const remarks = (row.remarks ?? "").trim();
+    if (!remarks || remarks.length < 3) continue; // ignora ruído
+    result.scanned++;
+
+    const sourceKey = `mp:${row.historyId}`;
+    try {
+      const existing = await db
+        .select({ id: incidents.id })
+        .from(incidents)
+        .where(eq(incidents.sourceEmailId, sourceKey))
+        .limit(1);
+      if (existing.length > 0) { result.skipped++; continue; }
+    } catch (e: any) {
+      result.errors.push(`Lookup ${row.historyId}: ${e.message}`);
+      continue;
+    }
+
+    const cls = classifyRemarks(remarks);
+
+    // Procura matrícula via booking
+    let vehiclePlate: string | undefined;
+    try {
+      const [booking] = await db
+        .select({ plate: multiparkBookings.licensePlate })
+        .from(multiparkBookings)
+        .where(eq(multiparkBookings.externalId, row.bookingExternalId))
+        .limit(1);
+      vehiclePlate = booking?.plate ?? undefined;
+    } catch {}
+
+    const importedAtStr = new Date().toISOString().slice(0, 19).replace("T", " ");
+    try {
+      const id = await createIncident({
+        incidentType: cls.incidentType,
+        severity: cls.severity,
+        status: "open",
+        description: remarks.slice(0, 1000),
+        vehiclePlate,
+        reportedBy: opts.reportedById ?? null,
+        sourceEmailId: sourceKey, // reaproveita para dedup (Multipark history id)
+        reservationLink: row.bookingExternalId,
+        aiClassification: `Multipark · ${row.changeType ?? ""} · ${row.agentName ?? ""}`.trim(),
+        importedAt: importedAtStr,
+      });
+      result.imported++;
+      result.details.push(`${cls.incidentType} (${cls.severity}) — ${remarks.slice(0, 60)}${remarks.length > 60 ? "…" : ""}`);
+    } catch (e: any) {
+      result.errors.push(`Create ${row.historyId}: ${e.message}`);
+    }
+  }
+  return result;
+}

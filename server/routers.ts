@@ -3271,6 +3271,25 @@ export const appRouter = router({
     }).optional()).query(({ input }) => getIncidentStats(input?.weekNumber, input?.yearNumber)),
 
     byEmployee: protectedProcedure.input(z.object({ employeeId: z.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId)),
+
+    // Sincroniza ocorrências a partir do multipark_booking_history (remarks
+    // dos agentes nos check-in/out/movements). Dedup por sourceEmailId.
+    syncFromMultipark: protectedProcedure
+      .input(z.object({ lookbackDays: z.number().int().min(1).max(180).optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        requireRole(ctx.user.role, "frontoffice");
+        const { syncIncidentsFromMultiparkHistory } = await import("./db");
+        const r = await syncIncidentsFromMultiparkHistory({
+          lookbackDays: input?.lookbackDays ?? 30,
+          reportedById: ctx.user.id,
+        });
+        await logActivity({
+          userId: ctx.user.id, action: "sync", entity: "incident", entityId: 0,
+          details: `Multipark sync: ${r.imported} importadas, ${r.skipped} já existiam, ${r.scanned} analisadas`,
+        });
+        return r;
+      }),
   }),
 
   // ─── AVALIAÇÃO DE DESEMPENHO ─────────────────────────────────────────────
