@@ -575,7 +575,7 @@ export const multiparkBookings = mysqlTable("multipark_bookings", {
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 },
 (table) => [
-	index("multipark_bookings_externalId_unique").on(table.externalId),
+	uniqueIndex("multipark_bookings_externalId_unique").on(table.externalId),
 ]);
 
 export const multiparkDailySnapshots = mysqlTable("multipark_daily_snapshots", {

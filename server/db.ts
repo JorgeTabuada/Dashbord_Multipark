@@ -4297,15 +4297,30 @@ export async function getMultiparkBookingByExternalId(externalId: string) {
 export async function upsertMultiparkBooking(data: InsertMultiparkBooking) {
   const db = await getDb();
   if (!db) return;
-  const existing = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, data.externalId)).limit(1);
-  if (existing.length > 0) {
-    const { externalId, ...updateData } = data;
-    await db.update(multiparkBookings).set(updateData as any).where(eq(multiparkBookings.id, existing[0].id));
-    return { id: existing[0].id, action: "updated" as const };
-  } else {
-    const [result] = await db.insert(multiparkBookings).values(data as any).$returningId();
-    return { id: result?.id, action: "created" as const };
+  // Upsert atómico — INSERT ... ON DUPLICATE KEY UPDATE. Requer o unique
+  // index criado pela migration 0043 para proteger contra race condition
+  // (vários Promise concorrentes do sync a tentar inserir o mesmo
+  // externalId em action types diferentes). O SELECT extra antes serve
+  // só para distinguir created/updated para os contadores do sync.
+  const { externalId, ...rest } = data;
+  const before = await db
+    .select({ id: multiparkBookings.id })
+    .from(multiparkBookings)
+    .where(eq(multiparkBookings.externalId, externalId))
+    .limit(1);
+  await db
+    .insert(multiparkBookings)
+    .values(data as any)
+    .onDuplicateKeyUpdate({ set: rest as any });
+  if (before.length > 0) {
+    return { id: before[0].id, action: "updated" as const };
   }
+  const [row] = await db
+    .select({ id: multiparkBookings.id })
+    .from(multiparkBookings)
+    .where(eq(multiparkBookings.externalId, externalId))
+    .limit(1);
+  return { id: row?.id, action: "created" as const };
 }
 
 export async function getMultiparkBookingStats(filters?: { from?: string; to?: string; projectId?: number }) {
