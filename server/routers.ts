@@ -3405,6 +3405,7 @@ export const appRouter = router({
       id: z.number(),
       name: z.string().optional(),
       campaignKey: z.string().optional(),
+      partnerType: z.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]).optional(),
       contactName: z.string().optional(),
       contactEmail: z.string().optional(),
       contactPhone: z.string().optional(),
@@ -3412,7 +3413,7 @@ export const appRouter = router({
       monthlyFee: z.number().optional(),
       nif: z.string().optional(),
       billingAgreement: z.string().optional(),
-      status: z.string().optional(),
+      partnerStatus: z.enum(["active", "inactive", "pending"]).optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
