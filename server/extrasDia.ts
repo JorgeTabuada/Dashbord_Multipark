@@ -35,6 +35,10 @@ export const TL_WORKING_DAYS_PER_MONTH = 15;
 export const SLOT_MINUTES = 20;
 export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 3
 export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR; // 72
+// O forecast cobre 27h: 00:00–24:00 do dia alvo + 00:00–03:00 do seguinte
+// (para o turno da noite que vai até às 03:00).
+export const FORECAST_HOURS = 27;
+export const FORECAST_SLOTS = FORECAST_HOURS * SLOTS_PER_HOUR; // 81
 
 /**
  * Quantos slots de 20min uma reserva consome consoante o deliveryType.
@@ -158,7 +162,7 @@ export function suggestShifts(
 
   for (let slot = 0; slot < peak; slot++) {
     const active: number[] = [];
-    for (let h = 0; h < 24; h++) if (driversPerHour[h] > slot) active.push(h);
+    for (let h = 0; h < driversPerHour.length; h++) if (driversPerHour[h] > slot) active.push(h);
     if (active.length === 0) continue;
 
     const start = active[0];
@@ -519,8 +523,12 @@ export async function getBookingsInSlot(
   type: "checkin" | "checkout",
 ): Promise<BookingSummary[]> {
   const day = new Date(targetDate + "T00:00:00");
-  const dayStart = startOfDay(day);
+  const targetStartLocal = startOfDay(day);
+  // Para hours 0-23 fica no mesmo dia; para 24-26 (=00-02 de D+1) busca D+1.
+  const dayOffset = Math.floor(hour / 24);
+  const dayStart = addDays(targetStartLocal, dayOffset);
   const dayEnd = addDays(dayStart, 1);
+  const hourLocal = hour % 24;
   const field = type === "checkin" ? "checkIn" : "checkOut";
   const rows = await fetchBookingsInRange(field, dayStart, dayEnd);
 
@@ -533,7 +541,7 @@ export async function getBookingsInSlot(
     const hm = type === "checkin"
       ? parseScheduledHM(r.checkInTime, r.checkIn)
       : parseScheduledHM(r.checkOutTime, r.checkOut);
-    if (!hm || hm.hour !== hour) continue;
+    if (!hm || hm.hour !== hourLocal) continue;
     if (hm.minute < slotStart || hm.minute >= slotEnd) continue;
     const name = [r.clientFirstName, r.clientLastName].filter(Boolean).join(" ").trim();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -673,15 +681,18 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   const targetStart = addDays(baseStart, 1);
   const nextStart = addDays(baseStart, 2);
   const nextEnd = addDays(baseStart, 3);
+  // Limite superior do forecast: 03:00 do dia D+2 (= targetStart + 27h),
+  // para o turno da noite cobrir até às 03:00 do dia seguinte.
+  const targetEndPlus3h = new Date(targetStart.getTime() + FORECAST_HOURS * 60 * 60 * 1000);
 
   const [targetCheckins, baseCheckouts, targetCheckouts, nextCheckouts] = await Promise.all([
-    fetchBookingsInRange("checkIn", targetStart, nextStart),
+    fetchBookingsInRange("checkIn", targetStart, targetEndPlus3h),
     fetchBookingsInRange("checkOut", baseStart, targetStart),
-    fetchBookingsInRange("checkOut", targetStart, nextStart),
+    fetchBookingsInRange("checkOut", targetStart, targetEndPlus3h),
     fetchBookingsInRange("checkOut", nextStart, nextEnd),
   ]);
 
-  const hourly: HourlyRow[] = Array.from({ length: 24 }, (_, h) => ({
+  const hourly: HourlyRow[] = Array.from({ length: FORECAST_HOURS }, (_, h) => ({
     hour: h,
     checkins: 0,
     checkouts: 0,
@@ -698,9 +709,27 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     })),
   }));
 
-  // Acumulador da procura "pesada" por slot global (0..71). Cada reserva
+  // Acumulador da procura "pesada" por slot global (0..80). Cada reserva
   // espalha 1, 1.5 ou 3 unidades consoante o deliveryType.
-  const weightedBySlot: number[] = Array.from({ length: SLOTS_PER_DAY }, () => 0);
+  const weightedBySlot: number[] = Array.from({ length: FORECAST_SLOTS }, () => 0);
+
+  // Hora "efectiva" 0–26: bookings em D+1 ficam em 0–23,
+  // bookings em D+2 com hora < 3 ficam em 24–26. Tudo o resto é descartado.
+  function bookingEffectiveHM(
+    timeStr: string | null,
+    fallbackIso: string | null,
+  ): { hour: number; minute: number } | null {
+    const hm = parseScheduledHM(timeStr, fallbackIso);
+    if (!hm) return null;
+    if (!fallbackIso) return hm;
+    const date = new Date(fallbackIso.includes("T") ? fallbackIso : fallbackIso.replace(" ", "T"));
+    if (Number.isNaN(date.getTime())) return hm;
+    const dayStartLocal = startOfDay(date);
+    const offsetDays = Math.round((dayStartLocal.getTime() - targetStart.getTime()) / (24 * 60 * 60 * 1000));
+    const effectiveHour = hm.hour + 24 * offsetDays;
+    if (effectiveHour < 0 || effectiveHour >= FORECAST_HOURS) return null;
+    return { hour: effectiveHour, minute: hm.minute };
+  }
 
   function addToSlot(
     startHour: number,
@@ -718,7 +747,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     else spread = [1];
     for (let i = 0; i < spread.length; i++) {
       const s = startSlot + i;
-      if (s >= 0 && s < SLOTS_PER_DAY) weightedBySlot[s] += spread[i];
+      if (s >= 0 && s < FORECAST_SLOTS) weightedBySlot[s] += spread[i];
     }
   }
 
@@ -729,7 +758,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   }
 
   for (const r of targetCheckins) {
-    const hm = parseScheduledHM(r.checkInTime, r.checkIn);
+    const hm = bookingEffectiveHM(r.checkInTime, r.checkIn);
     if (hm) {
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkins++;
@@ -739,7 +768,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     }
   }
   for (const r of targetCheckouts) {
-    const hm = parseScheduledHM(r.checkOutTime, r.checkOut);
+    const hm = bookingEffectiveHM(r.checkOutTime, r.checkOut);
     if (hm) {
       const slot = Math.floor(hm.minute / SLOT_MINUTES);
       hourly[hm.hour].checkouts++;

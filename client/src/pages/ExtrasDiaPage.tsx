@@ -36,19 +36,24 @@ const LEVELS = [
 ] as const;
 type LevelId = (typeof LEVELS)[number]["id"];
 
-const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
-const HOURS_25 = Array.from({ length: 25 }, (_, i) => i);
+// 0-26 cobre 00:00 do dia alvo até 02:00 do dia seguinte (último slot da noite).
+const HOURS_24 = Array.from({ length: 27 }, (_, i) => i);
+// 1-27 para fim do turno (27 = 03:00 do dia seguinte).
+const HOURS_25 = Array.from({ length: 28 }, (_, i) => i);
 
 type ShiftId = "morning" | "night";
 
 const SHIFTS: { id: ShiftId; label: string; defaultStart: number; defaultEnd: number }[] = [
   { id: "morning", label: "Manhã (03–15)", defaultStart: 3, defaultEnd: 15 },
-  { id: "night", label: "Noite (15–03)", defaultStart: 15, defaultEnd: 24 },
+  { id: "night", label: "Noite (15–03+1)", defaultStart: 15, defaultEnd: 27 },
 ];
 
 const fmtEur = (n: number) =>
   n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
-const fmtHour = (h: number) => `${String(h).padStart(2, "0")}h`;
+const fmtHour = (h: number) => {
+  if (h < 24) return `${String(h).padStart(2, "0")}h`;
+  return `${String(h - 24).padStart(2, "0")}h+1`;
+};
 const fmtDate = (s: string) => {
   const d = new Date(s + "T00:00:00");
   return d.toLocaleDateString("pt-PT", { weekday: "long", day: "2-digit", month: "long" });
