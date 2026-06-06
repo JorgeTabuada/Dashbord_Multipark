@@ -244,6 +244,12 @@ export interface ExtrasDiaForecast {
     checkouts: number;
     operations: number;
   };
+  spotTypeCounts: {
+    covered: number;
+    uncovered: number;
+    indoor: number;
+    unknown: number;
+  };
   washes: {
     base: DailyWash;
     target: DailyWash;
@@ -271,6 +277,7 @@ type BookingRow = {
   city: string | null;
   deliveryType: string | null;
   enrichedAt: string | null;
+  spotType: string | null;
 };
 
 export interface BookingSummary {
@@ -313,6 +320,7 @@ async function fetchBookingsInRange(
       city: multiparkBookings.city,
       deliveryType: multiparkBookings.deliveryType,
       enrichedAt: multiparkBookings.enrichedAt,
+      spotType: multiparkBookings.spotType,
     })
     .from(multiparkBookings)
     .where(
@@ -807,6 +815,19 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     if (label) allParks.add(label);
   }
 
+  // Contadores por tipo de lugar (covered/uncovered/indoor) — distintos
+  // por reserva (não somar in+out): usa as chegadas + saídas no dia,
+  // dedup por externalId.
+  const spotTypeCounts = { covered: 0, uncovered: 0, indoor: 0, unknown: 0 };
+  const seenForSpot = new Set<string>();
+  for (const r of [...targetCheckins, ...targetCheckouts]) {
+    if (seenForSpot.has(r.externalId)) continue;
+    seenForSpot.add(r.externalId);
+    const st = (r.spotType ?? "unknown") as keyof typeof spotTypeCounts;
+    if (st in spotTypeCounts) spotTypeCounts[st]++;
+    else spotTypeCounts.unknown++;
+  }
+
   return {
     baseDate: dateKey(baseStart),
     targetDate: dateKey(targetStart),
@@ -820,6 +841,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       checkouts: hourly.reduce((s, h) => s + h.checkouts, 0),
       operations: hourly.reduce((s, h) => s + h.checkins + h.checkouts, 0),
     },
+    spotTypeCounts,
     washes: {
       base: { date: dateKey(baseStart), exitsWithWash: countWashes(baseCheckouts) },
       target: { date: dateKey(targetStart), exitsWithWash: countWashes(targetCheckouts) },

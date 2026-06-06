@@ -29,6 +29,7 @@ import {
 } from "../db";
 import { eq } from "drizzle-orm";
 import { multiparkBookings } from "../../drizzle/schema";
+import { classifyAllocation } from "../spotClassification";
 
 // ─── Map park name/city to projectId ─────────────────────────────────────────
 
@@ -170,6 +171,7 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
     notes: booking.notes || null,
     rawJson: JSON.stringify(booking),
     bookingCreatedAt: parseMultiparkDate(booking.createdAt),
+    ...classifyAllocation((booking as any).allocation),
   };
 }
 

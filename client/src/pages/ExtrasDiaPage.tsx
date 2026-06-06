@@ -164,6 +164,38 @@ export default function ExtrasDiaPage() {
             </div>
           )}
 
+          {/* Tipo de lugar (covered/uncovered/indoor) */}
+          {data.spotTypeCounts && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Lugares por tipo</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Inferido do número da alocação. Reservas únicas por dia.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="border rounded-md p-3 bg-card">
+                    <div className="text-xs text-muted-foreground">Descobertos</div>
+                    <div className="text-2xl font-bold">{data.spotTypeCounts.uncovered}</div>
+                  </div>
+                  <div className="border rounded-md p-3 bg-card">
+                    <div className="text-xs text-muted-foreground">Cobertos</div>
+                    <div className="text-2xl font-bold">{data.spotTypeCounts.covered}</div>
+                  </div>
+                  <div className="border rounded-md p-3 bg-card">
+                    <div className="text-xs text-muted-foreground">Indoor</div>
+                    <div className="text-2xl font-bold">{data.spotTypeCounts.indoor}</div>
+                  </div>
+                  <div className="border rounded-md p-3 bg-card">
+                    <div className="text-xs text-muted-foreground">Sem classif.</div>
+                    <div className="text-2xl font-bold text-muted-foreground">{data.spotTypeCounts.unknown}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* KPI cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard
