@@ -317,7 +317,8 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                 <p className="text-xl font-bold">{fmtEur(extrasDiaCost?.total ?? 0)}</p>
                 {extrasDiaCost && (extrasDiaCost.real > 0 || extrasDiaCost.estimate > 0) && (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    real {fmtEur(extrasDiaCost.real)} · estim. {fmtEur(extrasDiaCost.estimate)}
+                    real {fmtEur(extrasDiaCost.real)} ({(extrasDiaCost as any).daysWithReal ?? 0}d)
+                    · estim. {fmtEur(extrasDiaCost.estimate)} ({(extrasDiaCost as any).daysWithEstimate ?? 0}d)
                   </p>
                 )}
               </>

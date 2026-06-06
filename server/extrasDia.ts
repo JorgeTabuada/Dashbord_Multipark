@@ -538,20 +538,30 @@ export async function deleteAssignment(id: number): Promise<void> {
 }
 
 /**
- * Custo total do "extras-dia" para um intervalo de datas:
- *   • Dias já passados (data < hoje):
- *       soma de assignments reais (atribuições gravadas em DB)
- *       — esses são os condutores/TL que foram efectivamente escalados
- *   • Dias futuros (data >= hoje):
- *       soma da estimativa cheapest (Júnior) do forecast diário
- * Devolve { real, estimate, total } para mostrar em folhas de Recolhas/Entregas.
+ * Custo total do "extras-dia" para um intervalo de datas.
+ *
+ *   • Dias passados:
+ *      - Se houver assignments gravados → real += soma
+ *      - Se NÃO houver → estimate += cheapest do forecast (fallback para
+ *        não dar 0, com etiqueta de estimativa)
+ *   • Dias futuros: estimate += cheapest do forecast
+ *
+ * Para que um dia passado conte como "real" tens de ir a /extras-dia,
+ * escolher o dia base, adicionar Team Leader e condutores em "Equipa do dia".
  */
 export async function getExtrasDiaCostForRange(
   startDate: string,
   endDate: string,
-): Promise<{ real: number; estimate: number; total: number; days: number }> {
+): Promise<{
+  real: number;
+  estimate: number;
+  total: number;
+  days: number;
+  daysWithReal: number;
+  daysWithEstimate: number;
+}> {
   const db = await getDb();
-  if (!db) return { real: 0, estimate: 0, total: 0, days: 0 };
+  if (!db) return { real: 0, estimate: 0, total: 0, days: 0, daysWithReal: 0, daysWithEstimate: 0 };
 
   const start = startOfDay(new Date(startDate + "T00:00:00"));
   const end = startOfDay(new Date(endDate + "T00:00:00"));
@@ -560,29 +570,44 @@ export async function getExtrasDiaCostForRange(
   let real = 0;
   let estimate = 0;
   let days = 0;
+  let daysWithReal = 0;
+  let daysWithEstimate = 0;
+
+  async function forecastCheapestFor(d: Date): Promise<number> {
+    // baseDate é o dia ANTES (porque o forecast olha para baseDate + 1).
+    const baseDate = new Date(d);
+    baseDate.setDate(baseDate.getDate() - 1);
+    try {
+      const forecast = await getExtrasDiaForecast(dateKey(baseDate));
+      return forecast.allocation.cheapest.totalCost;
+    } catch {
+      return 0;
+    }
+  }
+
   for (let d = new Date(start); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
     const dateKey_ = dateKey(d);
     days++;
 
     if (d.getTime() < todayStart.getTime()) {
-      // Dia passado: soma das atribuições reais escaladas para esse dia.
+      // Dia passado
       const assignments = await listAssignments(dateKey_);
-      for (const a of assignments) real += a.cost;
-    } else {
-      // Dia futuro (ou hoje): usa a estimativa cheapest do forecast.
-      // baseDate é o dia ANTES (porque o forecast olha para baseDate + 1).
-      const baseDate = new Date(d);
-      baseDate.setDate(baseDate.getDate() - 1);
-      try {
-        const forecast = await getExtrasDiaForecast(dateKey(baseDate));
-        estimate += forecast.allocation.cheapest.totalCost;
-      } catch {
-        // ignora dias sem dados
+      if (assignments.length > 0) {
+        for (const a of assignments) real += a.cost;
+        daysWithReal++;
+      } else {
+        // Sem turnos gravados → fallback para a estimativa do forecast
+        estimate += await forecastCheapestFor(d);
+        daysWithEstimate++;
       }
+    } else {
+      // Hoje ou futuro
+      estimate += await forecastCheapestFor(d);
+      daysWithEstimate++;
     }
   }
 
-  return { real, estimate, total: real + estimate, days };
+  return { real, estimate, total: real + estimate, days, daysWithReal, daysWithEstimate };
 }
 
 // ─── Drill-down: reservas num slot de 20min ──────────────────────────────────
