@@ -938,10 +938,11 @@ export async function getTaskById(id: number) {
   return rows[0];
 }
 
-export async function createTask(data: InsertTask) {
+export async function createTask(data: InsertTask): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.insert(tasks).values(data);
+  const [result] = await db.insert(tasks).values(data);
+  return (result as any).insertId as number;
 }
 
 export async function updateTask(id: number, data: Partial<InsertTask>) {
@@ -954,6 +955,62 @@ export async function deleteTask(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.delete(tasks).where(eq(tasks.id, id));
+}
+
+/**
+ * Devolve tasks com a lista de assignees (employees) e nome do projeto
+ * em uma só query — evita N+1 no frontend.
+ */
+export async function getTasksWithAssignees(filters?: {
+  projectId?: number;
+  assigneeId?: number;
+  status?: string;
+}): Promise<Array<any & { assignees: Array<{ id: number; fullName: string }>; projectName: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const conds: any[] = [];
+  if (filters?.projectId) conds.push(eq(tasks.projectId, filters.projectId));
+  if (filters?.status) conds.push(eq(tasks.taskStatus, filters.status as any));
+
+  const taskRows = await db
+    .select({ task: tasks, projectName: projects.name })
+    .from(tasks)
+    .leftJoin(projects, eq(projects.id, tasks.projectId))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(tasks.updatedAt));
+
+  if (taskRows.length === 0) return [];
+  const taskIds = taskRows.map(r => r.task.id);
+
+  const assigneeRows = await db
+    .select({
+      taskId: taskAssignees.taskId,
+      employeeId: taskAssignees.employeeId,
+      fullName: employees.fullName,
+    })
+    .from(taskAssignees)
+    .innerJoin(employees, eq(employees.id, taskAssignees.employeeId))
+    .where(inArray(taskAssignees.taskId, taskIds));
+
+  const assigneesByTask = new Map<number, Array<{ id: number; fullName: string }>>();
+  for (const r of assigneeRows) {
+    if (!assigneesByTask.has(r.taskId)) assigneesByTask.set(r.taskId, []);
+    assigneesByTask.get(r.taskId)!.push({ id: r.employeeId, fullName: r.fullName });
+  }
+
+  let result = taskRows.map(r => ({
+    ...r.task,
+    projectName: r.projectName,
+    assignees: assigneesByTask.get(r.task.id) ?? [],
+  }));
+
+  // assigneeId filter — apply after join because pode estar em assignees
+  if (filters?.assigneeId) {
+    const want = filters.assigneeId;
+    result = result.filter(t => t.assigneeId === want || t.assignees.some(a => a.id === want));
+  }
+
+  return result;
 }
 
 export async function getTaskStats() {

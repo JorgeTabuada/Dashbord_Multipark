@@ -16,8 +16,44 @@ import {
 import { toast } from "sonner";
 import {
   ListTodo, Plus, Clock, AlertTriangle, CheckCircle2, Circle,
-  ArrowUpCircle, Pencil, Trash2, CalendarDays, Users, LayoutGrid, List, GripVertical, Bell,
+  ArrowUpCircle, Pencil, Trash2, CalendarDays, Users, LayoutGrid, List, GripVertical, Bell, Search,
 } from "lucide-react";
+
+const LEVEL_LABEL: Record<string, string> = {
+  group: "Grupo", city: "Cidade", brand: "Marca", project: "Projeto",
+};
+const LEVEL_COLOR: Record<string, string> = {
+  group: "bg-violet-100 text-violet-700 border-violet-200",
+  city: "bg-blue-100 text-blue-700 border-blue-200",
+  brand: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  project: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
+function sortProjectsHierarchical<T extends { id: number; name: string; parentId?: number | null; level?: string | null }>(
+  list: T[],
+): Array<T & { __depth: number }> {
+  const byParent = new Map<number | null, T[]>();
+  for (const p of list) {
+    const key = (p.parentId ?? null) as number | null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(p);
+  }
+  for (const arr of byParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  const out: Array<T & { __depth: number }> = [];
+  function walk(parentId: number | null, depth: number) {
+    const children = byParent.get(parentId) ?? [];
+    for (const c of children) {
+      out.push({ ...c, __depth: depth });
+      walk(c.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  const seen = new Set(out.map((p) => p.id));
+  for (const p of list) {
+    if (!seen.has(p.id)) out.push({ ...p, __depth: 0 });
+  }
+  return out;
+}
 
 const COLUMNS = [
   { id: "backlog", label: "Backlog", icon: Circle, color: "border-t-slate-400", bg: "bg-slate-50" },
@@ -38,21 +74,31 @@ const STATUS_LABELS: Record<string, string> = {
   backlog: "Backlog", todo: "A Fazer", in_progress: "Em Curso", review: "Revisão", done: "Concluído",
 };
 
+type Assignee = { id: number; fullName: string };
 type TaskRaw = {
   id: number; title: string; description: string | null; projectId: number | null;
-  assigneeId: number | null; createdById: number;
+  projectName?: string | null;
+  assigneeId: number | null; assignees?: Assignee[]; createdById: number;
   taskStatus?: string; taskPriority?: string; status?: string; priority?: string;
   dueDate: Date | string | null; completedAt: Date | string | null;
   createdAt: Date | string; updatedAt: Date | string;
 };
 type Task = {
   id: number; title: string; description: string | null; projectId: number | null;
-  assigneeId: number | null; createdById: number; status: string; priority: string;
+  projectName: string | null;
+  assigneeId: number | null; assignees: Assignee[]; createdById: number;
+  status: string; priority: string;
   dueDate: Date | string | null; completedAt: Date | string | null;
   createdAt: Date | string; updatedAt: Date | string;
 };
 function normalizeTask(t: TaskRaw): Task {
-  return { ...t, status: t.taskStatus ?? t.status ?? "todo", priority: t.taskPriority ?? t.priority ?? "medium" } as Task;
+  return {
+    ...t,
+    projectName: t.projectName ?? null,
+    assignees: t.assignees ?? [],
+    status: t.taskStatus ?? t.status ?? "todo",
+    priority: t.taskPriority ?? t.priority ?? "medium",
+  } as Task;
 }
 
 export default function TasksPage() {
@@ -62,11 +108,11 @@ export default function TasksPage() {
   const { data: stats } = trpc.tasks.stats.useQuery();
   const { data: projects = [] } = trpc.projects.list.useQuery();
   const { data: employees = [] } = trpc.rh.list.useQuery();
-  const { data: usersList = [] } = trpc.users.list.useQuery();
   const [showCreate, setShowCreate] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [filterProject, setFilterProject] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
+  const [searchTerm, setSearchTerm] = useState("");
   const [form, setForm] = useState({
     title: "", description: "", projectId: "", assigneeIds: [] as number[], priority: "medium", dueDate: "",
   });
@@ -108,20 +154,18 @@ export default function TasksPage() {
   function openEdit(t: Task | TaskRaw) {
     const normalized = "taskStatus" in t ? normalizeTask(t as TaskRaw) : t as Task;
     setEditTask(normalized);
+    // Os assignees já vêm da query lista; sem necessidade de fetch extra
+    const ids = normalized.assignees.length > 0
+      ? normalized.assignees.map(a => a.id)
+      : (normalized.assigneeId ? [normalized.assigneeId] : []);
     setForm({
       title: normalized.title,
       description: normalized.description ?? "",
       projectId: normalized.projectId?.toString() ?? "",
-      assigneeIds: normalized.assigneeId ? [normalized.assigneeId] : [],
+      assigneeIds: ids,
       priority: normalized.priority,
       dueDate: normalized.dueDate ? new Date(normalized.dueDate).toISOString().split("T")[0] : "",
     });
-    // Load assignees for this task
-    utils.tasks.getAssignees.fetch({ taskId: t.id }).then((assignees) => {
-      if (assignees && assignees.length > 0) {
-        setForm(f => ({ ...f, assigneeIds: assignees.map((a: any) => a.employeeId) }));
-      }
-    }).catch(() => {});
   }
 
   function toggleAssignee(empId: number) {
@@ -136,8 +180,16 @@ export default function TasksPage() {
   const filteredTasks = useMemo(() => {
     let t = (allTasks as unknown as TaskRaw[]).map(normalizeTask);
     if (filterProject !== "all") t = t.filter(x => x.projectId === parseInt(filterProject));
+    const q = searchTerm.trim().toLowerCase();
+    if (q) {
+      t = t.filter(x =>
+        x.title.toLowerCase().includes(q) ||
+        (x.description ?? "").toLowerCase().includes(q) ||
+        x.assignees.some(a => a.fullName.toLowerCase().includes(q)),
+      );
+    }
     return t;
-  }, [allTasks, filterProject]);
+  }, [allTasks, filterProject, searchTerm]);
 
   const grouped = useMemo(() => {
     const map: Record<string, Task[]> = {};
@@ -152,17 +204,18 @@ export default function TasksPage() {
     return t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done";
   }
 
-  function getAssigneeName(assigneeId: number | null) {
-    if (!assigneeId) return null;
-    const empRow = (employees as any[]).find(e => (e.employee ?? e).id === assigneeId);
-    const emp = empRow ? (empRow.employee ?? empRow) : null;
-    return emp?.fullName ?? null;
-  }
-
-  function getProjectName(projectId: number | null) {
-    if (!projectId) return null;
-    const p = (projects as any[]).find(p => p.id === projectId);
-    return p?.name ?? null;
+  function renderAssignees(task: Task) {
+    const list = task.assignees;
+    if (list.length === 0) return null;
+    const visible = list.slice(0, 2);
+    const extra = list.length - visible.length;
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
+        <Users className="h-3 w-3 shrink-0" />
+        {visible.map(a => a.fullName).join(", ")}
+        {extra > 0 && <span className="font-medium">+{extra}</span>}
+      </span>
+    );
   }
 
   // ─── DRAG & DROP HANDLERS ─────────────────────────────────────────────────
@@ -204,17 +257,6 @@ export default function TasksPage() {
     toast.success(`Tarefa movida para ${STATUS_LABELS[colId]}`);
   }, [allTasks, moveMut]);
 
-  // ─── ASSIGNEE DISPLAY ────────────────────────────────────────────────────
-  function AssigneeBadges({ task }: { task: Task }) {
-    const assigneeName = getAssigneeName(task.assigneeId);
-    // For now show the primary assignee; multi-assignees shown in detail
-    if (!assigneeName) return null;
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Users className="h-3 w-3" />{assigneeName}
-      </span>
-    );
-  }
 
   // ─── MULTI-ASSIGNEE PICKER ───────────────────────────────────────────────
   function AssigneePicker() {
@@ -248,7 +290,6 @@ export default function TasksPage() {
 
   // ─── TASK CARD (Kanban) ───────────────────────────────────────────────────
   function TaskCard({ task }: { task: Task }) {
-    const projectName = getProjectName(task.projectId);
     return (
       <div
         draggable
@@ -277,10 +318,10 @@ export default function TasksPage() {
           <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[task.priority]}`}>
             {PRIORITY_LABELS[task.priority]}
           </Badge>
-          {projectName && <Badge variant="outline" className="text-xs">{projectName}</Badge>}
+          {task.projectName && <Badge variant="outline" className="text-xs">{task.projectName}</Badge>}
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <AssigneeBadges task={task} />
+          {renderAssignees(task)}
           {task.dueDate && (
             <span className={`flex items-center gap-1 ${isOverdue(task) ? "text-red-600 font-medium" : ""}`}>
               <CalendarDays className="h-3 w-3" />
@@ -321,12 +362,28 @@ export default function TasksPage() {
               <List className="h-4 w-4" />
             </Button>
           </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Pesquisar tarefa..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 h-9 w-56"
+            />
+          </div>
           <Select value={filterProject} onValueChange={setFilterProject}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Filtrar por projeto..." /></SelectTrigger>
+            <SelectTrigger className="w-56"><SelectValue placeholder="Centro de custos..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os Projetos</SelectItem>
-              {(projects as any[]).map(p => (
-                <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+              <SelectItem value="all">Todos (grupo / cidade / marca / projeto)</SelectItem>
+              {sortProjectsHierarchical(projects as any[]).map((p: any) => (
+                <SelectItem key={p.id} value={p.id.toString()}>
+                  <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_COLOR[p.level] ?? ""}`}>
+                      {LEVEL_LABEL[p.level] ?? p.level}
+                    </span>
+                    {p.name}
+                  </span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -420,8 +477,6 @@ export default function TasksPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredTasks.map(task => {
-                      const projectName = getProjectName(task.projectId);
-                      const assigneeName = getAssigneeName(task.assigneeId);
                       const col = COLUMNS.find(c => c.id === task.status);
                       return (
                         <TableRow key={task.id} className={`group ${isOverdue(task) ? "bg-red-50" : ""}`}>
@@ -441,8 +496,12 @@ export default function TasksPage() {
                               {PRIORITY_LABELS[task.priority]}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{projectName ?? "—"}</TableCell>
-                          <TableCell className="text-sm">{assigneeName ?? "—"}</TableCell>
+                          <TableCell className="text-sm">{task.projectName ?? "—"}</TableCell>
+                          <TableCell className="text-sm">
+                            {task.assignees.length === 0
+                              ? "—"
+                              : task.assignees.map(a => a.fullName).join(", ")}
+                          </TableCell>
                           <TableCell className="text-sm">
                             {task.dueDate ? (
                               <span className={isOverdue(task) ? "text-red-600 font-medium" : ""}>
@@ -500,12 +559,19 @@ export default function TasksPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Projeto</Label>
+                <Label>Centro de custos</Label>
                 <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Opcional..." /></SelectTrigger>
                   <SelectContent>
-                    {(projects as any[]).map(p => (
-                      <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                    {sortProjectsHierarchical(projects as any[]).map((p: any) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_COLOR[p.level] ?? ""}`}>
+                            {LEVEL_LABEL[p.level] ?? p.level}
+                          </span>
+                          {p.name}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -535,7 +601,6 @@ export default function TasksPage() {
               title: form.title,
               description: form.description || undefined,
               projectId: form.projectId ? parseInt(form.projectId) : undefined,
-              assigneeId: form.assigneeIds[0] ?? undefined,
               assigneeIds: form.assigneeIds.length > 0 ? form.assigneeIds : undefined,
               priority: form.priority as any,
               dueDate: form.dueDate || undefined,
@@ -561,12 +626,19 @@ export default function TasksPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Projeto</Label>
+                <Label>Centro de custos</Label>
                 <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Opcional..." /></SelectTrigger>
                   <SelectContent>
-                    {(projects as any[]).map(p => (
-                      <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                    {sortProjectsHierarchical(projects as any[]).map((p: any) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_COLOR[p.level] ?? ""}`}>
+                            {LEVEL_LABEL[p.level] ?? p.level}
+                          </span>
+                          {p.name}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -608,7 +680,6 @@ export default function TasksPage() {
               title: form.title,
               description: form.description || undefined,
               projectId: form.projectId ? parseInt(form.projectId) : null,
-              assigneeId: form.assigneeIds[0] ?? null,
               assigneeIds: form.assigneeIds,
               priority: form.priority as any,
               status: editTask.status as any,

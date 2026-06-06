@@ -40,7 +40,6 @@ import {
   getEmployeeProjects,
   assignEmployeeToProject,
   removeEmployeeFromProject,
-  getTasks,
   getTaskById,
   createTask,
   updateTask,
@@ -619,7 +618,10 @@ export const appRouter = router({
   tasks: router({
     list: protectedProcedure
       .input(z.object({ projectId: z.number().optional(), assigneeId: z.number().optional(), status: z.string().optional() }).optional())
-      .query(async ({ input }) => getTasks(input ?? {})),
+      .query(async ({ input }) => {
+        const { getTasksWithAssignees } = await import("./db");
+        return getTasksWithAssignees(input ?? {});
+      }),
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
@@ -643,24 +645,23 @@ export const appRouter = router({
         dueDate: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const result = await createTask({
+        // O primeiro assignee passa para a coluna assigneeId (compat);
+        // a lista completa fica em task_assignees.
+        const primaryAssignee = input.assigneeIds?.[0] ?? input.assigneeId ?? null;
+        const newId = await createTask({
           title: input.title,
           description: input.description ?? null,
           projectId: input.projectId ?? null,
-          assigneeId: input.assigneeId ?? null,
+          assigneeId: primaryAssignee,
           createdById: ctx.user.id,
           taskPriority: input.priority,
           dueDate: input.dueDate ? new Date(input.dueDate).toISOString().slice(0, 19).replace("T", " ") : null,
         });
-        // Set multi-assignees if provided
         if (input.assigneeIds && input.assigneeIds.length > 0) {
-          // Get the newly created task ID
-          const tasks = await getTasks({});
-          const newest = tasks[0];
-          if (newest) await setTaskAssignees(newest.id, input.assigneeIds);
+          await setTaskAssignees(newId, input.assigneeIds);
         }
-        await logActivity({ userId: ctx.user.id, action: "create", entity: "task", details: input.title });
-        return { success: true };
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "task", entityId: newId, details: input.title });
+        return { id: newId };
       }),
     update: protectedProcedure
       .input(z.object({
@@ -679,13 +680,18 @@ export const appRouter = router({
         const data: any = { ...rest };
         if (status !== undefined) data.taskStatus = status;
         if (priority !== undefined) data.taskPriority = priority;
-        if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
+        if (dueDate !== undefined) {
+          data.dueDate = dueDate ? new Date(dueDate).toISOString().slice(0, 19).replace("T", " ") : null;
+        }
         if (status === "done") {
-          data.completedAt = new Date();
-          data.notifiedComplete = false;
+          data.completedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+          data.notifiedComplete = 0;
+        }
+        // Se vem lista de assignees, o primeiro é o "principal" (assigneeId)
+        if (assigneeIds !== undefined) {
+          data.assigneeId = assigneeIds[0] ?? null;
         }
         await updateTask(id, data);
-        // Update multi-assignees if provided
         if (assigneeIds !== undefined) {
           await setTaskAssignees(id, assigneeIds);
         }
