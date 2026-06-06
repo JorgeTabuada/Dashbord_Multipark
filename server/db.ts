@@ -4181,11 +4181,13 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
   let projectIds: number[] | undefined;
   if (projectId) projectIds = await resolveProjectIds(projectId);
 
-  // 1. Revenue: bookings with checkout in the year
+  // 1. Revenue: bookings with checkout no ano, excluindo canceladas.
+  // Igual ao filtro da Faturação (status != 'CANCELLED' apanha também as
+  // canceladas com cancelledAt vazio que o sync não populou).
   const revConds: any[] = [
     gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-01-01`))),
     lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
-    isNotNull(multiparkBookings.checkOut),
+    sql`${multiparkBookings.status} != 'CANCELLED'`,
   ];
   if (projectIds) revConds.push(inArray(multiparkBookings.projectId, projectIds));
 
