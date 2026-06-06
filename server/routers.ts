@@ -349,8 +349,51 @@ function requireRole(userRole: string, minRole: string) {
 
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
+// Migration runner one-shot (importado dentro do mutation para não puxar
+// drizzle/mysql2 no top-level se a função getDb não estiver disponível)
+async function applyMigration0044(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0044_STATEMENTS, IDEMPOTENT_ERROR_CODES } = await import("./migrations/migration_0044");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0044_STATEMENTS) {
+    try {
+      await db.execute(sql.raw(stmt));
+      ok += 1;
+    } catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
+
+  // ── ADMIN (one-shot migrations) ───────────────────────────────────────────
+  admin: router({
+    runMigration0044: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0044();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0044_rh_revamp: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+  }),
 
   // ── AUTH ────────────────────────────────────────────────────────────────────
   auth: router({

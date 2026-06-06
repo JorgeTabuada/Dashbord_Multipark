@@ -1231,6 +1231,30 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
   );
 }
 
+// ─── MIGRATION 0044 ONE-SHOT BUTTON (super_admin only) ────────────────────────
+function RunMigration0044Button() {
+  const run = trpc.admin.runMigration0044.useMutation({
+    onSuccess: (r) => {
+      if (r.failed > 0) toast.error(`Migration falhou em ${r.failed} statements: ${r.errors[0] ?? ""}`);
+      else toast.success(`Migration aplicada: ${r.ok} ok, ${r.skipped} já existiam`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Aplicar a migration 0044 (tabelas RH + reset extra_rates)?")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A aplicar..." : "DB: 0044"}
+    </Button>
+  );
+}
+
 // ─── EXTRA RATES DIALOG ───────────────────────────────────────────────────────
 function ExtraRatesDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const utils = trpc.useUtils();
@@ -1827,6 +1851,7 @@ export default function HRPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
         <div className="flex items-center gap-2">
+          {userRole === "super_admin" && <RunMigration0044Button />}
           <Button onClick={() => setShowCreate(true)} size="sm">
             <UserPlus className="w-4 h-4 mr-2" /> Novo Colaborador
           </Button>
