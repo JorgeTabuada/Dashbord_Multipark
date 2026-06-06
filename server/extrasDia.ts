@@ -713,21 +713,24 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
   // espalha 1, 1.5 ou 3 unidades consoante o deliveryType.
   const weightedBySlot: number[] = Array.from({ length: FORECAST_SLOTS }, () => 0);
 
-  // Hora "efectiva" 0–26: bookings em D+1 ficam em 0–23,
-  // bookings em D+2 com hora < 3 ficam em 24–26. Tudo o resto é descartado.
+  // O "dia operacional" vai de 03:00 a 03:00 (24h reais). Hora efectiva:
+  //   • bookings em D+1 hora 3–23 → 3–23
+  //   • bookings em D+2 hora 0–2  → 24–26
+  //   • bookings em D+1 hora 0–2  → DESCARTADOS (pertencem ao plano do dia anterior)
   function bookingEffectiveHM(
     timeStr: string | null,
     fallbackIso: string | null,
   ): { hour: number; minute: number } | null {
     const hm = parseScheduledHM(timeStr, fallbackIso);
     if (!hm) return null;
-    if (!fallbackIso) return hm;
+    if (!fallbackIso) return hm.hour >= 3 ? hm : null;
     const date = new Date(fallbackIso.includes("T") ? fallbackIso : fallbackIso.replace(" ", "T"));
-    if (Number.isNaN(date.getTime())) return hm;
+    if (Number.isNaN(date.getTime())) return hm.hour >= 3 ? hm : null;
     const dayStartLocal = startOfDay(date);
     const offsetDays = Math.round((dayStartLocal.getTime() - targetStart.getTime()) / (24 * 60 * 60 * 1000));
     const effectiveHour = hm.hour + 24 * offsetDays;
-    if (effectiveHour < 0 || effectiveHour >= FORECAST_HOURS) return null;
+    // janela do dia operacional: 3 ≤ effectiveHour < 27
+    if (effectiveHour < 3 || effectiveHour >= FORECAST_HOURS) return null;
     return { hour: effectiveHour, minute: hm.minute };
   }
 

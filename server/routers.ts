@@ -4034,7 +4034,7 @@ export const appRouter = router({
       .input(
         z.object({
           date: z.string(),
-          hour: z.number().int().min(0).max(26),
+          hour: z.number().int().min(3).max(26),
           slot: z.number().int().min(0).max(2),
           type: z.enum(["checkin", "checkout"]),
         }),
