@@ -95,7 +95,7 @@ export default function BillingDiagnosePage() {
                     <td className="p-2 text-right tabular-nums">{fmt(data.sumWithCheckoutNotNull.sum)}</td>
                   </tr>
                   <tr className="border-b">
-                    <td className="p-2">+ cancelledAt IS NULL (exclui canceladas)</td>
+                    <td className="p-2">+ status = 'CHECKED_OUT' (só entregas reais)</td>
                     <td className="p-2 text-right tabular-nums">{data.sumExcludingCancelled.count}</td>
                     <td className="p-2 text-right tabular-nums">{fmt(data.sumExcludingCancelled.sum)}</td>
                   </tr>

@@ -2321,7 +2321,7 @@ export async function diagnoseBilling(filters: {
     .from(multiparkBookings)
     .where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr), isNotNull(multiparkBookings.checkOut)));
 
-  // ── 3. + isNull(cancelledAt) ──
+  // ── 3. + status = 'CHECKED_OUT' (sem o filtro de projeto ainda) ──
   const [a3] = await db
     .select({
       count: sql<number>`COUNT(*)`,
@@ -2331,16 +2331,14 @@ export async function diagnoseBilling(filters: {
     .where(and(
       gte(multiparkBookings.checkOut, fromStr),
       lte(multiparkBookings.checkOut, toStr),
-      isNotNull(multiparkBookings.checkOut),
-      isNull(multiparkBookings.cancelledAt),
+      eq(multiparkBookings.status, "CHECKED_OUT"),
     ));
 
   // ── 4. + inArray(projectId) se filtro ──
   const filteredConds: any[] = [
     gte(multiparkBookings.checkOut, fromStr),
     lte(multiparkBookings.checkOut, toStr),
-    isNotNull(multiparkBookings.checkOut),
-    isNull(multiparkBookings.cancelledAt),
+    eq(multiparkBookings.status, "CHECKED_OUT"),
   ];
   if (projectIds) filteredConds.push(inArray(multiparkBookings.projectId, projectIds));
   const [a4] = await db
@@ -2508,15 +2506,18 @@ export async function getBillingData(filters: {
   let projectIds: number[] | undefined;
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
 
-  // ─── 1. PRODUZIDO (reservas com checkout no período) ─────────────────────
-  // Exclui canceladas: uma reserva pode ter checkOut definido E ter sido
-  // cancelada depois (cliente pediu reembolso, etc.) — não conta como
-  // receita produzida.
+  // ─── 1. PRODUZIDO (reservas com checkout EFECTIVO no período) ────────────
+  // Filtra por status='CHECKED_OUT' — só conta reservas em que o cliente
+  // já saiu de facto. `checkOut` é a data PREVISTA de saída, por isso uma
+  // reserva BOOKED (futura) ou CHECKED_IN (cliente ainda lá) também tem
+  // checkOut definido, mas não é receita produzida. Filtros antigos
+  // (isNull(cancelledAt), isNotNull(checkOut)) eram insuficientes porque
+  // havia CANCELLED com cancelledAt vazio. O status é a única fonte
+  // semanticamente correcta.
   const deliveryConds: any[] = [
     gte(multiparkBookings.checkOut, fromStr),
     lte(multiparkBookings.checkOut, toStr),
-    isNotNull(multiparkBookings.checkOut),
-    isNull(multiparkBookings.cancelledAt),
+    eq(multiparkBookings.status, "CHECKED_OUT"),
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
 
@@ -3534,7 +3535,7 @@ export async function getPartnerInvoicingSummary(filters: {
     aliasValue: partnerAliases.aliasValue,
   }).from(partnerAliases);
 
-  // 3) Bookings com checkout no período (não cancelados), agrupados por campaign
+  // 3) Bookings com checkout efectivo no período, agrupados por campaign
   const bookingRows = await db
     .select({
       campaign: multiparkBookings.campaign,
@@ -3545,8 +3546,7 @@ export async function getPartnerInvoicingSummary(filters: {
     .where(
       and(
         isNotNull(multiparkBookings.campaign),
-        isNotNull(multiparkBookings.checkOut),
-        isNull(multiparkBookings.cancelledAt),
+        eq(multiparkBookings.status, "CHECKED_OUT"),
         gte(multiparkBookings.checkOut, fromStr),
         lte(multiparkBookings.checkOut, toStr),
       ),
@@ -3646,8 +3646,7 @@ export async function getPartnerInvoicingSummary(filters: {
         .from(multiparkBookings)
         .where(
           and(
-            isNotNull(multiparkBookings.checkOut),
-            isNull(multiparkBookings.cancelledAt),
+            eq(multiparkBookings.status, "CHECKED_OUT"),
             gte(multiparkBookings.checkOut, fromStr),
             lte(multiparkBookings.checkOut, toStr),
             inArray(multiparkBookings.projectId, Array.from(expanded)),
@@ -3820,7 +3819,7 @@ export async function getPartnerInvoicingDetailByType(filters: {
   for (const p of partnerRows) reg(p.name, p.id);
   for (const a of aliasRows) reg(a.aliasValue, a.partnershipId);
 
-  // Bookings agrupados por campaign (campanha → parceiro)
+  // Bookings agrupados por campaign (campanha → parceiro). Só CHECKED_OUT.
   const bookingRows = await db
     .select({
       campaign: multiparkBookings.campaign,
@@ -3834,8 +3833,7 @@ export async function getPartnerInvoicingDetailByType(filters: {
     .where(
       and(
         isNotNull(multiparkBookings.campaign),
-        isNotNull(multiparkBookings.checkOut),
-        isNull(multiparkBookings.cancelledAt),
+        eq(multiparkBookings.status, "CHECKED_OUT"),
         gte(multiparkBookings.checkOut, fromStr),
         lte(multiparkBookings.checkOut, toStr),
       ),
@@ -3876,8 +3874,7 @@ export async function getPartnerInvoicingDetailByType(filters: {
         .from(multiparkBookings)
         .where(
           and(
-            isNotNull(multiparkBookings.checkOut),
-            isNull(multiparkBookings.cancelledAt),
+            eq(multiparkBookings.status, "CHECKED_OUT"),
             gte(multiparkBookings.checkOut, fromStr),
             lte(multiparkBookings.checkOut, toStr),
             inArray(multiparkBookings.projectId, Array.from(expanded)),
