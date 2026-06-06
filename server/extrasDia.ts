@@ -537,6 +537,54 @@ export async function deleteAssignment(id: number): Promise<void> {
   await db.delete(extrasDiaAssignments).where(eq(extrasDiaAssignments.id, id));
 }
 
+/**
+ * Custo total do "extras-dia" para um intervalo de datas:
+ *   • Dias já passados (data < hoje):
+ *       soma de assignments reais (atribuições gravadas em DB)
+ *       — esses são os condutores/TL que foram efectivamente escalados
+ *   • Dias futuros (data >= hoje):
+ *       soma da estimativa cheapest (Júnior) do forecast diário
+ * Devolve { real, estimate, total } para mostrar em folhas de Recolhas/Entregas.
+ */
+export async function getExtrasDiaCostForRange(
+  startDate: string,
+  endDate: string,
+): Promise<{ real: number; estimate: number; total: number; days: number }> {
+  const db = await getDb();
+  if (!db) return { real: 0, estimate: 0, total: 0, days: 0 };
+
+  const start = startOfDay(new Date(startDate + "T00:00:00"));
+  const end = startOfDay(new Date(endDate + "T00:00:00"));
+  const todayStart = startOfDay(new Date());
+
+  let real = 0;
+  let estimate = 0;
+  let days = 0;
+  for (let d = new Date(start); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
+    const dateKey_ = dateKey(d);
+    days++;
+
+    if (d.getTime() < todayStart.getTime()) {
+      // Dia passado: soma das atribuições reais escaladas para esse dia.
+      const assignments = await listAssignments(dateKey_);
+      for (const a of assignments) real += a.cost;
+    } else {
+      // Dia futuro (ou hoje): usa a estimativa cheapest do forecast.
+      // baseDate é o dia ANTES (porque o forecast olha para baseDate + 1).
+      const baseDate = new Date(d);
+      baseDate.setDate(baseDate.getDate() - 1);
+      try {
+        const forecast = await getExtrasDiaForecast(dateKey(baseDate));
+        estimate += forecast.allocation.cheapest.totalCost;
+      } catch {
+        // ignora dias sem dados
+      }
+    }
+  }
+
+  return { real, estimate, total: real + estimate, days };
+}
+
 // ─── Drill-down: reservas num slot de 20min ──────────────────────────────────
 
 export async function getBookingsInSlot(

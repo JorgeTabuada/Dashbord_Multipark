@@ -17,6 +17,7 @@ import {
   deleteAssignment,
   listDriverCandidates,
   getBookingsInSlot,
+  getExtrasDiaCostForRange,
 } from "./extrasDia";
 import { importExtrasFromCsv } from "./extrasImport";
 import {
@@ -4028,6 +4029,12 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deleteAssignment(input.id);
         return { success: true };
+      }),
+
+    costForRange: protectedProcedure
+      .input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => {
+        return getExtrasDiaCostForRange(input.startDate, input.endDate);
       }),
 
     bookingsInSlot: protectedProcedure

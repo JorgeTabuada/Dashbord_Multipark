@@ -166,7 +166,7 @@ export default function ExtrasDiaPage() {
 
 
           {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard
               icon={<ArrowDownToLine className="h-4 w-4 text-emerald-600" />}
               label="Recolhas"
@@ -196,16 +196,6 @@ export default function ExtrasDiaPage() {
               hint={
                 actuals.count > 0
                   ? `Estimativa: ${fmtEur(data.allocation.cheapest.totalCost)}`
-                  : undefined
-              }
-            />
-            <KpiCard
-              icon={<Euro className="h-4 w-4 text-cyan-600" />}
-              label="Extras"
-              value={fmtEur(data.extrasValue?.total ?? 0)}
-              hint={
-                (data.extrasValue?.estimate ?? 0) > 0 || (data.extrasValue?.real ?? 0) > 0
-                  ? `estim. ${fmtEur(data.extrasValue?.estimate ?? 0)} · real ${fmtEur(data.extrasValue?.real ?? 0)}`
                   : undefined
               }
             />
