@@ -109,17 +109,19 @@ function findProjectId(
 
 // ─── Parse date from MultiPark format "DD/MM/YYYY, HH:mm" ────────────────────
 
-function parseMultiparkDate(dateStr: string | undefined | null): Date | null {
+function parseMultiparkDate(dateStr: string | undefined | null): string | null {
   if (!dateStr) return null;
   // Format: "07/03/2026, 14:15"
   const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
+  let d: Date | null = null;
   if (match) {
     const [, day, month, year, hours, minutes] = match;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+    d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  } else {
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) d = parsed;
   }
-  // Try ISO format fallback
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
+  return d ? d.toISOString().slice(0, 19).replace("T", " ") : null;
 }
 
 // ─── Convert API booking to DB record ────────────────────────────────────────
@@ -173,8 +175,8 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
     notes: booking.notes || null,
     rawJson: JSON.stringify(booking),
     bookingCreatedAt: parseMultiparkDate(booking.createdAt),
-    paymentMethod: typeof pricing?.paymentMethod === "string"
-      ? pricing.paymentMethod.slice(0, 128)
+    paymentMethod: typeof (pricing as any)?.paymentMethod === "string"
+      ? (pricing as any).paymentMethod.slice(0, 128)
       : null,
     ...classifyAllocation((booking as any).allocation),
   };
@@ -383,7 +385,7 @@ export async function enrichBookingsBatch(limit = 100): Promise<{
   noKey: number;
 }> {
   const db = await getDb();
-  if (!db) return { scanned: 0, enriched: 0, errors: 0 };
+  if (!db) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
 
   // Mapa parkId (interno) → ParkConfig descobre-se sob procura, vamos tentar
   // todos os parques para cada booking sem perder muito tempo.
@@ -399,7 +401,7 @@ export async function enrichBookingsBatch(limit = 100): Promise<{
     .where(isNull(multiparkBookings.enrichedAt))
     .limit(limit);
 
-  if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0 };
+  if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
 
   const parks = getConfiguredParks();
   // Normaliza nomes de cidade que vêm em variantes (EN vs PT).
@@ -698,8 +700,8 @@ export async function syncBookings(opts: {
     recordsProcessed: totalProcessed,
     recordsCreated: totalCreated,
     recordsUpdated: totalUpdated - totalCreated,
-    errorMessage: errors.length > 0 ? errors.join("; ") : null,
-    triggeredById: opts.triggeredById || null,
+    errorMessage: errors.length > 0 ? errors.join("; ") : undefined,
+    triggeredById: opts.triggeredById ?? undefined,
   });
 
   return {

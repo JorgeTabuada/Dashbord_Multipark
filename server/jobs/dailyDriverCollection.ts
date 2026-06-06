@@ -246,7 +246,7 @@ export async function collectDailyDriverData(targetDate: Date): Promise<{
         await createDailyDriverHistory({
           zelloUsername: user.name,
           displayName: user.fullName || user.name,
-          date: targetDate,
+          date: targetDate.toISOString().slice(0, 19).replace("T", " "),
           totalKm: String(metrics.totalKm),
           hoursWorked: String(metrics.hoursWorked),
           hoursStopped: String(metrics.hoursStopped),
@@ -269,8 +269,8 @@ export async function collectDailyDriverData(targetDate: Date): Promise<{
             displayName: user.fullName || user.name,
             alertType: "gps_off",
             message: `${user.fullName || user.name} tinha o GPS desligado em ${dateStr}`,
-            notificationSent: true,
-            occurredAt: targetDate,
+            notificationSent: 1,
+            occurredAt: targetDate.toISOString().slice(0, 19).replace("T", " "),
           });
         }
       } catch (userError: any) {

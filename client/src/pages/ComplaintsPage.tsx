@@ -17,7 +17,8 @@ import { useState, useMemo, useRef } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Shield,
-  BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil
+  BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil,
+  Mail, UserPlus, LinkIcon, X as XIcon
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -445,6 +446,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               <TabsTrigger value="messages">Mensagens ({data.messages.length})</TabsTrigger>
               <TabsTrigger value="photos">Fotos ({data.photos.length})</TabsTrigger>
               {c.vehicleId && <TabsTrigger value="vehicle">Viatura</TabsTrigger>}
+              <TabsTrigger value="duty">Em serviço</TabsTrigger>
               <TabsTrigger value="booking-history">Histórico ({timelineHist.length})</TabsTrigger>
             </TabsList>
 
@@ -572,6 +574,13 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               </TabsContent>
             )}
 
+            <TabsContent value="duty" className="mt-4">
+              <DutyDriversPanel complaintId={id} penaltyPoints={c.penaltyPoints ?? 0} onPenaltyChange={async (v) => {
+                await updateMut.mutateAsync({ id, penaltyPoints: v });
+                utils.complaints.getById.invalidate({ id });
+              }} />
+            </TabsContent>
+
             <TabsContent value="booking-history" className="mt-4">
                 <Card>
                   <CardHeader>
@@ -628,6 +637,13 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               <div><span className="text-muted-foreground">Nome:</span> <span className="font-medium">{c.clientName || "—"}</span></div>
               <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{c.clientEmail || "—"}</span></div>
               <div><span className="text-muted-foreground">Telefone:</span> <span className="font-medium">{c.clientPhone || "—"}</span></div>
+              <SendClientEmailButton
+                complaintId={id}
+                clientEmail={c.clientEmail}
+                clientName={c.clientName}
+                complaintTitle={c.title}
+                lastSentAt={c.clientEmailSentAt}
+              />
             </CardContent>
           </Card>
 
@@ -1055,5 +1071,277 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Panel: Condutores em serviço (Duty) ───────────────────────────────────
+function DutyDriversPanel({
+  complaintId,
+  penaltyPoints,
+  onPenaltyChange,
+}: {
+  complaintId: number;
+  penaltyPoints: number;
+  onPenaltyChange: (v: number) => Promise<void>;
+}) {
+  const utils = trpc.useUtils();
+  const candidatesQ = trpc.complaints.findDriversOnDuty.useQuery({ complaintId });
+  const attachedQ = trpc.complaints.listAttachedDrivers.useQuery({ complaintId });
+  const penaltyConfigQ = trpc.complaints.listPenaltyConfig.useQuery();
+  const attachMut = trpc.complaints.attachDriver.useMutation({
+    onSuccess: () => {
+      utils.complaints.listAttachedDrivers.invalidate({ complaintId });
+      utils.complaints.findDriversOnDuty.invalidate({ complaintId });
+      toast.success("Condutor associado");
+    },
+  });
+  const detachMut = trpc.complaints.detachDriver.useMutation({
+    onSuccess: () => {
+      utils.complaints.listAttachedDrivers.invalidate({ complaintId });
+      utils.complaints.findDriversOnDuty.invalidate({ complaintId });
+    },
+  });
+
+  const [pendingPenalty, setPendingPenalty] = useState<number>(penaltyPoints);
+  const [savingPenalty, setSavingPenalty] = useState(false);
+
+  const handleAttach = (d: any) => {
+    attachMut.mutate({
+      complaintId,
+      employeeId: d.employeeId,
+      employeeName: d.employeeName,
+      roleAtTime: d.roleAtTime,
+      source: d.source,
+      notes: d.notes,
+    });
+  };
+
+  const handleSavePenalty = async () => {
+    setSavingPenalty(true);
+    try {
+      await onPenaltyChange(pendingPenalty);
+      toast.success("Pontos atualizados");
+    } catch { toast.error("Erro ao guardar"); }
+    finally { setSavingPenalty(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Pontos de penalização */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" /> Pontos de penalização
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Label className="text-xs">Pontos aplicados a esta reclamação</Label>
+              <Input
+                type="number"
+                value={pendingPenalty}
+                onChange={(e) => setPendingPenalty(Number(e.target.value))}
+              />
+            </div>
+            <Button onClick={handleSavePenalty} disabled={savingPenalty}>
+              {savingPenalty ? "A guardar..." : "Guardar"}
+            </Button>
+          </div>
+          {penaltyConfigQ.data && penaltyConfigQ.data.length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              <p className="font-medium mb-1">Tabela base por tipo:</p>
+              <div className="flex flex-wrap gap-1">
+                {penaltyConfigQ.data.map((p: any) => (
+                  <Badge key={p.id} variant="outline" className="text-[10px]">
+                    {p.complaintType}: {p.basePoints}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Condutores associados */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <LinkIcon className="w-4 h-4" /> Associados à reclamação ({attachedQ.data?.length ?? 0})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {attachedQ.isLoading ? (
+            <p className="text-xs text-muted-foreground">A carregar...</p>
+          ) : (attachedQ.data?.length ?? 0) === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhum condutor associado ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {attachedQ.data!.map((d: any) => (
+                <div key={d.id} className="flex items-center gap-2 text-sm p-2 bg-muted rounded">
+                  <User className="w-4 h-4" />
+                  <span className="font-medium">{d.employeeName}</span>
+                  {d.roleAtTime && <Badge variant="outline" className="text-[10px]">{d.roleAtTime}</Badge>}
+                  <Badge variant="outline" className="text-[10px]">{d.source}</Badge>
+                  {d.notes && <span className="text-xs text-muted-foreground">— {d.notes}</span>}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="ml-auto h-6 w-6"
+                    onClick={() => detachMut.mutate({ id: d.id })}
+                  >
+                    <XIcon className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Candidatos sugeridos (cruzamento) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <UserPlus className="w-4 h-4" /> Sugeridos por cruzamento
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {candidatesQ.isLoading ? (
+            <p className="text-xs text-muted-foreground">A pesquisar...</p>
+          ) : (candidatesQ.data?.length ?? 0) === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Sem candidatos. (Necessita de Ref. de reserva ou datas de reserva.)
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {candidatesQ.data!.map((d: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm p-2 border rounded">
+                  <User className="w-4 h-4" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{d.employeeName}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {d.source === "history" ? "histórico API" : "escalado"}
+                      </Badge>
+                      {d.roleAtTime && <Badge variant="outline" className="text-[10px]">{d.roleAtTime}</Badge>}
+                    </div>
+                    {d.notes && <p className="text-xs text-muted-foreground truncate">{d.notes}</p>}
+                  </div>
+                  {d.alreadyLinked ? (
+                    <Badge className="bg-green-100 text-green-800 text-[10px]">Associado</Badge>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => handleAttach(d)} disabled={attachMut.isPending}>
+                      <Plus className="w-3 h-3 mr-1" /> Associar
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Botão + Dialog: Enviar email ao cliente ───────────────────────────────
+function SendClientEmailButton({
+  complaintId,
+  clientEmail,
+  clientName,
+  complaintTitle,
+  lastSentAt,
+}: {
+  complaintId: number;
+  clientEmail: string | null | undefined;
+  clientName: string | null | undefined;
+  complaintTitle: string | null | undefined;
+  lastSentAt: string | Date | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState(
+    complaintTitle ? `Re: ${complaintTitle}` : "Atualização da sua reclamação"
+  );
+  const [body, setBody] = useState(
+    "Estamos a tratar da sua reclamação e queríamos atualizá-lo(a) sobre o seguinte:\n\n",
+  );
+  const sendMut = trpc.complaints.sendEmailToClient.useMutation();
+  const utils = trpc.useUtils();
+
+  const disabled = !clientEmail;
+
+  const handleSend = async () => {
+    if (!subject.trim() || !body.trim()) {
+      toast.error("Preencha o assunto e a mensagem");
+      return;
+    }
+    try {
+      const r = await sendMut.mutateAsync({ complaintId, subject, body });
+      if (r.ok) {
+        toast.success("Email enviado ao cliente");
+        utils.complaints.getById.invalidate({ id: complaintId });
+        setOpen(false);
+      } else {
+        toast.error(r.error || "Falha ao enviar");
+      }
+    } catch {
+      toast.error("Erro ao enviar email");
+    }
+  };
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full mt-2"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        title={disabled ? "Cliente sem email registado" : "Enviar email ao cliente"}
+      >
+        <Mail className="w-4 h-4 mr-2" /> Enviar email
+      </Button>
+      {lastSentAt && (
+        <p className="text-[10px] text-muted-foreground">
+          Último envio: {new Date(lastSentAt).toLocaleString("pt-PT")}
+        </p>
+      )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enviar email ao cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Para</Label>
+              <Input value={clientEmail ?? ""} disabled />
+            </div>
+            <div>
+              <Label className="text-xs">Assunto</Label>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Mensagem</Label>
+              <Textarea
+                rows={10}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                A saudação “Olá {clientName || "cliente"},” é adicionada automaticamente.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSend} disabled={sendMut.isPending}>
+              <Send className="w-4 h-4 mr-2" />
+              {sendMut.isPending ? "A enviar..." : "Enviar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

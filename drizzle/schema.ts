@@ -106,6 +106,48 @@ export const careerExams = mysqlTable("career_exams", {
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 });
 
+export const appNotifications = mysqlTable("app_notifications", {
+	id: int().autoincrement().primaryKey(),
+	userId: int().notNull(),
+	title: varchar({ length: 255 }).notNull(),
+	body: text(),
+	kind: varchar({ length: 32 }).default('info'),
+	link: varchar({ length: 512 }),
+	isRead: tinyint().default(0).notNull(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_app_notifications_user_unread").on(table.userId, table.isRead, table.createdAt),
+	index("idx_app_notifications_kind").on(table.kind),
+]);
+
+export const complaintDriversOnDuty = mysqlTable("complaint_drivers_on_duty", {
+	id: int().autoincrement().primaryKey(),
+	complaintId: int().notNull(),
+	employeeId: int(),
+	employeeName: varchar({ length: 256 }).notNull(),
+	roleAtTime: varchar({ length: 64 }),
+	source: varchar({ length: 32 }).notNull(),
+	penaltyPointsApplied: int().default(0).notNull(),
+	notes: varchar({ length: 512 }),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_cdod_complaint").on(table.complaintId),
+	index("idx_cdod_employee").on(table.employeeId),
+]);
+
+export const complaintPenaltyConfig = mysqlTable("complaint_penalty_config", {
+	id: int().autoincrement().primaryKey(),
+	complaintType: varchar({ length: 32 }).notNull(),
+	basePoints: int().default(0).notNull(),
+	description: varchar({ length: 255 }),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	uniqueIndex("uq_complaint_type").on(table.complaintType),
+]);
+
 export const complaintMessages = mysqlTable("complaint_messages", {
 	id: int().autoincrement().primaryKey(),
 	complaintId: int().notNull(),
@@ -149,6 +191,10 @@ export const complaints = mysqlTable("complaints", {
 	createdById: int(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	penaltyPoints: int().default(0).notNull(),
+	clientEmailSentAt: timestamp({ mode: 'string' }),
+	clientEmailSubject: varchar({ length: 255 }),
+	clientEmailBody: text(),
 });
 
 export const dailyDriverHistory = mysqlTable("daily_driver_history", {
@@ -970,3 +1016,43 @@ export const vehicles = mysqlTable("vehicles", {
 (table) => [
 	index("vehicles_plate_unique").on(table.plate),
 ]);
+
+// ─── Select & Insert type aliases ───────────────────────────────────────────
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+export type InsertExpense = typeof expenses.$inferInsert;
+export type InsertExpenseCategory = typeof expenseCategories.$inferInsert;
+export type InsertProject = typeof projects.$inferInsert;
+export type InsertProjectEmployee = typeof projectEmployees.$inferInsert;
+export type InsertTask = typeof tasks.$inferInsert;
+export type InsertActivityLog = typeof activityLogs.$inferInsert;
+export type InsertCampaign = typeof campaigns.$inferInsert;
+export type InsertCampaignDailyStat = typeof campaignDailyStats.$inferInsert;
+export type InsertMarketingExpense = typeof marketingExpenses.$inferInsert;
+export type InsertVehicle = typeof vehicles.$inferInsert;
+export type InsertVehicleMovement = typeof vehicleMovements.$inferInsert;
+export type InsertSpeedAlert = typeof speedAlerts.$inferInsert;
+export type InsertRadioTranscription = typeof radioTranscriptions.$inferInsert;
+export type InsertApiKey = typeof apiKeys.$inferInsert;
+export type InsertComplaint = typeof complaints.$inferInsert;
+export type InsertComplaintMessage = typeof complaintMessages.$inferInsert;
+export type InsertComplaintPhoto = typeof complaintPhotos.$inferInsert;
+export type InsertGoogleReview = typeof googleReviews.$inferInsert;
+export type InsertMultiparkBooking = typeof multiparkBookings.$inferInsert;
+export type InsertMultiparkDailySnapshot = typeof multiparkDailySnapshots.$inferInsert;
+export type InsertInviteToken = typeof inviteTokens.$inferInsert;
+export type InsertPayslipHistory = typeof payslipHistory.$inferInsert;
+export type InsertSpeedLimit = typeof speedLimits.$inferInsert;
+export type InsertSpeedViolation = typeof speedViolations.$inferInsert;
+export type InsertDailyDriverHistory = typeof dailyDriverHistory.$inferInsert;
+export type InsertPda = typeof pdas.$inferInsert;
+export type InsertPdaCheckin = typeof pdaCheckins.$inferInsert;
+export type InsertGpsAlert = typeof gpsAlerts.$inferInsert;
+export type InsertEmployee = typeof employees.$inferInsert;
+export type InsertEmployeeDocument = typeof employeeDocuments.$inferInsert;
+export type InsertSchedule = typeof schedules.$inferInsert;
+export type InsertTimeRecord = typeof timeRecords.$inferInsert;
+export type InsertExtraRate = typeof extraRates.$inferInsert;
+export type LostFoundItem = typeof lostFoundItems.$inferSelect;
+export type LostFoundPhoto = typeof lostFoundPhotos.$inferSelect;
+export type LostFoundMessage = typeof lostFoundMessages.$inferSelect;

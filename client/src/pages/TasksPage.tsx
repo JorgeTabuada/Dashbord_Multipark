@@ -42,12 +42,14 @@ type TaskRaw = {
   id: number; title: string; description: string | null; projectId: number | null;
   assigneeId: number | null; createdById: number;
   taskStatus?: string; taskPriority?: string; status?: string; priority?: string;
-  dueDate: Date | null; completedAt: Date | null; createdAt: Date; updatedAt: Date;
+  dueDate: Date | string | null; completedAt: Date | string | null;
+  createdAt: Date | string; updatedAt: Date | string;
 };
 type Task = {
   id: number; title: string; description: string | null; projectId: number | null;
   assigneeId: number | null; createdById: number; status: string; priority: string;
-  dueDate: Date | null; completedAt: Date | null; createdAt: Date; updatedAt: Date;
+  dueDate: Date | string | null; completedAt: Date | string | null;
+  createdAt: Date | string; updatedAt: Date | string;
 };
 function normalizeTask(t: TaskRaw): Task {
   return { ...t, status: t.taskStatus ?? t.status ?? "todo", priority: t.taskPriority ?? t.priority ?? "medium" } as Task;
@@ -132,7 +134,7 @@ export default function TasksPage() {
   }
 
   const filteredTasks = useMemo(() => {
-    let t = (allTasks as TaskRaw[]).map(normalizeTask);
+    let t = (allTasks as unknown as TaskRaw[]).map(normalizeTask);
     if (filterProject !== "all") t = t.filter(x => x.projectId === parseInt(filterProject));
     return t;
   }, [allTasks, filterProject]);
@@ -196,7 +198,7 @@ export default function TasksPage() {
     setDragOverCol(null);
     const taskId = parseInt(e.dataTransfer.getData("text/plain"));
     if (isNaN(taskId)) return;
-    const task = (allTasks as Task[]).find(t => t.id === taskId);
+    const task = (allTasks as unknown as TaskRaw[]).map(normalizeTask).find(t => t.id === taskId);
     if (!task || task.status === colId) return;
     moveMut.mutate({ id: taskId, status: colId as any });
     toast.success(`Tarefa movida para ${STATUS_LABELS[colId]}`);

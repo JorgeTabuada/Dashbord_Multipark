@@ -89,6 +89,13 @@ import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+// MySQL timestamp(mode:string) helper — converte Date para "YYYY-MM-DD HH:MM:SS"
+function toMysqlDateTime(d: Date | string | null | undefined): string {
+  if (d == null) return "";
+  if (typeof d === "string") return d;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -133,8 +140,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     updateSet.role = user.role;
   }
 
-  if (!values.lastSignedIn) values.lastSignedIn = new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+  const nowMysql = new Date().toISOString().slice(0, 19).replace("T", " ");
+  if (!values.lastSignedIn) values.lastSignedIn = nowMysql;
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = nowMysql;
 
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
@@ -169,7 +177,7 @@ export async function createManualUser(data: { name: string; email: string; role
     role: data.role as any,
     department: data.department ?? null,
     loginMethod: "manual",
-    isActive: true,
+    isActive: 1,
   });
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
@@ -183,7 +191,7 @@ export async function updateUser(userId: number, data: { name?: string; email?: 
   if (data.email !== undefined) updates.email = data.email;
   if (data.role !== undefined) updates.role = data.role;
   if (data.department !== undefined) updates.department = data.department;
-  if (data.isActive !== undefined) updates.isActive = data.isActive;
+  if (data.isActive !== undefined) updates.isActive = data.isActive ? 1 : 0;
   if (Object.keys(updates).length > 0) {
     await db.update(users).set(updates).where(eq(users.id, userId));
   }
@@ -192,7 +200,7 @@ export async function updateUser(userId: number, data: { name?: string; email?: 
 export async function toggleUserActive(userId: number, isActive: boolean) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ isActive }).where(eq(users.id, userId));
+  await db.update(users).set({ isActive: isActive ? 1 : 0 }).where(eq(users.id, userId));
 }
 
 export async function getUserById(userId: number) {
@@ -285,8 +293,8 @@ export async function getExpenses(filters: ExpenseFilters = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.startDate) conditions.push(gte(expenses.expenseDate, filters.startDate));
-  if (filters.endDate) conditions.push(lte(expenses.expenseDate, filters.endDate));
+  if (filters.startDate) conditions.push(gte(expenses.expenseDate, toMysqlDateTime(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(expenses.expenseDate, toMysqlDateTime(filters.endDate)));
   if (filters.projectId) conditions.push(eq(expenses.projectId, filters.projectId));
   if (filters.categoryId) conditions.push(eq(expenses.categoryId, filters.categoryId));
   if (filters.userId) conditions.push(eq(expenses.insertedById, filters.userId));
@@ -377,19 +385,19 @@ export async function getExpenseStats() {
       db
         .select({ total: sql<string>`COALESCE(SUM(amount), 0)`, count: sql<number>`COUNT(*)` })
         .from(expenses)
-        .where(gte(expenses.expenseDate, startOfDay)),
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfDay))),
       db
         .select({ total: sql<string>`COALESCE(SUM(amount), 0)`, count: sql<number>`COUNT(*)` })
         .from(expenses)
-        .where(gte(expenses.expenseDate, startOfWeek)),
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfWeek))),
       db
         .select({ total: sql<string>`COALESCE(SUM(amount), 0)`, count: sql<number>`COUNT(*)` })
         .from(expenses)
-        .where(gte(expenses.expenseDate, startOfMonth)),
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))),
       db
         .select({ total: sql<string>`COALESCE(SUM(amount), 0)`, count: sql<number>`COUNT(*)` })
         .from(expenses)
-        .where(gte(expenses.expenseDate, startOfYear)),
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfYear))),
       db
         .select({
           categoryId: expenses.categoryId,
@@ -400,7 +408,7 @@ export async function getExpenseStats() {
         })
         .from(expenses)
         .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-        .where(gte(expenses.expenseDate, startOfMonth))
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth)))
         .groupBy(expenses.categoryId, expenseCategories.name, expenseCategories.color)
         .orderBy(desc(sql`SUM(expenses.amount)`))
         .limit(8),
@@ -413,7 +421,7 @@ export async function getExpenseStats() {
         })
         .from(expenses)
         .leftJoin(projects, eq(expenses.projectId, projects.id))
-        .where(gte(expenses.expenseDate, startOfMonth))
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth)))
         .groupBy(expenses.projectId, projects.name)
         .orderBy(desc(sql`SUM(expenses.amount)`))
         .limit(5),
@@ -426,7 +434,7 @@ export async function getExpenseStats() {
         })
         .from(expenses)
         .leftJoin(users, eq(expenses.insertedById, users.id))
-        .where(gte(expenses.expenseDate, startOfMonth))
+        .where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth)))
         .groupBy(expenses.insertedById, users.name)
         .orderBy(desc(sql`SUM(expenses.amount)`))
         .limit(5),
@@ -448,7 +456,7 @@ export async function getExpenseStats() {
       count: sql<number>`COUNT(*)`,
     })
     .from(expenses)
-    .where(gte(expenses.expenseDate, new Date(now.getFullYear(), now.getMonth() - 5, 1)))
+    .where(gte(expenses.expenseDate, toMysqlDateTime(new Date(now.getFullYear(), now.getMonth() - 5, 1))))
     .groupBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`)
     .orderBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`);
 
@@ -485,8 +493,8 @@ export async function getUpcomingPayments(daysAhead = 7) {
     .where(
       and(
         eq(expenses.status, "pending"),
-        gte(expenses.paymentDueDate, now),
-        lte(expenses.paymentDueDate, future)
+        gte(expenses.paymentDueDate, toMysqlDateTime(now)),
+        lte(expenses.paymentDueDate, toMysqlDateTime(future))
       )
     )
     .orderBy(expenses.paymentDueDate);
@@ -500,7 +508,7 @@ export async function getOverdueExpenses() {
     .select({ expense: expenses, insertedBy: users })
     .from(expenses)
     .leftJoin(users, eq(expenses.insertedById, users.id))
-    .where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, now)));
+    .where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 
 export async function markOverdueExpenses() {
@@ -510,7 +518,7 @@ export async function markOverdueExpenses() {
   await db
     .update(expenses)
     .set({ status: "overdue" })
-    .where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, now)));
+    .where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 
 // ─── ACTIVITY LOGS ────────────────────────────────────────────────────────────
@@ -550,7 +558,7 @@ export async function getAllEmployees(filters: { isActive?: boolean; position?: 
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.isActive !== undefined) conditions.push(eq(employees.isActive, filters.isActive));
+  if (filters.isActive !== undefined) conditions.push(eq(employees.isActive, filters.isActive ? 1 : 0));
   if (filters.position) conditions.push(eq(employees.position, filters.position as any));
   const q = db.select({ employee: employees, project: projects }).from(employees)
     .leftJoin(projects, eq(employees.projectId, projects.id))
@@ -591,7 +599,7 @@ export async function updateEmployee(id: number, data: Partial<InsertEmployee>) 
 export async function deleteEmployee(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(employees).set({ isActive: false }).where(eq(employees.id, id));
+  await db.update(employees).set({ isActive: 0 }).where(eq(employees.id, id));
 }
 
 // ─── RH: DOCUMENTS ────────────────────────────────────────────────────────────
@@ -664,8 +672,8 @@ export async function getTimeRecords(employeeId: number, startDate?: Date, endDa
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(timeRecords.employeeId, employeeId)];
-  if (startDate) conditions.push(gte(timeRecords.recordedAt, startDate));
-  if (endDate) conditions.push(lte(timeRecords.recordedAt, endDate));
+  if (startDate) conditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+  if (endDate) conditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   return db.select().from(timeRecords).where(and(...conditions)).orderBy(desc(timeRecords.recordedAt));
 }
 
@@ -681,7 +689,7 @@ export async function getMonthlyHours(employeeId: number, year: number, month: n
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
   const records = await db.select().from(timeRecords)
-    .where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, start), lte(timeRecords.recordedAt, end)))
+    .where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end))))
     .orderBy(timeRecords.recordedAt);
   const totalHours = records.reduce((sum, r) => sum + parseFloat(String(r.hoursWorked ?? 0)), 0);
   return { totalHours, records };
@@ -719,14 +727,14 @@ export async function updateExtraRate(level: number, hourlyRate: string) {
 export async function getHRStats() {
   const db = await getDb();
   if (!db) return null;
-  const [total] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(eq(employees.isActive, true));
-  const [extras] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(and(eq(employees.isActive, true), eq(employees.position, "extra")));
-  const [permanent] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(and(eq(employees.isActive, true), eq(employees.contractType, "permanent")));
+  const [total] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(eq(employees.isActive, 1));
+  const [extras] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.position, "extra")));
+  const [permanent] = await db.select({ count: sql<number>`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.contractType, "permanent")));
 
   // Total hours this month
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [hoursRow] = await db.select({ total: sql<string>`COALESCE(SUM(hoursWorked), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, monthStart));
+  const [hoursRow] = await db.select({ total: sql<string>`COALESCE(SUM(hoursWorked), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
 
   return {
     totalActive: total?.count ?? 0,
@@ -983,7 +991,7 @@ export async function getCampaigns(filters: { platform?: string; projectId?: num
     addChildren(filters.projectId);
     conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(ids).join(",") || "0")})`);
   }
-  if (filters.status) conditions.push(eq(campaigns.status, filters.status as any));
+  if (filters.status) conditions.push(eq(campaigns.campaignStatus, filters.status as any));
   const q = db.select({ campaign: campaigns, project: projects }).from(campaigns)
     .leftJoin(projects, eq(campaigns.projectId, projects.id))
     .orderBy(desc(campaigns.createdAt));
@@ -1031,8 +1039,8 @@ export async function getAllDailyStats(filters: { from?: Date; to?: Date; projec
   const db = await getDb();
   if (!db) return [];
   const conditions: any[] = [];
-  if (filters.from) conditions.push(gte(campaignDailyStats.date, filters.from));
-  if (filters.to) conditions.push(lte(campaignDailyStats.date, filters.to));
+  if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (filters.projectId) {
     const allProjects = await db.select().from(projects);
     const ids = new Set<number>();
@@ -1067,10 +1075,10 @@ export async function getMarketingExpenses(filters: { category?: string; project
   const db = await getDb();
   if (!db) return [];
   const conditions: any[] = [];
-  if (filters.category) conditions.push(eq(marketingExpenses.category, filters.category as any));
+  if (filters.category) conditions.push(eq(marketingExpenses.mktCategory, filters.category as any));
   if (filters.projectId) conditions.push(eq(marketingExpenses.projectId, filters.projectId));
-  if (filters.from) conditions.push(gte(marketingExpenses.date, filters.from));
-  if (filters.to) conditions.push(lte(marketingExpenses.date, filters.to));
+  if (filters.from) conditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
   const q = db.select({ expense: marketingExpenses, project: projects }).from(marketingExpenses)
     .leftJoin(projects, eq(marketingExpenses.projectId, projects.id))
     .orderBy(desc(marketingExpenses.date));
@@ -1113,8 +1121,8 @@ export async function getMarketingDashboardStats(filters: { from?: Date; to?: Da
 
   // Stats from campaign daily stats (join campaigns to filter by projectId)
   const conditions: any[] = [];
-  if (filters.from) conditions.push(gte(campaignDailyStats.date, filters.from));
-  if (filters.to) conditions.push(lte(campaignDailyStats.date, filters.to));
+  if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (projectIds) conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
 
   const statsQ = db.select({
@@ -1130,8 +1138,8 @@ export async function getMarketingDashboardStats(filters: { from?: Date; to?: Da
 
   // Marketing expenses
   const mktConditions: any[] = [];
-  if (filters.from) mktConditions.push(gte(marketingExpenses.date, filters.from));
-  if (filters.to) mktConditions.push(lte(marketingExpenses.date, filters.to));
+  if (filters.from) mktConditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
+  if (filters.to) mktConditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
   if (projectIds) mktConditions.push(sql`${marketingExpenses.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
   const mktQ = db.select({
     total: sql<string>`COALESCE(SUM(${marketingExpenses.amount}), 0)`,
@@ -1220,7 +1228,7 @@ export async function getVehicles(filters?: { status?: string; projectId?: numbe
   if (!db) return [];
   let query = db.select().from(vehicles).orderBy(desc(vehicles.createdAt));
   const conditions: any[] = [];
-  if (filters?.status) conditions.push(eq(vehicles.status, filters.status as any));
+  if (filters?.status) conditions.push(eq(vehicles.vehicleStatus, filters.status as any));
   if (filters?.projectId) conditions.push(eq(vehicles.projectId, filters.projectId));
   if (conditions.length > 0) query = query.where(and(...conditions) as any) as any;
   return query;
@@ -1281,7 +1289,7 @@ export async function getSpeedAlerts(filters?: { vehicleId?: number; acknowledge
   let query = db.select().from(speedAlerts).orderBy(desc(speedAlerts.createdAt));
   const conditions: any[] = [];
   if (filters?.vehicleId) conditions.push(eq(speedAlerts.vehicleId, filters.vehicleId));
-  if (filters?.acknowledged !== undefined) conditions.push(eq(speedAlerts.acknowledged, filters.acknowledged));
+  if (filters?.acknowledged !== undefined) conditions.push(eq(speedAlerts.acknowledged, filters.acknowledged ? 1 : 0));
   if (conditions.length > 0) query = query.where(and(...conditions) as any) as any;
   if (filters?.limit) query = query.limit(filters.limit) as any;
   return query;
@@ -1297,7 +1305,7 @@ export async function createSpeedAlert(data: InsertSpeedAlert) {
 export async function acknowledgeSpeedAlert(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(speedAlerts).set({ acknowledged: true, acknowledgedById: userId, acknowledgedAt: new Date() }).where(eq(speedAlerts.id, id));
+  await db.update(speedAlerts).set({ acknowledged: 1, acknowledgedById: userId, acknowledgedAt: toMysqlDateTime(new Date()) }).where(eq(speedAlerts.id, id));
 }
 
 // ─── OPERACIONAL: RADIO TRANSCRIPTIONS ──────────────────────────────────────
@@ -1328,16 +1336,17 @@ export async function getOperationalStats() {
   if (!db) return { totalVehicles: 0, activeVehicles: 0, todayAlerts: 0, unacknowledgedAlerts: 0, todayMovements: 0 };
   const allVehicles = await db.select().from(vehicles);
   const totalVehicles = allVehicles.length;
-  const activeVehicles = allVehicles.filter(v => v.status === "active").length;
+  const activeVehicles = allVehicles.filter(v => v.vehicleStatus === "active").length;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const allAlerts = await db.select().from(speedAlerts).where(gte(speedAlerts.createdAt, today));
+  const todayStr = toMysqlDateTime(today);
+  const allAlerts = await db.select().from(speedAlerts).where(gte(speedAlerts.createdAt, todayStr));
   const todayAlerts = allAlerts.length;
-  const allUnack = await db.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, false));
+  const allUnack = await db.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, 0));
   const unacknowledgedAlerts = allUnack.length;
 
-  const allMovements = await db.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, today));
+  const allMovements = await db.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, todayStr));
   const todayMovements = allMovements.length;
 
   return { totalVehicles, activeVehicles, todayAlerts, unacknowledgedAlerts, todayMovements };
@@ -1367,7 +1376,7 @@ export async function createApiKey(data: Omit<InsertApiKey, "id" | "createdAt">)
 export async function toggleApiKey(id: number, active: boolean) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  await db.update(apiKeys).set({ active }).where(eq(apiKeys.id, id));
+  await db.update(apiKeys).set({ active: active ? 1 : 0 }).where(eq(apiKeys.id, id));
 }
 
 export async function deleteApiKey(id: number) {
@@ -1382,8 +1391,8 @@ export async function getComplaints(filters?: { status?: string; type?: string; 
   const db = await getDb();
   if (!db) return [];
   const conditions: any[] = [];
-  if (filters?.status) conditions.push(eq(complaints.status, filters.status as any));
-  if (filters?.type) conditions.push(eq(complaints.type, filters.type as any));
+  if (filters?.status) conditions.push(eq(complaints.complaintStatus, filters.status as any));
+  if (filters?.type) conditions.push(eq(complaints.complaintType, filters.type as any));
   if (filters?.vehicleId) conditions.push(eq(complaints.vehicleId, filters.vehicleId));
   if (filters?.assignedToId) conditions.push(eq(complaints.assignedToId, filters.assignedToId));
   if (filters?.projectId) conditions.push(eq(complaints.projectId, filters.projectId));
@@ -1457,12 +1466,12 @@ export async function getComplaintStats() {
   const now = new Date();
   return {
     total: all.length,
-    new: all.filter(c => c.status === "new").length,
-    analyzing: all.filter(c => c.status === "analyzing").length,
-    waitingClient: all.filter(c => c.status === "waiting_client").length,
-    resolved: all.filter(c => c.status === "resolved").length,
-    closed: all.filter(c => c.status === "closed").length,
-    overdue: all.filter(c => c.slaDeadline && new Date(c.slaDeadline) < now && c.status !== "resolved" && c.status !== "closed").length,
+    new: all.filter(c => c.complaintStatus === "new").length,
+    analyzing: all.filter(c => c.complaintStatus === "analyzing").length,
+    waitingClient: all.filter(c => c.complaintStatus === "waiting_client").length,
+    resolved: all.filter(c => c.complaintStatus === "resolved").length,
+    closed: all.filter(c => c.complaintStatus === "closed").length,
+    overdue: all.filter(c => c.slaDeadline && new Date(c.slaDeadline) < now && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed").length,
   };
 }
 
@@ -1588,7 +1597,7 @@ export async function deleteTrainingVideo(id: number) {
 export async function getTrainingManuals(categoryId?: number, type?: string) {
   const db = await getDb();
   if (!db) return [];
-  const conditions: any[] = [eq(trainingManuals.published, true)];
+  const conditions: any[] = [eq(trainingManuals.published, 1)];
   if (categoryId) conditions.push(eq(trainingManuals.categoryId, categoryId));
   if (type) conditions.push(eq(trainingManuals.type, type as any));
   return db.select().from(trainingManuals).where(and(...conditions)).orderBy(desc(trainingManuals.createdAt));
@@ -1604,7 +1613,10 @@ export async function createTrainingManual(data: { categoryId?: number; title: s
 export async function updateTrainingManual(id: number, data: { title?: string; content?: string; type?: "manual" | "update" | "news" | "procedure"; published?: boolean; fileUrl?: string; fileKey?: string; fileName?: string; fileMimeType?: string }) {
   const db = await getDb();
   if (!db) return;
-  await db.update(trainingManuals).set(data).where(eq(trainingManuals.id, id));
+  const { published, ...rest } = data;
+  const updates: Record<string, unknown> = { ...rest };
+  if (published !== undefined) updates.published = published ? 1 : 0;
+  await db.update(trainingManuals).set(updates).where(eq(trainingManuals.id, id));
 }
 
 export async function deleteTrainingManual(id: number) {
@@ -1706,7 +1718,8 @@ export async function createCareerExamQuestion(data: { examId: number; question:
 export async function saveCareerExamAttempt(data: { examId: number; employeeId: number; totalQuestions: number; correctAnswers: number; score: number; passed: boolean; timeSpentSeconds?: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(careerExamAttempts).values(data).$returningId();
+  const { passed, ...rest } = data;
+  const [result] = await db.insert(careerExamAttempts).values({ ...rest, passed: passed ? 1 : 0 }).$returningId();
   return result;
 }
 
@@ -2186,8 +2199,8 @@ export async function getBillingData(filters: { from: string; to: string; projec
 
   // 1. Entregas (revenue from bookings) by project - checkout within period
   const deliveryConds: any[] = [
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
     isNotNull(multiparkBookings.checkOut),
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
@@ -2211,8 +2224,8 @@ export async function getBillingData(filters: { from: string; to: string; projec
   const paidConds: any[] = [
     eq(expenses.status, "paid"),
     isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, new Date(filters.from)),
-    lte(expenses.paidAt, new Date(filters.to + "T23:59:59")),
+    gte(expenses.paidAt, toMysqlDateTime(new Date(filters.from))),
+    lte(expenses.paidAt, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
   ];
   if (projectIds) paidConds.push(inArray(expenses.projectId, projectIds));
 
@@ -2234,8 +2247,8 @@ export async function getBillingData(filters: { from: string; to: string; projec
   const pendConds: any[] = [
     inArray(expenses.status, ["pending", "overdue"]),
     isNotNull(expenses.paymentDueDate),
-    gte(expenses.paymentDueDate, new Date(filters.from)),
-    lte(expenses.paymentDueDate, new Date(filters.to + "T23:59:59")),
+    gte(expenses.paymentDueDate, toMysqlDateTime(new Date(filters.from))),
+    lte(expenses.paymentDueDate, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
   ];
   if (projectIds) pendConds.push(inArray(expenses.projectId, projectIds));
 
@@ -2258,8 +2271,8 @@ export async function getBillingData(filters: { from: string; to: string; projec
   const now = new Date();
   const forecastFrom = now > new Date(filters.from) ? now.toISOString().slice(0, 10) : filters.from;
   const forecastConds: any[] = [
-    gte(multiparkBookings.checkIn, new Date(forecastFrom)),
-    lte(multiparkBookings.checkIn, new Date(filters.to + "T23:59:59")),
+    gte(multiparkBookings.checkIn, toMysqlDateTime(new Date(forecastFrom))),
+    lte(multiparkBookings.checkIn, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
     isNull(multiparkBookings.checkOut),
     isNull(multiparkBookings.cancelledAt),
   ];
@@ -2296,8 +2309,8 @@ export async function getPartnershipAnalytics(filters: { from: string; to: strin
   // Base conditions: checkouts in period
   const baseConds: any[] = [
     isNotNull(multiparkBookings.checkOut),
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
   ];
   if (projectIds) baseConds.push(inArray(multiparkBookings.projectId, projectIds));
 
@@ -2393,8 +2406,8 @@ export async function getBookingsByCampaign(filters: { campaignKey: string; from
   const conds: any[] = [
     eq(multiparkBookings.campaign, filters.campaignKey),
     isNotNull(multiparkBookings.checkOut),
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, new Date(filters.to + "T23:59:59")),
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.to + "T23:59:59"))),
   ];
   if (projectIds) conds.push(inArray(multiparkBookings.projectId, projectIds));
 
@@ -2729,7 +2742,7 @@ export async function getPartnershipInvoices(filters?: { partnershipId?: number;
   const db = await getDb(); if (!db) return [];
   const conditions: any[] = [];
   if (filters?.partnershipId) conditions.push(eq(partnershipInvoices.partnershipId, filters.partnershipId));
-  if (filters?.status) conditions.push(eq(partnershipInvoices.status, filters.status as any));
+  if (filters?.status) conditions.push(eq(partnershipInvoices.invoiceStatus, filters.status as any));
   if (filters?.year) conditions.push(eq(partnershipInvoices.referenceYear, filters.year));
   if (filters?.month) conditions.push(eq(partnershipInvoices.referenceMonth, filters.month));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -2750,11 +2763,11 @@ export async function markOverduePartnershipInvoices() {
   const db = await getDb(); if (!db) return 0;
   const now = new Date();
   const result = await db.update(partnershipInvoices)
-    .set({ status: "overdue" as any })
+    .set({ invoiceStatus: "overdue" as any })
     .where(
       and(
-        eq(partnershipInvoices.status, "sent" as any),
-        sql`${partnershipInvoices.dueDate} < ${now}`
+        eq(partnershipInvoices.invoiceStatus, "sent" as any),
+        sql`${partnershipInvoices.dueDate} < ${toMysqlDateTime(now)}`
       )
     );
   return (result as any)[0]?.affectedRows || 0;
@@ -2767,13 +2780,13 @@ export async function getPartnershipDashboardStats() {
   const allTx = await db.select().from(partnershipTransactions);
 
   const totalPartners = allPartners.length;
-  const activePartners = allPartners.filter(p => p.status === "active").length;
+  const activePartners = allPartners.filter(p => p.partnerStatus === "active").length;
   const byType: Record<string, number> = {};
   allPartners.forEach(p => { byType[p.partnerType] = (byType[p.partnerType] || 0) + 1; });
 
-  const pendingInvoices = allInvoices.filter(i => i.status === "sent");
-  const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
-  const paidInvoices = allInvoices.filter(i => i.status === "paid");
+  const pendingInvoices = allInvoices.filter(i => i.invoiceStatus === "sent");
+  const overdueInvoices = allInvoices.filter(i => i.invoiceStatus === "overdue");
+  const paidInvoices = allInvoices.filter(i => i.invoiceStatus === "paid");
 
   const totalPending = pendingInvoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalOverdue = overdueInvoices.reduce((s, i) => s + (i.amount || 0), 0);
@@ -2784,9 +2797,9 @@ export async function getPartnershipDashboardStats() {
   const partnerSummaries = allPartners.map(p => {
     const pInvoices = allInvoices.filter(i => i.partnershipId === p.id);
     const pTx = allTx.filter(t => t.partnershipId === p.id);
-    const pending = pInvoices.filter(i => i.status === "sent").reduce((s, i) => s + (i.amount || 0), 0);
-    const overdue = pInvoices.filter(i => i.status === "overdue").reduce((s, i) => s + (i.amount || 0), 0);
-    const paid = pInvoices.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount || 0), 0);
+    const pending = pInvoices.filter(i => i.invoiceStatus === "sent").reduce((s, i) => s + (i.amount || 0), 0);
+    const overdue = pInvoices.filter(i => i.invoiceStatus === "overdue").reduce((s, i) => s + (i.amount || 0), 0);
+    const paid = pInvoices.filter(i => i.invoiceStatus === "paid").reduce((s, i) => s + (i.amount || 0), 0);
     const bookings = pTx.filter(t => t.transactionType === "booking").reduce((s, t) => s + (t.amount || 0), 0);
     return {
       ...p,
@@ -2851,8 +2864,8 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
 
   // 1. Revenue: bookings with checkout in the year
   const revConds: any[] = [
-    gte(multiparkBookings.checkOut, new Date(`${year}-01-01`)),
-    lte(multiparkBookings.checkOut, new Date(`${year}-12-31T23:59:59`)),
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-01-01`))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
     isNotNull(multiparkBookings.checkOut),
   ];
   if (projectIds) revConds.push(inArray(multiparkBookings.projectId, projectIds));
@@ -2870,8 +2883,8 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
   const expConds: any[] = [
     eq(expenses.status, "paid"),
     isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, new Date(`${year}-01-01`)),
-    lte(expenses.paidAt, new Date(`${year}-12-31T23:59:59`)),
+    gte(expenses.paidAt, toMysqlDateTime(new Date(`${year}-01-01`))),
+    lte(expenses.paidAt, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
   ];
   if (projectIds) expConds.push(inArray(expenses.projectId, projectIds));
 
@@ -3049,8 +3062,8 @@ export async function getMultiparkBookings(filters?: {
   const conditions: any[] = [];
   if (filters?.status) conditions.push(eq(multiparkBookings.status, filters.status));
   if (filters?.parkingType) conditions.push(eq(multiparkBookings.parkingType, filters.parkingType));
-  if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, toMysqlDateTime(filters.to)));
   if (filters?.search) {
     const s = `%${filters.search}%`;
     conditions.push(
@@ -3395,8 +3408,8 @@ export async function getDailySnapshots(filters?: {
   const db = await getDb();
   if (!db) return [];
   const conditions: any[] = [];
-  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.parkName) conditions.push(eq(multiparkDailySnapshots.parkName, filters.parkName));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -3413,8 +3426,8 @@ export async function getSnapshotKPIs(filters?: { from?: Date; to?: Date; city?:
   if (!db) return { totalBookings: 0, totalRevenue: 0, checkins: 0, checkouts: 0, cancelled: 0, reserved: 0, byPark: [], byCity: [], byDay: [], campaigns: {} };
 
   const conditions: any[] = [];
-  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -3484,8 +3497,8 @@ export async function deleteSnapshotsByDateRange(from: Date, to: Date) {
   if (!db) return 0;
   const result = await db.delete(multiparkDailySnapshots).where(
     and(
-      gte(multiparkDailySnapshots.snapshotDate, from),
-      lte(multiparkDailySnapshots.snapshotDate, to),
+      gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(from)),
+      lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(to)),
     )
   );
   return (result as any)?.[0]?.affectedRows ?? 0;
@@ -3504,8 +3517,8 @@ export async function createInviteToken(data: { email: string; userId: number; i
     email: data.email,
     userId: data.userId,
     invitedById: data.invitedById,
-    status: "pending",
-    expiresAt,
+    inviteStatus: "pending",
+    expiresAt: toMysqlDateTime(expiresAt),
   });
   return { token, expiresAt };
 }
@@ -3520,7 +3533,7 @@ export async function getInviteByToken(token: string) {
 export async function acceptInviteToken(token: string) {
   const db = await getDb();
   if (!db) return;
-  await db.update(inviteTokens).set({ status: "accepted", acceptedAt: new Date() }).where(eq(inviteTokens.token, token));
+  await db.update(inviteTokens).set({ inviteStatus: "accepted", acceptedAt: toMysqlDateTime(new Date()) }).where(eq(inviteTokens.token, token));
 }
 
 export async function getInvitesByUser(userId: number) {
@@ -3555,7 +3568,7 @@ export async function getPayrollData(year: number, month: number) {
   const emps = await db.select({ employee: employees, project: projects })
     .from(employees)
     .leftJoin(projects, eq(employees.projectId, projects.id))
-    .where(eq(employees.isActive, true))
+    .where(eq(employees.isActive, 1))
     .orderBy(employees.fullName);
 
   // Get extra rates
@@ -3566,7 +3579,7 @@ export async function getPayrollData(year: number, month: number) {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
   const records = await db.select().from(timeRecords)
-    .where(and(gte(timeRecords.recordedAt, start), lte(timeRecords.recordedAt, end)));
+    .where(and(gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end))));
 
   // Group hours by employee
   const hoursByEmployee = new Map<number, { totalHours: number; days: Set<string>; records: typeof records }>();
@@ -3719,7 +3732,7 @@ export async function getPayslipHistoryList(filters: { year?: number; month?: nu
   if (filters.year) conditions.push(eq(payslipHistory.year, filters.year));
   if (filters.month) conditions.push(eq(payslipHistory.month, filters.month));
   if (filters.employeeId) conditions.push(eq(payslipHistory.employeeId, filters.employeeId));
-  if (filters.type) conditions.push(eq(payslipHistory.type, filters.type as any));
+  if (filters.type) conditions.push(eq(payslipHistory.payslipType, filters.type as any));
   const query = db.select().from(payslipHistory).orderBy(desc(payslipHistory.createdAt));
   if (conditions.length > 0) return query.where(and(...conditions));
   return query;
@@ -3761,9 +3774,9 @@ export async function getOverdueTasks() {
   const now = new Date();
   return db.select().from(tasks)
     .where(and(
-      lte(tasks.dueDate, now),
-      eq(tasks.notifiedOverdue, false),
-      sql`${tasks.status} != 'done'`
+      lte(tasks.dueDate, toMysqlDateTime(now)),
+      eq(tasks.notifiedOverdue, 0),
+      sql`${tasks.taskStatus} != 'done'`
     ));
 }
 
@@ -3772,15 +3785,15 @@ export async function getRecentlyCompletedTasks() {
   if (!db) return [];
   return db.select().from(tasks)
     .where(and(
-      eq(tasks.status, "done"),
-      eq(tasks.notifiedComplete, false)
+      eq(tasks.taskStatus, "done"),
+      eq(tasks.notifiedComplete, 0)
     ));
 }
 
 export async function markTaskNotified(taskId: number, field: "notifiedOverdue" | "notifiedComplete") {
   const db = await getDb();
   if (!db) return;
-  await db.update(tasks).set({ [field]: true }).where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ [field]: 1 }).where(eq(tasks.id, taskId));
 }
 
 // Get project hierarchy chain (project → city → brand → group) with managers
@@ -3818,13 +3831,13 @@ export async function getProjectCosts(year?: number, month?: number) {
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
-    conditions.push(gte(expenses.expenseDate, startDate));
-    conditions.push(lte(expenses.expenseDate, endDate));
+    conditions.push(gte(expenses.expenseDate, toMysqlDateTime(startDate)));
+    conditions.push(lte(expenses.expenseDate, toMysqlDateTime(endDate)));
   } else if (year) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
-    conditions.push(gte(expenses.expenseDate, startDate));
-    conditions.push(lte(expenses.expenseDate, endDate));
+    conditions.push(gte(expenses.expenseDate, toMysqlDateTime(startDate)));
+    conditions.push(lte(expenses.expenseDate, toMysqlDateTime(endDate)));
   }
   conditions.push(sql`${expenses.status} != 'cancelled'`);
 
@@ -3855,13 +3868,13 @@ export async function getProjectCosts(year?: number, month?: number) {
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
-    timeConditions.push(gte(timeRecords.recordedAt, startDate));
-    timeConditions.push(lte(timeRecords.recordedAt, endDate));
+    timeConditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+    timeConditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   } else if (year) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
-    timeConditions.push(gte(timeRecords.recordedAt, startDate));
-    timeConditions.push(lte(timeRecords.recordedAt, endDate));
+    timeConditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+    timeConditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   }
 
   const timeRows = await db
@@ -3949,13 +3962,13 @@ export async function getProjectCosts(year?: number, month?: number) {
 export async function getSpeedLimits() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(speedLimits).where(eq(speedLimits.isActive, true));
+  return db.select().from(speedLimits).where(eq(speedLimits.isActive, 1));
 }
 
 export async function getDefaultSpeedLimit() {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select().from(speedLimits).where(eq(speedLimits.isDefault, true)).limit(1);
+  const rows = await db.select().from(speedLimits).where(eq(speedLimits.isDefault, 1)).limit(1);
   return rows[0] || null;
 }
 
@@ -3969,7 +3982,7 @@ export async function createSpeedLimit(data: InsertSpeedLimit) {
 export async function updateSpeedLimit(id: number, data: Partial<InsertSpeedLimit>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(speedLimits).set({ ...data, updatedAt: new Date() }).where(eq(speedLimits.id, id));
+  await db.update(speedLimits).set({ ...data, updatedAt: toMysqlDateTime(new Date()) }).where(eq(speedLimits.id, id));
 }
 
 export async function deleteSpeedLimit(id: number) {
@@ -3994,10 +4007,10 @@ export async function getSpeedViolations(filters?: {
   const db = await getDb();
   if (!db) return [];
   const conditions: any[] = [];
-  if (filters?.startDate) conditions.push(gte(speedViolations.occurredAt, filters.startDate));
-  if (filters?.endDate) conditions.push(lte(speedViolations.occurredAt, filters.endDate));
+  if (filters?.startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(filters.startDate)));
+  if (filters?.endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(filters.endDate)));
   if (filters?.username) conditions.push(eq(speedViolations.zelloUsername, filters.username));
-  if (filters?.acknowledged !== undefined) conditions.push(eq(speedViolations.acknowledged, filters.acknowledged));
+  if (filters?.acknowledged !== undefined) conditions.push(eq(speedViolations.acknowledged, filters.acknowledged ? 1 : 0));
 
   return db
     .select()
@@ -4012,9 +4025,9 @@ export async function acknowledgeSpeedViolation(id: number, userId: number, note
   await db
     .update(speedViolations)
     .set({
-      acknowledged: true,
+      acknowledged: 1,
       acknowledgedById: userId,
-      acknowledgedAt: new Date(),
+      acknowledgedAt: toMysqlDateTime(new Date()),
       notes: notes || null,
     })
     .where(eq(speedViolations.id, id));
@@ -4025,8 +4038,8 @@ export async function getSpeedViolationStats(startDate?: Date, endDate?: Date) {
   if (!db) return { total: 0, unacknowledged: 0, topOffenders: [] };
 
   const conditions: any[] = [];
-  if (startDate) conditions.push(gte(speedViolations.occurredAt, startDate));
-  if (endDate) conditions.push(lte(speedViolations.occurredAt, endDate));
+  if (startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(startDate)));
+  if (endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(endDate)));
 
   const allViolations = await db
     .select()
@@ -4076,7 +4089,7 @@ export async function getDailyDriverHistoryByDate(dateStr: string) {
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
   return db.select().from(dailyDriverHistory)
-    .where(and(gte(dailyDriverHistory.date, startOfDay), lte(dailyDriverHistory.date, endOfDay)))
+    .where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay))))
     .orderBy(desc(dailyDriverHistory.totalKm));
 }
 
@@ -4094,8 +4107,8 @@ export async function getDailyDriverHistoryRange(startDate: string, endDate: str
   if (!db) return [];
   return db.select().from(dailyDriverHistory)
     .where(and(
-      gte(dailyDriverHistory.date, new Date(startDate)),
-      lte(dailyDriverHistory.date, new Date(endDate))
+      gte(dailyDriverHistory.date, toMysqlDateTime(new Date(startDate))),
+      lte(dailyDriverHistory.date, toMysqlDateTime(new Date(endDate)))
     ))
     .orderBy(desc(dailyDriverHistory.date));
 }
@@ -4108,7 +4121,7 @@ export async function getDailyDriverStats(dateStr: string) {
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
   const rows = await db.select().from(dailyDriverHistory)
-    .where(and(gte(dailyDriverHistory.date, startOfDay), lte(dailyDriverHistory.date, endOfDay)));
+    .where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay))));
   
   const totalDrivers = rows.length;
   const totalKm = rows.reduce((s, r) => s + parseFloat(String(r.totalKm || "0")), 0);
@@ -4169,8 +4182,8 @@ export async function checkoutPda(id: number, data: { photoExitUrl?: string; mob
   if (!db) throw new Error("DB not available");
   await db.update(pdaCheckins).set({
     ...data,
-    checkoutAt: new Date(),
-    status: "checked_out",
+    checkoutAt: toMysqlDateTime(new Date()),
+    checkinStatus: "checked_out",
   }).where(eq(pdaCheckins.id, id));
 }
 
@@ -4178,7 +4191,7 @@ export async function getActiveCheckins() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(pdaCheckins)
-    .where(eq(pdaCheckins.status, "checked_in"))
+    .where(eq(pdaCheckins.checkinStatus, "checked_in"))
     .orderBy(desc(pdaCheckins.checkinAt));
 }
 
@@ -4190,7 +4203,7 @@ export async function getCheckinsByDate(dateStr: string) {
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
   return db.select().from(pdaCheckins)
-    .where(and(gte(pdaCheckins.checkinAt, startOfDay), lte(pdaCheckins.checkinAt, endOfDay)))
+    .where(and(gte(pdaCheckins.checkinAt, toMysqlDateTime(startOfDay)), lte(pdaCheckins.checkinAt, toMysqlDateTime(endOfDay))))
     .orderBy(desc(pdaCheckins.checkinAt));
 }
 
@@ -4218,7 +4231,7 @@ export async function getGpsAlerts(opts: { limit?: number; unacknowledgedOnly?: 
   let query = db.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
   if (opts.unacknowledgedOnly) {
     return db.select().from(gpsAlerts)
-      .where(eq(gpsAlerts.acknowledged, false))
+      .where(eq(gpsAlerts.acknowledged, 0))
       .orderBy(desc(gpsAlerts.occurredAt))
       .limit(opts.limit || 50);
   }
@@ -4229,9 +4242,9 @@ export async function acknowledgeGpsAlert(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(gpsAlerts).set({
-    acknowledged: true,
+    acknowledged: 1,
     acknowledgedById: userId,
-    acknowledgedAt: new Date(),
+    acknowledgedAt: toMysqlDateTime(new Date()),
   }).where(eq(gpsAlerts.id, id));
 }
 
@@ -4266,8 +4279,8 @@ export async function getExistingStatsForCampaignAndDateRange(campaignId: number
   return db.select().from(campaignDailyStats)
     .where(and(
       eq(campaignDailyStats.campaignId, campaignId),
-      gte(campaignDailyStats.date, startDate),
-      lte(campaignDailyStats.date, endDate),
+      gte(campaignDailyStats.date, toMysqlDateTime(startDate)),
+      lte(campaignDailyStats.date, toMysqlDateTime(endDate)),
     ));
 }
 

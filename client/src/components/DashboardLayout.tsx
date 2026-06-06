@@ -82,6 +82,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { trpc } from "@/lib/trpc";
 
 type MenuItem = {
   icon: React.ElementType;
@@ -517,49 +518,8 @@ function DashboardLayoutContent({
             </Popover>
 
             {/* Notifications */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="relative h-9 w-9">
-                  <Bell className="h-4 w-4" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80" align="end">
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Notificações</h4>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    <div className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="h-2 w-2 rounded-full bg-blue-500 mt-2 shrink-0" />
-                      <div>
-                        <p className="text-sm">Nova reserva #4521 criada</p>
-                        <p className="text-xs text-muted-foreground">Há 5 minutos</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="h-2 w-2 rounded-full bg-amber-500 mt-2 shrink-0" />
-                      <div>
-                        <p className="text-sm">3 reclamações pendentes</p>
-                        <p className="text-xs text-muted-foreground">Há 15 minutos</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="h-2 w-2 rounded-full bg-green-500 mt-2 shrink-0" />
-                      <div>
-                        <p className="text-sm">Sincronização Multipark concluída</p>
-                        <p className="text-xs text-muted-foreground">Há 30 minutos</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="h-2 w-2 rounded-full bg-red-500 mt-2 shrink-0" />
-                      <div>
-                        <p className="text-sm">Fatura #892 vencida</p>
-                        <p className="text-xs text-muted-foreground">Há 1 hora</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+            <NotificationsBell />
+            {/* Notifications */}
 
             {/* User Avatar with dropdown */}
             <DropdownMenu>
@@ -593,5 +553,98 @@ function DashboardLayoutContent({
         <main className="flex-1 p-4 lg:p-6" style={{ backgroundColor: '#F0F4FF' }}>{children}</main>
       </SidebarInset>
     </>
+  );
+}
+
+function NotificationsBell() {
+  const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
+  const countQ = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 60_000 });
+  const listQ = trpc.notifications.list.useQuery({ limit: 20 });
+  const markRead = trpc.notifications.markRead.useMutation({
+    onSuccess: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+  const markAll = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+
+  const count = countQ.data?.count ?? 0;
+  const items = listQ.data ?? [];
+
+  const onItemClick = (n: any) => {
+    if (!n.isRead) markRead.mutate({ id: n.id });
+    if (n.link) setLocation(n.link);
+  };
+
+  const fmtTime = (iso?: string | Date | null) => {
+    if (!iso) return "";
+    const d = typeof iso === "string" ? new Date(iso) : iso;
+    const diffMs = Date.now() - d.getTime();
+    const m = Math.floor(diffMs / 60_000);
+    if (m < 1) return "agora";
+    if (m < 60) return `Há ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `Há ${h}h`;
+    const days = Math.floor(h / 24);
+    return `Há ${days}d`;
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="icon" className="relative h-9 w-9">
+          <Bell className="h-4 w-4" />
+          {count > 0 && (
+            <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center">
+              {count > 99 ? "99+" : count}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-96" align="end">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm">Notificações</h4>
+            {count > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => markAll.mutate()}
+                disabled={markAll.isPending}
+              >
+                Marcar todas como lidas
+              </Button>
+            )}
+          </div>
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {items.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Sem notificações</p>
+            ) : (
+              items.map((n: any) => (
+                <button
+                  key={n.id}
+                  onClick={() => onItemClick(n)}
+                  className={`w-full text-left flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors ${n.isRead ? "opacity-60" : ""}`}
+                >
+                  <div className={`h-2 w-2 rounded-full mt-2 shrink-0 ${n.isRead ? "bg-muted-foreground" : "bg-blue-500"}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm truncate">{n.title}</p>
+                    {n.body && <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtTime(n.createdAt)}</p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

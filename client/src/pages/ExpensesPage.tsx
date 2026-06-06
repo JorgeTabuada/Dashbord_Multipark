@@ -754,7 +754,7 @@ function ExpenseFormModal({
       notes: e.notes ?? "",
       invoiceImageUrl: e.invoiceImageUrl ?? "",
       invoiceImageKey: e.invoiceImageKey ?? "",
-      extractedByAi: e.extractedByAi ?? false,
+      extractedByAi: Boolean(e.extractedByAi),
       status: e.status ?? "pending",
     });
     if (e.invoiceImageUrl) setPreviewUrl(e.invoiceImageUrl);

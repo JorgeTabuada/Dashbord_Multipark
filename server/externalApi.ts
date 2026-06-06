@@ -44,13 +44,13 @@ async function validateApiKey(req: Request, res: Response, next: NextFunction) {
     res.status(500).json({ error: "Database unavailable" });
     return;
   }
-  const result = await db.select().from(apiKeys).where(and(eq(apiKeys.apiKey, key), eq(apiKeys.active, true))).limit(1);
+  const result = await db.select().from(apiKeys).where(and(eq(apiKeys.apiKey, key), eq(apiKeys.active, 1))).limit(1);
   if (result.length === 0) {
     res.status(403).json({ error: "Invalid or inactive API key" });
     return;
   }
   // Update last used
-  await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, result[0].id));
+  await db.update(apiKeys).set({ lastUsedAt: new Date().toISOString().slice(0, 19).replace("T", " ") }).where(eq(apiKeys.id, result[0].id));
   (req as any).apiKeyInfo = result[0];
   next();
 }
@@ -158,7 +158,7 @@ export function createExternalApiRouter(): Router {
       const id = await createVehicleMovement({
         vehicleId: resolvedVehicleId,
         employeeId: Number(employeeId),
-        type,
+        movementType: type,
         kmReading: kmReading ? Number(kmReading) : null,
         latitude: latitude ? String(latitude) : null,
         longitude: longitude ? String(longitude) : null,
@@ -212,7 +212,7 @@ export function createExternalApiRouter(): Router {
         employeeId: employeeId ? Number(employeeId) : null,
         vehicleId: vehicleId ? Number(vehicleId) : null,
         duration: duration ? Number(duration) : null,
-        transcribedAt: new Date(),
+        transcribedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
         createdById: null,
       });
 
@@ -316,10 +316,10 @@ export function createExternalApiRouter(): Router {
               reviewerName: rev.reviewerName || "An\u00f3nimo",
               rating: rev.rating || 5,
               reviewText: rev.reviewText || "",
-              reviewDate: new Date(),
+              reviewDate: new Date().toISOString().slice(0, 19).replace("T", " "),
               status: "pending_response",
               sourceEmailId: rev.sourceEmailId || undefined,
-              importedAt: new Date(),
+              importedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
             });
             // Generate AI response if we have LLM access
             if (id && rev.aiResponse) {

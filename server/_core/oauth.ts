@@ -93,7 +93,7 @@ export function registerOAuthRoutes(app: Express) {
           email,
           loginMethod: "google",
           role: "super_admin" as any,
-          lastSignedIn: new Date(),
+          lastSignedIn: new Date().toISOString().slice(0, 19).replace("T", " "),
         });
 
         const sessionToken = await sdk.createSessionToken(openId, {
@@ -146,7 +146,7 @@ export function registerOAuthRoutes(app: Express) {
     const scope = "openid email profile";
 
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("client_id", clientId!);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", scope);
@@ -239,7 +239,7 @@ export function registerOAuthRoutes(app: Express) {
         name: userInfo.name || null,
         email: userInfo.email ?? null,
         loginMethod: "google",
-        lastSignedIn: new Date(),
+        lastSignedIn: new Date().toISOString().slice(0, 19).replace("T", " "),
       });
 
       const sessionToken = await sdk.createSessionToken(openId, {

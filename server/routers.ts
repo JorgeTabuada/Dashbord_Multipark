@@ -496,8 +496,8 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const invite = await getInviteByToken(input.token);
         if (!invite) return { valid: false, reason: "Token inválido" };
-        if (invite.status === "accepted") return { valid: false, reason: "Este convite já foi utilizado" };
-        if (new Date() > invite.expiresAt) return { valid: false, reason: "Este convite expirou" };
+        if (invite.inviteStatus === "accepted") return { valid: false, reason: "Este convite já foi utilizado" };
+        if (new Date() > new Date(invite.expiresAt)) return { valid: false, reason: "Este convite expirou" };
         return { valid: true, email: invite.email, userId: invite.userId };
       }),
     completeInvite: publicProcedure
@@ -506,8 +506,8 @@ export const appRouter = router({
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Tens de fazer login primeiro" });
         const invite = await getInviteByToken(input.token);
         if (!invite) throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido" });
-        if (invite.status === "accepted") throw new TRPCError({ code: "BAD_REQUEST", message: "Convite já utilizado" });
-        if (new Date() > invite.expiresAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Convite expirado" });
+        if (invite.inviteStatus === "accepted") throw new TRPCError({ code: "BAD_REQUEST", message: "Convite já utilizado" });
+        if (new Date() > new Date(invite.expiresAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "Convite expirado" });
         // Link the OAuth user to the manually-created user record
         await linkInviteToOAuthUser(
           invite.userId,
@@ -651,7 +651,7 @@ export const appRouter = router({
           assigneeId: input.assigneeId ?? null,
           createdById: ctx.user.id,
           taskPriority: input.priority,
-          dueDate: input.dueDate ? new Date(input.dueDate) : null,
+          dueDate: input.dueDate ? new Date(input.dueDate).toISOString().slice(0, 19).replace("T", " ") : null,
         });
         // Set multi-assignees if provided
         if (input.assigneeIds && input.assigneeIds.length > 0) {
@@ -826,15 +826,15 @@ export const appRouter = router({
           amount: input.amount,
           currency: input.currency,
           paymentMethod: input.paymentMethod ?? null,
-          expenseDate: new Date(input.expenseDate),
-          paymentDueDate: (input.paymentDueDate && input.paymentDueDate !== 'null') ? new Date(input.paymentDueDate) : null,
+          expenseDate: new Date(input.expenseDate).toISOString().slice(0, 19).replace("T", " "),
+          paymentDueDate: (input.paymentDueDate && input.paymentDueDate !== 'null') ? new Date(input.paymentDueDate).toISOString().slice(0, 19).replace("T", " ") : null,
           categoryId: input.categoryId ?? null,
           projectId: input.projectId ?? null,
           buyerId: input.buyerId ?? null,
           insertedById: ctx.user.id,
           invoiceImageUrl: input.invoiceImageUrl ?? null,
           invoiceImageKey: input.invoiceImageKey ?? null,
-          extractedByAi: input.extractedByAi,
+          extractedByAi: input.extractedByAi ? 1 : 0,
           notes: input.notes ?? null,
           status: "pending",
         });
@@ -1092,7 +1092,7 @@ export const appRouter = router({
           content: overdue
             .map(
               (o) =>
-                `• ${o.expense.supplier ?? "Sem fornecedor"}: ${o.expense.amount}€ (venceu em ${o.expense.paymentDueDate?.toLocaleDateString("pt-PT")})`
+                `• ${o.expense.supplier ?? "Sem fornecedor"}: ${o.expense.amount}€ (venceu em ${o.expense.paymentDueDate ? new Date(o.expense.paymentDueDate).toLocaleDateString("pt-PT") : "—"})`
             )
             .join("\n"),
         });
@@ -1175,19 +1175,19 @@ export const appRouter = router({
           nif: input.nif ?? null,
           nib: input.nib ?? null,
           address: input.address ?? null,
-          birthDate: input.birthDate ? new Date(input.birthDate) : null,
+          birthDate: input.birthDate ? new Date(input.birthDate).toISOString().slice(0, 19).replace("T", " ") : null,
           nationality: input.nationality ?? null,
           position: input.position,
           extraLevel: input.extraLevel ?? null,
           department: input.department ?? null,
           projectId: input.projectId ?? null,
           contractType: input.contractType ?? "permanent",
-          contractStart: input.contractStart ? new Date(input.contractStart) : null,
-          contractEnd: input.contractEnd ? new Date(input.contractEnd) : null,
+          contractStart: input.contractStart ? new Date(input.contractStart).toISOString().slice(0, 19).replace("T", " ") : null,
+          contractEnd: input.contractEnd ? new Date(input.contractEnd).toISOString().slice(0, 19).replace("T", " ") : null,
           monthlySalary: input.monthlySalary ?? null,
           mealAllowancePerDay: input.mealAllowancePerDay ?? null,
           userId: input.userId ?? null,
-          isActive: true,
+          isActive: 1,
         });
         await logActivity({ userId: ctx.user.id, action: "create", entity: "employee", details: `Colaborador criado: ${input.fullName}` });
         return { success: true };
@@ -1384,7 +1384,7 @@ export const appRouter = router({
         }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
-          await upsertSchedule(input);
+          await upsertSchedule({ ...input, isWorkDay: input.isWorkDay ? 1 : 0 });
           return { success: true };
         }),
     }),
@@ -1428,7 +1428,7 @@ export const appRouter = router({
           await createTimeRecord({
             employeeId: input.employeeId,
             type: "check_in",
-            recordedAt: new Date(),
+            recordedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
             photoUrl,
             photoKey,
             latitude: input.latitude ?? null,
@@ -1474,7 +1474,7 @@ export const appRouter = router({
           await createTimeRecord({
             employeeId: input.employeeId,
             type: "check_out",
-            recordedAt: new Date(),
+            recordedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
             photoUrl,
             photoKey,
             latitude: input.latitude ?? null,
@@ -1512,7 +1512,7 @@ export const appRouter = router({
         const fileName = `folha_ordenados_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
         const key = `payroll/${fileName}_${Date.now()}.pdf`;
         const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-        await savePayslipRecord({ year: input.year, month: input.month, type: "payroll", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        await savePayslipRecord({ year: input.year, month: input.month, payslipType: "payroll", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
         return { url, fileName };
       }),
 
@@ -1529,7 +1529,7 @@ export const appRouter = router({
         const fileName = `recibo_${empName.replace(/[^a-zA-Z0-9]/g, "_")}_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
         const key = `payslips/${fileName}_${Date.now()}.pdf`;
         const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-        await savePayslipRecord({ employeeId: input.employeeId, employeeName: empName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        await savePayslipRecord({ employeeId: input.employeeId, employeeName: empName, year: input.year, month: input.month, payslipType: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
         return { url };
       }),
 
@@ -1546,7 +1546,7 @@ export const appRouter = router({
           const key = `payslips/${fileName}_${Date.now()}.pdf`;
           const { url } = await storagePut(key, ps.buffer, "application/pdf");
           results.push({ employeeId: ps.employeeId, fullName: ps.fullName, url });
-          await savePayslipRecord({ employeeId: ps.employeeId, employeeName: ps.fullName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+          await savePayslipRecord({ employeeId: ps.employeeId, employeeName: ps.fullName, year: input.year, month: input.month, payslipType: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
         }
         return { payslips: results, count: results.length };
       }),
@@ -1636,9 +1636,9 @@ export const appRouter = router({
             name: input.name,
             platform: input.platform,
             projectId: input.projectId ?? null,
-            status: input.status ?? "active",
-            startDate: input.startDate ? new Date(input.startDate) : null,
-            endDate: input.endDate ? new Date(input.endDate) : null,
+            campaignStatus: input.status ?? "active",
+            startDate: input.startDate ? new Date(input.startDate).toISOString().slice(0, 19).replace("T", " ") : null,
+            endDate: input.endDate ? new Date(input.endDate).toISOString().slice(0, 19).replace("T", " ") : null,
             budget: input.budget ?? null,
             notes: input.notes ?? null,
             createdById: ctx.user.id,
@@ -1706,7 +1706,7 @@ export const appRouter = router({
           requireRole(ctx.user.role, "admin");
           const rows = input.rows.map(r => ({
             campaignId: input.campaignId,
-            date: new Date(r.date),
+            date: new Date(r.date).toISOString().slice(0, 19).replace("T", " "),
             spend: r.spend,
             impressions: r.impressions ?? 0,
             clicks: r.clicks ?? 0,
@@ -1764,7 +1764,7 @@ export const appRouter = router({
                 const id = await createCampaign({
                   name: c.name,
                   platform: "google_ads",
-                  status: c.status,
+                  campaignStatus: c.status,
                   budget: c.budget > 0 ? String(c.budget) : null,
                   notes: `Tipo: ${c.campaignType}`,
                   createdById: ctx.user.id,
@@ -1781,9 +1781,9 @@ export const appRouter = router({
               const id = await createCampaign({
                 name: c.name,
                 platform: "google_ads",
-                status: c.status,
-                startDate,
-                endDate,
+                campaignStatus: c.status,
+                startDate: startDate.toISOString().slice(0, 19).replace("T", " "),
+                endDate: endDate.toISOString().slice(0, 19).replace("T", " "),
                 budget: c.budget > 0 ? String(c.budget) : null,
                 notes: `Tipo: ${c.campaignType}`,
                 createdById: ctx.user.id,
@@ -1793,7 +1793,7 @@ export const appRouter = router({
             } else {
               // Update campaign status and budget
               await updateCampaign(campaign.id, {
-                status: c.status,
+                campaignStatus: c.status,
                 budget: c.budget > 0 ? String(c.budget) : campaign.budget,
               });
             }
@@ -1812,7 +1812,7 @@ export const appRouter = router({
             // Import aggregated stats as a single row for the period
             await importDailyStats([{
               campaignId: campaign.id,
-              date: endDate, // use end date as reference
+              date: endDate.toISOString().slice(0, 19).replace("T", " "), // use end date as reference
               spend: String(c.cost),
               impressions: c.impressions,
               clicks: c.clicks,
@@ -1866,9 +1866,9 @@ export const appRouter = router({
           requireRole(ctx.user.role, "admin");
           const id = await createMarketingExpense({
             description: input.description,
-            category: input.category,
+            mktCategory: input.category,
             amount: input.amount,
-            date: new Date(input.date),
+            date: new Date(input.date).toISOString().slice(0, 19).replace("T", " "),
             projectId: input.projectId ?? null,
             supplier: input.supplier ?? null,
             notes: input.notes ?? null,
@@ -1916,7 +1916,7 @@ export const appRouter = router({
           model: input.model ?? null,
           year: input.year ?? null,
           color: input.color ?? null,
-          status: input.status ?? "active",
+          vehicleStatus: input.status ?? "active",
           projectId: input.projectId ?? null,
           notes: input.notes ?? null,
         });
@@ -1937,7 +1937,8 @@ export const appRouter = router({
         }),
       })).mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
-        await updateVehicle(input.id, input.data);
+        const { status, ...rest } = input.data;
+        await updateVehicle(input.id, { ...rest, ...(status !== undefined && { vehicleStatus: status }) });
         await logActivity({ userId: ctx.user.id, action: "update", entity: "vehicle", entityId: input.id, details: "Viatura atualizada" });
         return { success: true };
       }),
@@ -1968,7 +1969,7 @@ export const appRouter = router({
         const id = await createVehicleMovement({
           vehicleId: input.vehicleId,
           employeeId: input.employeeId,
-          type: input.type,
+          movementType: input.type,
           kmReading: input.kmReading ?? null,
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
@@ -2045,7 +2046,7 @@ export const appRouter = router({
           employeeId: input.employeeId ?? null,
           vehicleId: input.vehicleId ?? null,
           duration: input.duration ?? null,
-          transcribedAt: new Date(),
+          transcribedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
           createdById: ctx.user.id,
         });
         await logActivity({ userId: ctx.user.id, action: "create", entity: "radio_transcription", entityId: id, details: "Transcrição de rádio" });
@@ -2093,7 +2094,7 @@ export const appRouter = router({
             name: input.name,
             maxSpeed: input.maxSpeed,
             tolerancePercent: input.tolerancePercent,
-            isDefault: input.isDefault,
+            isDefault: input.isDefault ? 1 : 0,
           });
           await logActivity({ userId: ctx.user.id, action: "create", entity: "speed_limit", entityId: id, details: `Limite ${input.name}: ${input.maxSpeed}km/h` });
           return { id };
@@ -2109,7 +2110,11 @@ export const appRouter = router({
           }),
         })).mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
-          await updateSpeedLimit(input.id, input.data);
+          const { isDefault, isActive, ...rest } = input.data;
+          const patch: Record<string, unknown> = { ...rest };
+          if (isDefault !== undefined) patch.isDefault = isDefault ? 1 : 0;
+          if (isActive !== undefined) patch.isActive = isActive ? 1 : 0;
+          await updateSpeedLimit(input.id, patch);
           return { success: true };
         }),
         delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
@@ -2175,8 +2180,8 @@ export const appRouter = router({
               latitude: loc.latitude ? String(loc.latitude) : null,
               longitude: loc.longitude ? String(loc.longitude) : null,
               heading: loc.heading ? String(loc.heading) : null,
-              notificationSent: true,
-              occurredAt: new Date(),
+              notificationSent: 1,
+              occurredAt: new Date().toISOString().slice(0, 19).replace("T", " "),
             });
             violationCount++;
             // Send notification
@@ -2350,8 +2355,8 @@ export const appRouter = router({
               displayName: user.fullName || user.name,
               alertType: "gps_off",
               message: `${user.fullName || user.name} tem o GPS desligado no Zello`,
-              notificationSent: true,
-              occurredAt: new Date(),
+              notificationSent: 1,
+              occurredAt: new Date().toISOString().slice(0, 19).replace("T", " "),
             });
             alertsCreated++;
             await notifyOwner({
@@ -2373,8 +2378,8 @@ export const appRouter = router({
                 latitude: String(loc.latitude),
                 longitude: String(loc.longitude),
                 batteryLevel: loc.batteryLevel,
-                notificationSent: true,
-                occurredAt: new Date(),
+                notificationSent: 1,
+                occurredAt: new Date().toISOString().slice(0, 19).replace("T", " "),
               });
               alertsCreated++;
             }
@@ -2402,9 +2407,9 @@ export const appRouter = router({
       const key = `mp_${nanoid(32)}`;
       const id = await createApiKey({
         name: input.name,
-        key,
+        apiKey: key,
         permissions: input.permissions ? JSON.stringify(input.permissions) : null,
-        active: true,
+        active: 1,
         createdById: ctx.user.id,
       });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "api_key", entityId: id, details: `API Key: ${input.name}` });
@@ -2479,7 +2484,7 @@ export const appRouter = router({
       assignedToId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const slaDeadline = input.slaHours ? new Date(Date.now() + input.slaHours * 3600000) : null;
+      const slaDeadline = input.slaHours ? new Date(Date.now() + input.slaHours * 3600000).toISOString().slice(0, 19).replace("T", " ") : null;
       const id = await createComplaint({
         title: input.title,
         description: input.description ?? null,
@@ -2490,8 +2495,8 @@ export const appRouter = router({
         clientEmail: input.clientEmail ?? null,
         clientPhone: input.clientPhone ?? null,
         reservationRef: input.reservationRef ?? null,
-        reservationStart: input.reservationStart ? new Date(input.reservationStart) : null,
-        reservationEnd: input.reservationEnd ? new Date(input.reservationEnd) : null,
+        reservationStart: input.reservationStart ? new Date(input.reservationStart).toISOString().slice(0, 19).replace("T", " ") : null,
+        reservationEnd: input.reservationEnd ? new Date(input.reservationEnd).toISOString().slice(0, 19).replace("T", " ") : null,
         vehicleId: input.vehicleId ?? null,
         vehiclePlate: input.vehiclePlate ?? null,
         driversInvolved: input.driversInvolved ?? null,
@@ -2501,8 +2506,84 @@ export const appRouter = router({
         createdById: ctx.user.id,
       });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "complaint", entityId: id, details: `Reclamação: ${input.title}` });
+      // Notifica admins/supervisores/TL via app
+      try {
+        const { notifyComplaintCreated } = await import("./complaintsExtended");
+        await notifyComplaintCreated(id);
+      } catch (err) {
+        console.warn("[complaint create] notify failed:", err);
+      }
       return { id };
     }),
+
+    // ── Drivers em serviço (cruza com extras-dia + history) ────────────────
+    findDriversOnDuty: protectedProcedure
+      .input(z.object({ complaintId: z.number() }))
+      .query(async ({ input }) => {
+        const { findDriversOnDuty } = await import("./complaintsExtended");
+        return findDriversOnDuty(input.complaintId);
+      }),
+    attachDriver: protectedProcedure
+      .input(z.object({
+        complaintId: z.number(),
+        employeeId: z.number().nullable().optional(),
+        employeeName: z.string().min(1).max(256),
+        roleAtTime: z.string().max(64).nullable().optional(),
+        source: z.enum(["assignment", "history", "manual"]),
+        notes: z.string().max(512).nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { attachDriverToComplaint } = await import("./complaintsExtended");
+        await attachDriverToComplaint(input);
+        return { success: true };
+      }),
+    listAttachedDrivers: protectedProcedure
+      .input(z.object({ complaintId: z.number() }))
+      .query(async ({ input }) => {
+        const { listComplaintDrivers } = await import("./complaintsExtended");
+        return listComplaintDrivers(input.complaintId);
+      }),
+    detachDriver: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { detachComplaintDriver } = await import("./complaintsExtended");
+        await detachComplaintDriver(input.id);
+        return { success: true };
+      }),
+
+    // ── Penalty config ──────────────────────────────────────────────────────
+    listPenaltyConfig: protectedProcedure.query(async () => {
+      const { listPenaltyConfig } = await import("./complaintsExtended");
+      return listPenaltyConfig();
+    }),
+    updatePenaltyConfig: protectedProcedure
+      .input(z.object({ complaintType: z.string().max(32), basePoints: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { updatePenaltyConfig } = await import("./complaintsExtended");
+        await updatePenaltyConfig(input.complaintType, input.basePoints);
+        return { success: true };
+      }),
+
+    // ── Email ao cliente ───────────────────────────────────────────────────
+    sendEmailToClient: protectedProcedure
+      .input(z.object({
+        complaintId: z.number(),
+        subject: z.string().min(1).max(255),
+        body: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { sendComplaintEmailToClient } = await import("./complaintsExtended");
+        const r = await sendComplaintEmailToClient(input);
+        if (r.ok) {
+          await logActivity({
+            userId: ctx.user.id, action: "email_sent", entity: "complaint",
+            entityId: input.complaintId, details: `Email para cliente: ${input.subject}`,
+          });
+        }
+        return r;
+      }),
+
     update: protectedProcedure.input(z.object({
       id: z.number(),
       title: z.string().optional(),
@@ -2516,14 +2597,16 @@ export const appRouter = router({
       assignedToId: z.number().nullable().optional(),
       driversInvolved: z.string().optional(),
       slaHours: z.number().optional(),
+      penaltyPoints: z.number().int().optional(),
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const { id, slaHours, type, status, priority, ...rest } = input;
+      const { id, slaHours, type, status, priority, penaltyPoints, ...rest } = input;
       const updateData: any = { ...rest };
       // Map to actual DB column names
       if (type) updateData.complaintType = type;
       if (status) updateData.complaintStatus = status;
       if (priority) updateData.complaintPriority = priority;
+      if (penaltyPoints !== undefined) updateData.penaltyPoints = penaltyPoints;
       if (slaHours) updateData.slaDeadline = new Date(Date.now() + slaHours * 3600000);
       if (status === "resolved") updateData.resolvedAt = new Date();
       await updateComplaint(id, updateData);
@@ -2544,7 +2627,7 @@ export const appRouter = router({
       const id = await addComplaintMessage({
         complaintId: input.complaintId,
         message: input.message,
-        isInternal: input.isInternal ?? false,
+        isInternal: input.isInternal ? 1 : 0,
         authorId: ctx.user.id,
         authorName: ctx.user.name ?? "Desconhecido",
       });
@@ -2588,6 +2671,32 @@ export const appRouter = router({
     }),
   }),
 
+  // ─── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────
+  notifications: router({
+    list: protectedProcedure
+      .input(z.object({ unreadOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const { listNotifications } = await import("./complaintsExtended");
+        return listNotifications(ctx.user.id, input?.unreadOnly ?? false, input?.limit ?? 50);
+      }),
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      const { unreadCount } = await import("./complaintsExtended");
+      return { count: await unreadCount(ctx.user.id) };
+    }),
+    markRead: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const { markNotificationRead } = await import("./complaintsExtended");
+        await markNotificationRead(ctx.user.id, input.id);
+        return { success: true };
+      }),
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      const { markAllNotificationsRead } = await import("./complaintsExtended");
+      await markAllNotificationsRead(ctx.user.id);
+      return { success: true };
+    }),
+  }),
+
   // ─── GOOGLE REVIEWS ───────────────────────────────────────────────────────
   reviews: router({
     list: protectedProcedure.input(z.object({
@@ -2612,7 +2721,7 @@ export const appRouter = router({
       projectId: z.number().optional(),
       vehiclePlate: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const reviewDate = input.reviewDate ? new Date(input.reviewDate) : new Date();
+      const reviewDate = (input.reviewDate ? new Date(input.reviewDate) : new Date()).toISOString().slice(0, 19).replace("T", " ");
       const id = await createGoogleReview({
         ...input,
         reviewDate,
@@ -2649,13 +2758,13 @@ export const appRouter = router({
           const complaintId = await createComplaint({
             title: `Crítica Google ${input.rating}\u2605 — ${input.reviewerName}`,
             description: `Avaliação negativa no Google (${input.rating} estrelas):\n\n"${input.reviewText || 'Sem texto'}"\n\nCliente: ${input.reviewerName}${input.reviewerEmail ? '\nEmail: ' + input.reviewerEmail : ''}${input.vehiclePlate ? '\nMatrícula: ' + input.vehiclePlate : ''}`,
-            type: "other",
-            priority: input.rating === 1 ? "urgent" : "high",
+            complaintType: "other",
+            complaintPriority: input.rating === 1 ? "urgent" : "high",
             clientName: input.reviewerName,
             clientEmail: input.reviewerEmail || undefined,
             vehiclePlate: input.vehiclePlate || undefined,
             projectId: input.projectId || undefined,
-            slaDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h SLA
+            slaDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " "), // 24h SLA
             createdById: ctx.user.id,
           });
           await updateGoogleReview(id, { complaintId, status: "converted_complaint" });
@@ -2711,7 +2820,7 @@ export const appRouter = router({
       return searchClientHistory(input.name, input.email, input.plate);
     }),
     approveResponse: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      await updateGoogleReview(input.id, { aiResponseApproved: true, respondedAt: new Date(), respondedBy: ctx.user.id, status: "manually_responded" });
+      await updateGoogleReview(input.id, { aiResponseApproved: 1, respondedAt: new Date().toISOString().slice(0, 19).replace("T", " "), respondedBy: ctx.user.id, status: "manually_responded" });
       await logActivity({ userId: ctx.user.id, action: "approve", entity: "google_review", entityId: input.id, details: "Resposta aprovada" });
       return { success: true };
     }),
@@ -3012,7 +3121,7 @@ export const appRouter = router({
       isInternal: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal ?? true });
+      await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal === false ? 0 : 1 });
       return { success: true };
     }),
 
@@ -3822,7 +3931,7 @@ export const appRouter = router({
         let created = 0, updated = 0;
         for (const g of Object.values(grouped)) {
           const result = await upsertDailySnapshot({
-            snapshotDate: new Date(g.date.toISOString().slice(0, 10) + "T00:00:00.000Z"),
+            snapshotDate: new Date(g.date.toISOString().slice(0, 10) + "T00:00:00.000Z").toISOString().slice(0, 19).replace("T", " "),
             parkName: g.parkName,
             city: g.city,
             totalBookings: g.total,
@@ -4040,8 +4149,8 @@ export const appRouter = router({
         return getMultiparkBookings({
           status: input?.status,
           parkingType: input?.parkingType,
-          from: input?.from,
-          to: input?.to,
+          from: input?.from ? new Date(input.from) : undefined,
+          to: input?.to ? new Date(input.to) : undefined,
           search: input?.search,
           limit: input?.limit,
         });

@@ -34,7 +34,7 @@ export async function storagePut(
     return { key, url };
   }
 
-  const blob = await put(key, body, {
+  const blob = await put(key, body as Buffer, {
     access: "public",
     contentType,
     addRandomSuffix: false,

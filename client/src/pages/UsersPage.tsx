@@ -447,7 +447,7 @@ export default function UsersPage() {
                         {isSuperAdmin && u.id !== currentUser?.id ? (
                           <div className="flex items-center gap-2">
                             <Switch
-                              checked={u.isActive}
+                              checked={Boolean(u.isActive)}
                               onCheckedChange={(checked) => {
                                 toggleActiveMutation.mutate({ userId: u.id, isActive: checked });
                               }}

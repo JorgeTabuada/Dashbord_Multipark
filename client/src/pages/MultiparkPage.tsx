@@ -521,9 +521,9 @@ function DashboardTab() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><span className="text-xl font-bold text-indigo-700">{bookingStats.total}</span><p className="text-xs text-indigo-600">Total</p></div>
-              <div><span className="text-xl font-bold text-green-700">{bookingStats.today}</span><p className="text-xs text-green-600">Hoje</p></div>
-              <div><span className="text-xl font-bold text-blue-700">{bookingStats.thisWeek}</span><p className="text-xs text-blue-600">Esta semana</p></div>
-              <div><span className="text-xl font-bold text-purple-700">{bookingStats.thisMonth}</span><p className="text-xs text-purple-600">Este mês</p></div>
+              <div><span className="text-xl font-bold text-green-700">{bookingStats.reservasHoje}</span><p className="text-xs text-green-600">Hoje</p></div>
+              <div><span className="text-xl font-bold text-blue-700">{bookingStats.checkinHoje}</span><p className="text-xs text-blue-600">Check-in hoje</p></div>
+              <div><span className="text-xl font-bold text-purple-700">{bookingStats.reservasMes}</span><p className="text-xs text-purple-600">Este mês</p></div>
             </div>
           </CardContent>
         </Card>
