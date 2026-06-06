@@ -2331,14 +2331,14 @@ export async function diagnoseBilling(filters: {
     .where(and(
       gte(multiparkBookings.checkOut, fromStr),
       lte(multiparkBookings.checkOut, toStr),
-      eq(multiparkBookings.status, "CHECKED_OUT"),
+      sql`${multiparkBookings.status} != 'CANCELLED'`,
     ));
 
   // ── 4. + inArray(projectId) se filtro ──
   const filteredConds: any[] = [
     gte(multiparkBookings.checkOut, fromStr),
     lte(multiparkBookings.checkOut, toStr),
-    eq(multiparkBookings.status, "CHECKED_OUT"),
+    sql`${multiparkBookings.status} != 'CANCELLED'`,
   ];
   if (projectIds) filteredConds.push(inArray(multiparkBookings.projectId, projectIds));
   const [a4] = await db
@@ -2507,17 +2507,15 @@ export async function getBillingData(filters: {
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
 
   // ─── 1. PRODUZIDO (reservas com checkout EFECTIVO no período) ────────────
-  // Filtra por status='CHECKED_OUT' — só conta reservas em que o cliente
-  // já saiu de facto. `checkOut` é a data PREVISTA de saída, por isso uma
-  // reserva BOOKED (futura) ou CHECKED_IN (cliente ainda lá) também tem
-  // checkOut definido, mas não é receita produzida. Filtros antigos
-  // (isNull(cancelledAt), isNotNull(checkOut)) eram insuficientes porque
-  // havia CANCELLED com cancelledAt vazio. O status é a única fonte
-  // semanticamente correcta.
+  // Filtra por status != 'CANCELLED'. Inclui BOOKED, CHECKING_IN,
+  // CHECKED_IN, CHECKED_OUT — todas as reservas vivas com checkout
+  // previsto no período. Bate com o número da Multipark. O cancelledAt
+  // não é fiável (o sync nem sempre o popula), por isso o filtro é
+  // pelo status que é a fonte de verdade.
   const deliveryConds: any[] = [
     gte(multiparkBookings.checkOut, fromStr),
     lte(multiparkBookings.checkOut, toStr),
-    eq(multiparkBookings.status, "CHECKED_OUT"),
+    sql`${multiparkBookings.status} != 'CANCELLED'`,
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
 
@@ -3546,7 +3544,7 @@ export async function getPartnerInvoicingSummary(filters: {
     .where(
       and(
         isNotNull(multiparkBookings.campaign),
-        eq(multiparkBookings.status, "CHECKED_OUT"),
+        sql`${multiparkBookings.status} != 'CANCELLED'`,
         gte(multiparkBookings.checkOut, fromStr),
         lte(multiparkBookings.checkOut, toStr),
       ),
@@ -3646,7 +3644,7 @@ export async function getPartnerInvoicingSummary(filters: {
         .from(multiparkBookings)
         .where(
           and(
-            eq(multiparkBookings.status, "CHECKED_OUT"),
+            sql`${multiparkBookings.status} != 'CANCELLED'`,
             gte(multiparkBookings.checkOut, fromStr),
             lte(multiparkBookings.checkOut, toStr),
             inArray(multiparkBookings.projectId, Array.from(expanded)),
@@ -3833,7 +3831,7 @@ export async function getPartnerInvoicingDetailByType(filters: {
     .where(
       and(
         isNotNull(multiparkBookings.campaign),
-        eq(multiparkBookings.status, "CHECKED_OUT"),
+        sql`${multiparkBookings.status} != 'CANCELLED'`,
         gte(multiparkBookings.checkOut, fromStr),
         lte(multiparkBookings.checkOut, toStr),
       ),
@@ -3874,7 +3872,7 @@ export async function getPartnerInvoicingDetailByType(filters: {
         .from(multiparkBookings)
         .where(
           and(
-            eq(multiparkBookings.status, "CHECKED_OUT"),
+            sql`${multiparkBookings.status} != 'CANCELLED'`,
             gte(multiparkBookings.checkOut, fromStr),
             lte(multiparkBookings.checkOut, toStr),
             inArray(multiparkBookings.projectId, Array.from(expanded)),
