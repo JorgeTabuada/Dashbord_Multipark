@@ -2261,6 +2261,220 @@ function bucketSqlExpr(col: any, granularity: "day" | "week" | "month" | "year")
   }
 }
 
+/**
+ * Diagnóstico cru de receita: para isolar onde está a discrepância entre
+ * "Entregas" e outras vistas. Devolve o mesmo SUM(totalPrice) calculado de
+ * várias formas diferentes para o mesmo período + filtro de projeto, de
+ * forma a ser possível detectar se o bug está numa query específica ou na
+ * fonte dos dados.
+ */
+export async function diagnoseBilling(filters: {
+  from: string;
+  to: string;
+  projectId?: number;
+}): Promise<{
+  range: { from: string; to: string };
+  projectIds: number[] | null;
+  // Várias somas com filtros progressivos
+  sumByCheckoutPeriod: { count: number; sum: number };
+  sumWithCheckoutNotNull: { count: number; sum: number };
+  sumExcludingCancelled: { count: number; sum: number };
+  sumWithProjectFilter: { count: number; sum: number };
+  // Contagem distinta para confirmar não-duplicados
+  rowsCount: number;
+  distinctExternalIds: number;
+  duplicatedExternalIds: Array<{ externalId: string; count: number }>;
+  // Breakdowns
+  byProject: Array<{ projectId: number | null; projectName: string | null; count: number; sum: number }>;
+  byCampaign: Array<{ campaign: string | null; count: number; sum: number }>;
+  byStatus: Array<{ status: string | null; count: number; sum: number }>;
+  // Cancelled vs not
+  cancelledCount: number;
+  cancelledSum: number;
+  // Top bookings para o utilizador olhar
+  topBookings: Array<{ id: number; externalId: string; bookingNumber: string | null; projectName: string | null; campaign: string | null; status: string | null; totalPrice: number; checkOut: string | null; cancelledAt: string | null }>;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(new Date(filters.to + "T23:59:59"));
+
+  let projectIds: number[] | null = null;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
+
+  // ── 1. Sum 1: tudo com checkOut no período (sem mais filtros) ──
+  const [a1] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr)));
+
+  // ── 2. + isNotNull(checkOut) ──
+  const [a2] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr), isNotNull(multiparkBookings.checkOut)));
+
+  // ── 3. + isNull(cancelledAt) ──
+  const [a3] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(
+      gte(multiparkBookings.checkOut, fromStr),
+      lte(multiparkBookings.checkOut, toStr),
+      isNotNull(multiparkBookings.checkOut),
+      isNull(multiparkBookings.cancelledAt),
+    ));
+
+  // ── 4. + inArray(projectId) se filtro ──
+  const filteredConds: any[] = [
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    isNotNull(multiparkBookings.checkOut),
+    isNull(multiparkBookings.cancelledAt),
+  ];
+  if (projectIds) filteredConds.push(inArray(multiparkBookings.projectId, projectIds));
+  const [a4] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...filteredConds));
+
+  // ── Duplicados ──
+  const distinctRow = await db
+    .select({
+      total: sql<number>`COUNT(*)`,
+      distinct: sql<number>`COUNT(DISTINCT ${multiparkBookings.externalId})`,
+    })
+    .from(multiparkBookings)
+    .where(and(...filteredConds));
+  const dup = distinctRow[0];
+
+  // Top duplicados (se houver)
+  const duplicates = await db
+    .select({
+      externalId: multiparkBookings.externalId,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...filteredConds))
+    .groupBy(multiparkBookings.externalId)
+    .having(sql`COUNT(*) > 1`)
+    .orderBy(desc(sql`COUNT(*)`))
+    .limit(20);
+
+  // ── By project ──
+  const byProj = await db
+    .select({
+      projectId: multiparkBookings.projectId,
+      projectName: projects.name,
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .leftJoin(projects, eq(projects.id, multiparkBookings.projectId))
+    .where(and(...filteredConds))
+    .groupBy(multiparkBookings.projectId, projects.name)
+    .orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
+
+  // ── By campaign ──
+  const byCamp = await db
+    .select({
+      campaign: multiparkBookings.campaign,
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...filteredConds))
+    .groupBy(multiparkBookings.campaign)
+    .orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
+
+  // ── By status ──
+  const byStatus = await db
+    .select({
+      status: multiparkBookings.status,
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...filteredConds))
+    .groupBy(multiparkBookings.status);
+
+  // ── Cancelled (sem filtro de cancelledAt mas com resto igual) ──
+  const cancelConds: any[] = [
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    isNotNull(multiparkBookings.checkOut),
+    isNotNull(multiparkBookings.cancelledAt),
+  ];
+  if (projectIds) cancelConds.push(inArray(multiparkBookings.projectId, projectIds));
+  const [cancelled] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      sum: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...cancelConds));
+
+  // ── Top bookings por valor ──
+  const top = await db
+    .select({
+      id: multiparkBookings.id,
+      externalId: multiparkBookings.externalId,
+      bookingNumber: multiparkBookings.bookingNumber,
+      projectName: projects.name,
+      campaign: multiparkBookings.campaign,
+      status: multiparkBookings.status,
+      totalPrice: multiparkBookings.totalPrice,
+      checkOut: multiparkBookings.checkOut,
+      cancelledAt: multiparkBookings.cancelledAt,
+    })
+    .from(multiparkBookings)
+    .leftJoin(projects, eq(projects.id, multiparkBookings.projectId))
+    .where(and(...filteredConds))
+    .orderBy(desc(multiparkBookings.totalPrice))
+    .limit(20);
+
+  return {
+    range: { from: filters.from, to: filters.to },
+    projectIds,
+    sumByCheckoutPeriod: { count: Number(a1?.count ?? 0), sum: Number(a1?.sum ?? 0) },
+    sumWithCheckoutNotNull: { count: Number(a2?.count ?? 0), sum: Number(a2?.sum ?? 0) },
+    sumExcludingCancelled: { count: Number(a3?.count ?? 0), sum: Number(a3?.sum ?? 0) },
+    sumWithProjectFilter: { count: Number(a4?.count ?? 0), sum: Number(a4?.sum ?? 0) },
+    rowsCount: Number(dup?.total ?? 0),
+    distinctExternalIds: Number(dup?.distinct ?? 0),
+    duplicatedExternalIds: duplicates.map((d) => ({ externalId: d.externalId, count: Number(d.count ?? 0) })),
+    byProject: byProj.map((p) => ({ projectId: p.projectId, projectName: p.projectName, count: Number(p.count ?? 0), sum: Number(p.sum ?? 0) })),
+    byCampaign: byCamp.map((c) => ({ campaign: c.campaign, count: Number(c.count ?? 0), sum: Number(c.sum ?? 0) })),
+    byStatus: byStatus.map((s) => ({ status: s.status, count: Number(s.count ?? 0), sum: Number(s.sum ?? 0) })),
+    cancelledCount: Number(cancelled?.count ?? 0),
+    cancelledSum: Number(cancelled?.sum ?? 0),
+    topBookings: top.map((t) => ({
+      id: t.id,
+      externalId: t.externalId,
+      bookingNumber: t.bookingNumber,
+      projectName: t.projectName,
+      campaign: t.campaign,
+      status: t.status,
+      totalPrice: Number(t.totalPrice ?? 0),
+      checkOut: t.checkOut,
+      cancelledAt: t.cancelledAt,
+    })),
+  };
+}
+
 export async function getBillingData(filters: {
   from: string;
   to: string;

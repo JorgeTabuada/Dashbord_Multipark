@@ -3502,6 +3502,15 @@ export const appRouter = router({
       year: z.number().optional(),
     }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
 
+    // Diagnóstico cru: várias somas e breakdowns para isolar discrepâncias
+    diagnose: protectedProcedure
+      .input(z.object({ from: z.string(), to: z.string(), projectId: z.number().optional() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { diagnoseBilling } = await import("./db");
+        return diagnoseBilling(input);
+      }),
+
     billing: protectedProcedure.input(z.object({
       granularity: z.enum(["day", "week", "month", "year"]).optional(),
       from: z.string(),
