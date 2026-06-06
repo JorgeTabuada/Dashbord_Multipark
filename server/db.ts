@@ -666,7 +666,21 @@ export async function getEmployeeSchedules(employeeId: number) {
 export async function upsertSchedule(data: InsertSchedule) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  return db.insert(schedules).values(data).onDuplicateKeyUpdate({ set: { startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay } });
+  // A tabela schedules não tem UNIQUE(employeeId, weekday) — fazer
+  // SELECT + UPDATE/INSERT manualmente em vez de onDuplicateKeyUpdate.
+  const [existing] = await db
+    .select({ id: schedules.id })
+    .from(schedules)
+    .where(and(eq(schedules.employeeId, data.employeeId), eq(schedules.weekday, data.weekday)))
+    .limit(1);
+  if (existing) {
+    await db
+      .update(schedules)
+      .set({ startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay })
+      .where(eq(schedules.id, existing.id));
+    return;
+  }
+  await db.insert(schedules).values(data);
 }
 
 // ─── RH: TIME RECORDS ─────────────────────────────────────────────────────────
@@ -736,7 +750,10 @@ export async function getHRStats() {
   // Total hours this month
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [hoursRow] = await db.select({ total: sql<string>`COALESCE(SUM(hoursWorked), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
+  const [hoursRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${timeRecords.hoursWorked}), 0)` })
+    .from(timeRecords)
+    .where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
 
   return {
     totalActive: total?.count ?? 0,
@@ -5178,37 +5195,35 @@ export async function getPayrollData(year: number, month: number) {
       baseSalary = parseFloat(String(emp.monthlySalary ?? 0));
       const hourlyBase = baseSalary > 0 ? baseSalary / STANDARD_MONTHLY_HOURS : 0;
 
-      // Analyze time records for night/weekend hours
+      // Classifica cada record em buckets MUTUAMENTE EXCLUSIVOS para evitar
+      // contar a mesma hora duas vezes (uma hora noturna num sábado contava
+      // como "noite" E "FDS"). Hierarquia: FDS > Noite > Normal.
+      let normalHours = 0;
       for (const rec of empHours.records) {
         const recDate = new Date(rec.recordedAt);
         const hours = parseFloat(String(rec.hoursWorked ?? 0));
+        if (hours <= 0) continue;
         const dayOfWeek = recDate.getDay(); // 0=Sun, 6=Sat
         const hour = recDate.getHours();
-
-        // Weekend detection (Saturday or Sunday)
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          weekendHours += hours;
-        }
-        // Night work detection (22h-7h)
-        if (hour >= 22 || hour < 7) {
-          nightHours += hours;
-        }
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isNight = hour >= 22 || hour < 7;
+        if (isWeekend) weekendHours += hours;
+        else if (isNight) nightHours += hours;
+        else normalHours += hours;
       }
       nightHours = Math.round(nightHours * 100) / 100;
       weekendHours = Math.round(weekendHours * 100) / 100;
+      normalHours = Math.round(normalHours * 100) / 100;
 
-      // Night payment: 25% extra on hourly base
+      // Acréscimos sobre a base horária (NIGHT 25%, WEEKEND 50%)
       nightPayment = Math.round(nightHours * hourlyBase * (NIGHT_RATE_MULTIPLIER - 1) * 100) / 100;
-
-      // Weekend payment: 50% extra on hourly base
       weekendPayment = Math.round(weekendHours * hourlyBase * (WEEKEND_RATE_MULTIPLIER - 1) * 100) / 100;
 
-      // Overtime: hours above standard (excluding night/weekend already counted)
-      const normalHours = totalHours - nightHours - weekendHours;
+      // Overtime: só horas normais acima do limiar mensal.
       if (normalHours > STANDARD_MONTHLY_HOURS) {
         overtimeHours = Math.round((normalHours - STANDARD_MONTHLY_HOURS) * 100) / 100;
-        // First hour per day at 25%, subsequent at 37.5% (simplified average)
-        const firstHourPortion = Math.min(overtimeHours, daysWorked); // ~1h per day worked
+        // Primeira hora/dia a 25%, restantes a 37,5% (aproximação)
+        const firstHourPortion = Math.min(overtimeHours, daysWorked);
         const subsequentPortion = Math.max(0, overtimeHours - firstHourPortion);
         overtimePayment = Math.round(
           (firstHourPortion * hourlyBase * OVERTIME_RATE_FIRST_HOUR +

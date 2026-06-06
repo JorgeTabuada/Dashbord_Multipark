@@ -765,44 +765,76 @@ function TimeRecordsTab({ employeeId }: { employeeId: number }) {
 }
 
 // ─── SCHEDULES TAB ────────────────────────────────────────────────────────────
+type ScheduleDraft = { startTime: string; endTime: string; isWorkDay: boolean };
+
 function SchedulesTab({ employeeId }: { employeeId: number }) {
   const utils = trpc.useUtils();
   const { data: schedules = [] } = trpc.rh.schedules.list.useQuery({ employeeId });
   const upsert = trpc.rh.schedules.upsert.useMutation({
     onSuccess: () => { utils.rh.schedules.list.invalidate({ employeeId }); toast.success("Horário guardado!"); },
+    onError: (e) => toast.error(e.message),
   });
 
   const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const getSchedule = (weekday: number) => schedules.find(s => s.weekday === weekday);
+
+  const [drafts, setDrafts] = useState<Record<number, ScheduleDraft>>({});
+
+  useEffect(() => {
+    const next: Record<number, ScheduleDraft> = {};
+    for (let d = 0; d < 7; d++) {
+      const s = schedules.find(x => x.weekday === d);
+      next[d] = {
+        startTime: s?.startTime ?? "09:00",
+        endTime: s?.endTime ?? "18:00",
+        isWorkDay: s ? Boolean(s.isWorkDay) : (d !== 0 && d !== 6),
+      };
+    }
+    setDrafts(next);
+  }, [schedules]);
+
+  const setDraft = (weekday: number, patch: Partial<ScheduleDraft>) =>
+    setDrafts(d => ({ ...d, [weekday]: { ...d[weekday], ...patch } }));
 
   return (
     <div className="space-y-3">
       {DAYS.map((day, idx) => {
-        const s = getSchedule(idx);
+        const d = drafts[idx] ?? { startTime: "09:00", endTime: "18:00", isWorkDay: true };
         return (
-          <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg">
+          <div key={idx} className={`flex items-center gap-3 p-3 border rounded-lg ${d.isWorkDay ? "" : "bg-muted/30"}`}>
             <div className="w-10 text-sm font-medium text-muted-foreground">{day}</div>
+            <Button
+              size="sm"
+              variant={d.isWorkDay ? "outline" : "secondary"}
+              className="w-20"
+              onClick={() => setDraft(idx, { isWorkDay: !d.isWorkDay })}
+            >
+              {d.isWorkDay ? "Trabalha" : "Folga"}
+            </Button>
             <Input
               type="time"
-              defaultValue={s?.startTime ?? "09:00"}
+              value={d.startTime}
+              disabled={!d.isWorkDay}
+              onChange={e => setDraft(idx, { startTime: e.target.value })}
               className="w-28"
-              id={`start-${idx}`}
             />
             <span className="text-muted-foreground">—</span>
             <Input
               type="time"
-              defaultValue={s?.endTime ?? "18:00"}
+              value={d.endTime}
+              disabled={!d.isWorkDay}
+              onChange={e => setDraft(idx, { endTime: e.target.value })}
               className="w-28"
-              id={`end-${idx}`}
             />
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                const start = (document.getElementById(`start-${idx}`) as HTMLInputElement).value;
-                const end = (document.getElementById(`end-${idx}`) as HTMLInputElement).value;
-                upsert.mutate({ employeeId, weekday: idx, startTime: start, endTime: end, isWorkDay: true });
-              }}
+              onClick={() => upsert.mutate({
+                employeeId,
+                weekday: idx,
+                startTime: d.startTime,
+                endTime: d.endTime,
+                isWorkDay: d.isWorkDay,
+              })}
             >
               Guardar
             </Button>
@@ -1191,6 +1223,14 @@ function ExtraRatesDialog({ open, onClose }: { open: boolean; onClose: () => voi
     onError: (e) => toast.error(e.message),
   });
 
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    for (const r of rates) next[r.level] = String(r.hourlyRate);
+    setDrafts(next);
+  }, [rates]);
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-sm">
@@ -1202,18 +1242,16 @@ function ExtraRatesDialog({ open, onClose }: { open: boolean; onClose: () => voi
               <Input
                 type="number"
                 step="0.01"
-                defaultValue={String(r.hourlyRate)}
+                value={drafts[r.level] ?? ""}
+                onChange={(e) => setDrafts(d => ({ ...d, [r.level]: e.target.value }))}
                 className="flex-1"
-                id={`rate-${r.level}`}
               />
               <span className="text-sm text-muted-foreground">€/h</span>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  const val = (document.getElementById(`rate-${r.level}`) as HTMLInputElement).value;
-                  update.mutate({ level: r.level, hourlyRate: val });
-                }}
+                disabled={update.isPending}
+                onClick={() => update.mutate({ level: r.level, hourlyRate: drafts[r.level] ?? String(r.hourlyRate) })}
               >
                 OK
               </Button>
@@ -1265,6 +1303,9 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
   const totals = useMemo(() => {
     return payroll.reduce((acc: any, r: any) => ({
       totalHours: acc.totalHours + r.totalHours,
+      overtimeHours: acc.overtimeHours + (r.overtimeHours ?? 0),
+      nightHours: acc.nightHours + (r.nightHours ?? 0),
+      weekendHours: acc.weekendHours + (r.weekendHours ?? 0),
       baseSalary: acc.baseSalary + r.baseSalary,
       extraPayment: acc.extraPayment + r.extraPayment,
       overtimePayment: acc.overtimePayment + r.overtimePayment,
@@ -1274,7 +1315,7 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
       fourteenthProvision: acc.fourteenthProvision + (r.fourteenthProvision ?? 0),
       mealAllowance: acc.mealAllowance + (r.mealAllowance ?? 0),
       totalPayment: acc.totalPayment + r.totalPayment,
-    }), { totalHours: 0, baseSalary: 0, extraPayment: 0, overtimePayment: 0, nightPayment: 0, weekendPayment: 0, thirteenthProvision: 0, fourteenthProvision: 0, mealAllowance: 0, totalPayment: 0 });
+    }), { totalHours: 0, overtimeHours: 0, nightHours: 0, weekendHours: 0, baseSalary: 0, extraPayment: 0, overtimePayment: 0, nightPayment: 0, weekendPayment: 0, thirteenthProvision: 0, fourteenthProvision: 0, mealAllowance: 0, totalPayment: 0 });
   }, [payroll]);
 
   const toggleSort = (field: string) => {
