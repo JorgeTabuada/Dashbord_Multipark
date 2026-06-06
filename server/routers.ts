@@ -3384,7 +3384,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({
       name: z.string().min(1),
       campaignKey: z.string().optional(),
-      partnerType: z.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]),
+      partnerType: z.string().min(1).max(64),
       contactName: z.string().optional(),
       contactEmail: z.string().optional(),
       contactPhone: z.string().optional(),
@@ -3405,7 +3405,7 @@ export const appRouter = router({
       id: z.number(),
       name: z.string().optional(),
       campaignKey: z.string().optional(),
-      partnerType: z.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]).optional(),
+      partnerType: z.string().min(1).max(64).optional(),
       contactName: z.string().optional(),
       contactEmail: z.string().optional(),
       contactPhone: z.string().optional(),

@@ -90,17 +90,23 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
           </div>
           <div>
             <Label className="text-xs">Tipo</Label>
-            <Select value={form.partnerType} onValueChange={v => set("partnerType", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="aggregator">Agregador</SelectItem>
-                <SelectItem value="agency">Agência</SelectItem>
-                <SelectItem value="corporate">Empresa</SelectItem>
-                <SelectItem value="pro_client">Cliente Pro</SelectItem>
-                <SelectItem value="retainer">Retainer</SelectItem>
-                <SelectItem value="other">Outro</SelectItem>
-              </SelectContent>
-            </Select>
+            <Input
+              list="partner-types"
+              value={form.partnerType}
+              onChange={e => set("partnerType", e.target.value)}
+              placeholder="Escolher ou escrever..."
+            />
+            <datalist id="partner-types">
+              <option value="aggregator">Agregador</option>
+              <option value="agency">Agência</option>
+              <option value="corporate">Empresa</option>
+              <option value="pro_client">Cliente Pro</option>
+              <option value="retainer">Retainer</option>
+              <option value="hotel">Hotel</option>
+              <option value="gateway">Gateway online</option>
+              <option value="affiliate">Afiliado</option>
+              <option value="other">Outro</option>
+            </datalist>
           </div>
           <div>
             <Label className="text-xs">NIF</Label>
