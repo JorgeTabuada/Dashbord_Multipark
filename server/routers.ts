@@ -3937,6 +3937,54 @@ export const appRouter = router({
         return result;
       }),
 
+    // Buscar history de um agente (por nome) num dia (chama /agent/history
+    // por cada parque configurado e agrega resultados na DB).
+    fetchAgentHistory: protectedProcedure
+      .input(z.object({
+        agentName: z.string().min(1).max(256),
+        date: z.string(), // YYYY-MM-DD
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { fetchAgentHistoryByName } = await import("./jobs/multiparkBookingSync");
+        return fetchAgentHistoryByName(input.agentName, input.date);
+      }),
+
+    // Lista summary do que está guardado em multipark_booking_history para
+    // um agente num dia (após fetchAgentHistory).
+    agentHistorySummary: protectedProcedure
+      .input(z.object({
+        agentName: z.string().min(1).max(256),
+        date: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb(); if (!db) return null;
+        const { multiparkBookingHistory } = await import("../drizzle/schema");
+        const { sql: dsql, and: dand, eq: deq, gte: dgte, lt: dlt } = await import("drizzle-orm");
+        const start = `${input.date} 00:00:00`;
+        const end = new Date(input.date + "T00:00:00");
+        end.setDate(end.getDate() + 1);
+        const endStr = end.toISOString().slice(0, 19).replace("T", " ");
+        const rows = await db
+          .select()
+          .from(multiparkBookingHistory)
+          .where(
+            dand(
+              deq(multiparkBookingHistory.agentName, input.agentName),
+              dgte(multiparkBookingHistory.actionTime, start),
+              dlt(multiparkBookingHistory.actionTime, endStr),
+            ),
+          )
+          .orderBy(multiparkBookingHistory.actionTime);
+        const byType: Record<string, number> = {};
+        for (const r of rows) {
+          const k = r.changeType ?? "?";
+          byType[k] = (byType[k] ?? 0) + 1;
+        }
+        return { total: rows.length, byType, items: rows };
+      }),
+
     // List synced bookings with filters
     bookings: protectedProcedure
       .input(z.object({

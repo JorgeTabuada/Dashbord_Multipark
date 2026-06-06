@@ -29,6 +29,7 @@ import PartnerInferPage from "./pages/PartnerInferPage";
 import AnnualPage from "./pages/AnnualPage";
 import MultiparkPage from "./pages/MultiparkPage";
 import ExtrasDiaPage from "./pages/ExtrasDiaPage";
+import AvaliacaoOperacionalPage from "./pages/AvaliacaoOperacionalPage";
 import MultiparkInspectPage from "./pages/MultiparkInspectPage";
 import InvitePage from "./pages/InvitePage";
 import ProjectCostsDashboard from "./pages/ProjectCostsDashboard";
@@ -152,6 +153,9 @@ function Router() {
       </Route>
       <Route path="/extras-dia">
         {() => (<DashboardLayout><ExtrasDiaPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/avaliacao-operacional">
+        {() => (<DashboardLayout><AvaliacaoOperacionalPage /></DashboardLayout>)}
       </Route>
       <Route path="/multipark/inspect">
         {() => (<DashboardLayout><MultiparkInspectPage /></DashboardLayout>)}

@@ -169,6 +169,7 @@ const menuGroups: MenuGroup[] = [
       { icon: RefreshCw, label: "Sincronização", path: "/multipark/sync" },
       { icon: Wrench, label: "Serviços", path: "/servicos" },
       { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia" },
+      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional" },
     ],
   },
   {
