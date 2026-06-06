@@ -14,6 +14,7 @@
 import {
   getBookingsReport,
   getBooking,
+  getBookingHistory,
   isMultiparkConfigured,
   getConfiguredParks,
   getParkApiKey,
@@ -28,7 +29,7 @@ import {
   getDb,
 } from "../db";
 import { eq } from "drizzle-orm";
-import { multiparkBookings } from "../../drizzle/schema";
+import { multiparkBookings, multiparkBookingHistory } from "../../drizzle/schema";
 import { classifyAllocation } from "../spotClassification";
 
 // ─── Map park name/city to projectId ─────────────────────────────────────────
@@ -258,6 +259,117 @@ async function runConcurrent<T>(items: T[], limit: number, fn: (item: T) => Prom
 }
 
 /**
+ * Vai buscar a timeline de uma reserva (GET /bookings/:id/history) e
+ * persiste na tabela multipark_booking_history. Também extrai resumos
+ * (currentGarage/Spot, agente de check-in/out, última quilometragem)
+ * para a tabela principal.
+ */
+function parseMpDate(s: string | null | undefined): string | null {
+  if (!s || typeof s !== "string") return null;
+  // ISO: "2025-01-15T11:00:00.000Z"
+  if (s.includes("T")) {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 19).replace("T", " ");
+  }
+  // Multipark format: "15/01/2025, 11:00"
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:00`;
+}
+
+export async function syncBookingHistory(externalId: string, apiKey: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const response = await getBookingHistory(externalId, apiKey);
+    const items = response?.history ?? [];
+
+    let checkinAgentName: string | null = null;
+    let checkinAgentUserId: string | null = null;
+    let checkoutAgentName: string | null = null;
+    let checkoutAgentUserId: string | null = null;
+    let currentGarage: string | null = null;
+    let currentSpot: string | null = null;
+    let lastKnownMileage: number | null = null;
+
+    for (const item of items as any[]) {
+      const historyId = item.id ?? null;
+      if (!historyId) continue;
+      const actionTime = parseMpDate(item.actionTime);
+      const agentName = item.agentName ?? null;
+      const agentUserId = item.userId ?? item.user?.id ?? null;
+      const agentEmail = item.user?.email ?? null;
+      const modifiedFields = item.modifiedFields ? String(item.modifiedFields) : null;
+      const changeType = item.changeType ?? null;
+      const platform = item.platform ?? null;
+      const remarks = item.remarks ?? null;
+
+      // Upsert idempotente — UNIQUE em (bookingExternalId, historyId)
+      try {
+        await db.insert(multiparkBookingHistory).values({
+          bookingExternalId: externalId,
+          historyId: String(historyId).slice(0, 128),
+          changeType: changeType ? String(changeType).slice(0, 32) : null,
+          actionTime,
+          remarks,
+          agentName: agentName ? String(agentName).slice(0, 256) : null,
+          agentUserId: agentUserId ? String(agentUserId).slice(0, 128) : null,
+          agentEmail,
+          modifiedFields,
+          platform: platform ? String(platform).slice(0, 32) : null,
+        });
+      } catch (err: any) {
+        if (!String(err.message).includes("Duplicate")) throw err;
+      }
+
+      // Extrair resumos
+      if (changeType === "CHECK_IN") {
+        if (agentName) checkinAgentName = agentName;
+        if (agentUserId) checkinAgentUserId = agentUserId;
+      } else if (changeType === "CHECK_OUT") {
+        if (agentName) checkoutAgentName = agentName;
+        if (agentUserId) checkoutAgentUserId = agentUserId;
+      }
+      if (modifiedFields) {
+        try {
+          const mf = JSON.parse(modifiedFields);
+          if (mf.garagem) currentGarage = String(mf.garagem).slice(0, 64);
+          if (mf.lugar) currentSpot = String(mf.lugar).slice(0, 64);
+          if (mf.km !== undefined) {
+            const km = parseInt(String(mf.km), 10);
+            if (Number.isFinite(km)) lastKnownMileage = km;
+          }
+        } catch {}
+      }
+    }
+
+    // Updade resumo na reserva
+    const update: Record<string, any> = { historyFetchedAt: nowMysql() };
+    if (checkinAgentName) update.checkinAgentName = checkinAgentName;
+    if (checkinAgentUserId) update.checkinAgentUserId = checkinAgentUserId;
+    if (checkoutAgentName) update.checkoutAgentName = checkoutAgentName;
+    if (checkoutAgentUserId) update.checkoutAgentUserId = checkoutAgentUserId;
+    if (currentGarage) update.currentGarage = currentGarage;
+    if (currentSpot) update.currentSpot = currentSpot;
+    if (lastKnownMileage !== null) update.lastKnownMileage = lastKnownMileage;
+
+    await db.update(multiparkBookings)
+      .set(update)
+      .where(eq(multiparkBookings.externalId, externalId));
+    return true;
+  } catch {
+    // Marca tentativa para sair da fila (assim como o enrichment)
+    try {
+      await db.update(multiparkBookings)
+        .set({ historyFetchedAt: nowMysql() })
+        .where(eq(multiparkBookings.externalId, externalId));
+    } catch {}
+    return false;
+  }
+}
+
+/**
  * Endpoint separado que enriquece um lote de reservas (deliveryType, flights,
  * remarks) chamando /bookings/:id por reserva. Usa o parkId guardado em DB
  * para escolher a chave de API correcta sem ter de tentar todos os parques.
@@ -348,6 +460,92 @@ export async function enrichBookingsBatch(limit = 100): Promise<{
   });
 
   return { scanned: pending.length, enriched, errors: errs, noKey };
+}
+
+/**
+ * Vai buscar history das reservas que ainda não tinham. Mesma estratégia
+ * do enrich: lote pequeno por execução para caber no timeout do Vercel.
+ */
+export async function syncBookingHistoryBatch(limit = 50): Promise<{
+  scanned: number;
+  fetched: number;
+  errors: number;
+  noKey: number;
+}> {
+  const db = await getDb();
+  if (!db) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
+
+  const { isNull, and: andOp, gte } = await import("drizzle-orm");
+
+  // Prioriza reservas com checkIn nos próximos 30 dias OU últimos 7
+  const now = new Date();
+  const cutPast = new Date(now);
+  cutPast.setDate(cutPast.getDate() - 7);
+  const cutFuture = new Date(now);
+  cutFuture.setDate(cutFuture.getDate() + 30);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 19).replace("T", " ");
+
+  const pending = await db
+    .select({
+      externalId: multiparkBookings.externalId,
+      parkName: multiparkBookings.parkName,
+      city: multiparkBookings.city,
+    })
+    .from(multiparkBookings)
+    .where(
+      andOp(
+        isNull(multiparkBookings.historyFetchedAt),
+        gte(multiparkBookings.checkIn, fmt(cutPast)),
+      ),
+    )
+    .limit(limit);
+
+  if (pending.length === 0) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
+
+  const parks = getConfiguredParks();
+  const CITY_NORMALIZE: Record<string, string> = {
+    lisbon: "lisboa", lisboa: "lisboa", porto: "porto", oporto: "porto", faro: "faro",
+  };
+  const keyCache = new Map<string, string | null>();
+  function pickApiKey(parkName: string | null, city: string | null): string | null {
+    if (!parkName) return null;
+    const cacheKey = `${parkName.toLowerCase()}|${(city ?? "").toLowerCase()}`;
+    if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
+    const pl = parkName.toLowerCase();
+    const cityNorm = city ? (CITY_NORMALIZE[city.toLowerCase()] ?? city.toLowerCase()) : "";
+    let match = parks.find(p =>
+      pl.includes(p.name.toLowerCase()) && pl.includes(p.city.toLowerCase()),
+    );
+    if (!match && cityNorm) {
+      match = parks.find(p =>
+        pl.includes(p.name.toLowerCase()) && p.city.toLowerCase() === cityNorm,
+      );
+    }
+    const key = match ? getParkApiKey(match) ?? null : null;
+    keyCache.set(cacheKey, key);
+    return key;
+  }
+
+  let fetched = 0;
+  let errs = 0;
+  let noKey = 0;
+  await runConcurrent(pending, ENRICH_CONCURRENCY, async (p) => {
+    const apiKey = pickApiKey(p.parkName, p.city);
+    if (!apiKey) {
+      noKey++;
+      try {
+        await db.update(multiparkBookings)
+          .set({ historyFetchedAt: nowMysql() })
+          .where(eq(multiparkBookings.externalId, p.externalId));
+      } catch {}
+      return;
+    }
+    const ok = await syncBookingHistory(p.externalId, apiKey);
+    if (ok) fetched++; else errs++;
+  });
+
+  return { scanned: pending.length, fetched, errors: errs, noKey };
 }
 
 // ─── Core sync function ──────────────────────────────────────────────────────

@@ -1197,6 +1197,7 @@ function SyncTab() {
   const { data: logs = [], isLoading, refetch } = trpc.multipark.syncLogs.useQuery();
   const syncMut = trpc.multipark.triggerSync.useMutation();
   const enrichMut = trpc.multipark.enrichBatch.useMutation();
+  const historyMut = trpc.multipark.syncHistoryBatch.useMutation();
   const utils = trpc.useUtils();
 
   const handleEnrich = async () => {
@@ -1289,6 +1290,33 @@ function SyncTab() {
             <Button onClick={handleEnrich} disabled={enrichMut.isPending} variant="outline" className="gap-2 shrink-0">
               {enrichMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Enriquecer 200
+            </Button>
+          </div>
+
+          <div className="border-t pt-3 flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">Histórico das reservas (timeline)</div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Para cada reserva (últimos 7d + próximos 30d), busca o histórico
+                completo: check-in, movimentos, check-out, com <strong>agente responsável</strong>,{" "}
+                <strong>garagem/lugar</strong> e <strong>quilometragem</strong>. 50 por execução.
+              </p>
+            </div>
+            <Button
+              onClick={async () => {
+                try {
+                  const r = await historyMut.mutateAsync({ limit: 50 });
+                  if (r.scanned === 0) toast.info("Sem reservas pendentes de history.");
+                  else toast.success(`History: ${r.fetched}/${r.scanned} (${r.errors} erros, ${r.noKey} sem chave)`);
+                  utils.multipark.bookings.invalidate();
+                } catch (e: any) { toast.error(e.message || "Erro"); }
+              }}
+              disabled={historyMut.isPending}
+              variant="outline"
+              className="gap-2 shrink-0"
+            >
+              {historyMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Buscar history 50
             </Button>
           </div>
         </CardContent>

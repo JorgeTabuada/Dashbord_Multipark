@@ -318,7 +318,7 @@ import {
   type VehicleType,
   type BookingActionType,
 } from "./multipark";
-import { syncBookings, enrichBookingsBatch } from "./jobs/multiparkBookingSync";
+import { syncBookings, enrichBookingsBatch, syncBookingHistoryBatch } from "./jobs/multiparkBookingSync";
 
 import {
   getZelloUsers,
@@ -3918,6 +3918,21 @@ export const appRouter = router({
           action: "enrich",
           entity: "multipark_bookings",
           details: `Enriquecidas ${result.enriched}/${result.scanned} (${result.errors} erros API, ${result.noKey} sem chave)`,
+        });
+        return result;
+      }),
+
+    // Fetch history (timeline) das reservas recentes ou futuras 30d
+    syncHistoryBatch: protectedProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(100).default(50) }).optional())
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const result = await syncBookingHistoryBatch(input?.limit ?? 50);
+        await logActivity({
+          userId: ctx.user.id,
+          action: "history_sync",
+          entity: "multipark_bookings",
+          details: `History: ${result.fetched}/${result.scanned} reservas (${result.errors} erros, ${result.noKey} sem chave)`,
         });
         return result;
       }),

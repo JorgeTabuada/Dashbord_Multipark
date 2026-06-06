@@ -507,6 +507,14 @@ export const multiparkBookings = mysqlTable("multipark_bookings", {
 	enrichedAt: timestamp({ mode: 'string' }),
 	origin: varchar({ length: 64 }),
 	originUrl: varchar({ length: 512 }),
+	currentGarage: varchar({ length: 64 }),
+	currentSpot: varchar({ length: 64 }),
+	lastKnownMileage: int(),
+	checkinAgentName: varchar({ length: 256 }),
+	checkinAgentUserId: varchar({ length: 128 }),
+	checkoutAgentName: varchar({ length: 256 }),
+	checkoutAgentUserId: varchar({ length: 128 }),
+	historyFetchedAt: timestamp({ mode: 'string' }),
 	spotType: mysqlEnum(['covered','uncovered','indoor','unknown']),
 	parkBrand: varchar({ length: 16 }),
 	paymentMethod: varchar({ length: 128 }),
@@ -603,6 +611,28 @@ export const partnerships = mysqlTable("partnerships", {
 	monthlyFee: int().default(0),
 	multiparkPartnerId: varchar({ length: 128 }),
 });
+
+export const multiparkBookingHistory = mysqlTable("multipark_booking_history", {
+	id: int().autoincrement().primaryKey(),
+	bookingExternalId: varchar({ length: 128 }).notNull(),
+	historyId: varchar({ length: 128 }).notNull(),
+	changeType: varchar({ length: 32 }),
+	actionTime: timestamp({ mode: 'string' }),
+	remarks: text(),
+	agentName: varchar({ length: 256 }),
+	agentUserId: varchar({ length: 128 }),
+	agentEmail: varchar({ length: 320 }),
+	modifiedFields: text(),
+	platform: varchar({ length: 32 }),
+	fetchedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	uniqueIndex("uq_booking_history").on(table.bookingExternalId, table.historyId),
+	index("idx_bh_booking").on(table.bookingExternalId),
+	index("idx_bh_agent").on(table.agentUserId),
+	index("idx_bh_actionTime").on(table.actionTime),
+	index("idx_bh_changeType").on(table.changeType),
+]);
 
 export const partnerAliases = mysqlTable("partner_aliases", {
 	id: int().autoincrement().primaryKey(),
