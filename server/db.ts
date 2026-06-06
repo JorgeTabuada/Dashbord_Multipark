@@ -4200,55 +4200,259 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
     .where(and(...revConds))
     .groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
 
-  // 2. Expenses (paid) in the year
+  // 2. Despesas TODAS (pagas + pendentes + atraso, excepto canceladas) por
+  // data da despesa (expenseDate, quando aconteceu), não por paidAt.
+  // Visão de P&L de gestão, não fluxo de caixa.
   const expConds: any[] = [
-    eq(expenses.status, "paid"),
-    isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, toMysqlDateTime(new Date(`${year}-01-01`))),
-    lte(expenses.paidAt, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
+    sql`${expenses.status} != 'cancelled'`,
+    gte(expenses.expenseDate, toMysqlDateTime(new Date(`${year}-01-01`))),
+    lte(expenses.expenseDate, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
   ];
   if (projectIds) expConds.push(inArray(expenses.projectId, projectIds));
 
   const expenseRows = await db
     .select({
-      month: sql<number>`MONTH(${expenses.paidAt})`,
+      month: sql<number>`MONTH(${expenses.expenseDate})`,
       total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)`,
     })
     .from(expenses)
     .where(and(...expConds))
-    .groupBy(sql`MONTH(${expenses.paidAt})`);
+    .groupBy(sql`MONTH(${expenses.expenseDate})`);
 
-  // 3. Payroll per month (salaries + taxes)
-  // TSU employer rate in Portugal: 23.75%
-  const TSU_EMPLOYER = 0.2375;
-  const payrollByMonth: Record<number, { salaries: number; employerTax: number }> = {};
-  for (let m = 1; m <= 12; m++) {
-    try {
-      const payroll = await getPayrollData(year, m);
-      // Filter by project if needed
-      const filtered = projectIds
-        ? payroll.filter(p => p.projectId && projectIds!.includes(p.projectId))
-        : payroll;
-      const totalSalaries = filtered.reduce((s, p) => s + p.totalPayment, 0);
-      const totalEmployerTax = filtered.reduce((s, p) => {
-        // TSU only on base salary + overtime, not meal allowance
-        const taxableBase = p.isExtra ? p.extraPayment : (p.baseSalary + p.overtimePayment + p.nightPayment + p.weekendPayment);
-        return s + taxableBase * TSU_EMPLOYER;
-      }, 0);
-      payrollByMonth[m] = { salaries: Math.round(totalSalaries * 100) / 100, employerTax: Math.round(totalEmployerTax * 100) / 100 };
-    } catch {
-      payrollByMonth[m] = { salaries: 0, employerTax: 0 };
+  // ─── 3. Marketing despesas (marketing_expenses) por mês ──────────────────
+  const mktExpConds: any[] = [
+    gte(marketingExpenses.date, toMysqlDateTime(new Date(`${year}-01-01`))),
+    lte(marketingExpenses.date, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
+  ];
+  if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
+  const mktExpRows = await db
+    .select({
+      month: sql<number>`MONTH(${marketingExpenses.date})`,
+      total: sql<number>`COALESCE(SUM(${marketingExpenses.amount}), 0)`,
+    })
+    .from(marketingExpenses)
+    .where(and(...mktExpConds))
+    .groupBy(sql`MONTH(${marketingExpenses.date})`);
+
+  // ─── 4. Ad spend (Google/Meta) por mês ──────────────────────────────────
+  const adsConds: any[] = [
+    gte(campaignDailyStats.date, toMysqlDateTime(new Date(`${year}-01-01`))),
+    lte(campaignDailyStats.date, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
+  ];
+  if (projectIds) adsConds.push(inArray(campaigns.projectId, projectIds));
+  const adsRows = await db
+    .select({
+      month: sql<number>`MONTH(${campaignDailyStats.date})`,
+      total: sql<number>`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
+    })
+    .from(campaignDailyStats)
+    .innerJoin(campaigns, eq(campaigns.id, campaignDailyStats.campaignId))
+    .where(and(...adsConds))
+    .groupBy(sql`MONTH(${campaignDailyStats.date})`);
+
+  // ─── 5. Extras-dia (custo da equipa diária) por mês ─────────────────────
+  // Substring(assignmentDate, 6, 2) extrai o mês de "YYYY-MM-DD".
+  const extrasRows = await db
+    .select({
+      month: sql<number>`CAST(SUBSTRING(${extrasDiaAssignments.assignmentDate}, 6, 2) AS UNSIGNED)`,
+      level: extrasDiaAssignments.level,
+      hours: sql<number>`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`,
+    })
+    .from(extrasDiaAssignments)
+    .where(
+      and(
+        gte(extrasDiaAssignments.assignmentDate, `${year}-01-01`),
+        lte(extrasDiaAssignments.assignmentDate, `${year}-12-31`),
+      ),
+    )
+    .groupBy(sql`MONTH(${extrasDiaAssignments.assignmentDate})`, extrasDiaAssignments.level);
+
+  const extrasDiaByMonth: Record<number, number> = {};
+  for (const r of extrasRows) {
+    const rate = EXTRAS_DIA_RATES[String(r.level ?? "junior")] ?? 4;
+    const m = Number(r.month);
+    extrasDiaByMonth[m] = (extrasDiaByMonth[m] ?? 0) + Number(r.hours) * rate;
+  }
+
+  // ─── 6. Comissões parceiros (venda + operacional) descontadas da receita ─
+  // Carrega aliases + parceiros para fazer match com bookings.campaign e
+  // calcular comissão por mês. Para operacional, aplica % das reservas dos
+  // projetos operados (mesmo padrão de getBillingData).
+  const allPartners = await db
+    .select({
+      id: partnerships.id,
+      name: partnerships.name,
+      campaignKey: partnerships.campaignKey,
+      commissionRate: partnerships.commissionRate,
+      partnerType: partnerships.partnerType,
+      notes: partnerships.notes,
+      updatedAt: partnerships.updatedAt,
+    })
+    .from(partnerships);
+  const allAliases = await db
+    .select({ partnershipId: partnerAliases.partnershipId, aliasValue: partnerAliases.aliasValue })
+    .from(partnerAliases);
+  const partnerByCampaign = new Map<string, { id: number; name: string; rate: number; updatedAt: string }>();
+  const registerKey = (k: string | null, id: number, name: string, rate: number, updatedAt: string) => {
+    if (!k) return;
+    const key = k.trim().toLowerCase();
+    if (!key) return;
+    const ex = partnerByCampaign.get(key);
+    if (!ex || updatedAt > ex.updatedAt) {
+      partnerByCampaign.set(key, { id, name, rate, updatedAt });
+    }
+  };
+  for (const p of allPartners) {
+    const rate = Number(p.commissionRate ?? 0);
+    const updatedAt = p.updatedAt ?? "";
+    registerKey(p.campaignKey, p.id, p.name, rate, updatedAt);
+    registerKey(p.name, p.id, p.name, rate, updatedAt);
+  }
+  const partnerById = new Map(allPartners.map(p => [p.id, p]));
+  for (const a of allAliases) {
+    const p = partnerById.get(a.partnershipId);
+    if (!p) continue;
+    registerKey(a.aliasValue, p.id, p.name, Number(p.commissionRate ?? 0), p.updatedAt ?? "");
+  }
+
+  const bookingsByMonthCampaign = await db
+    .select({
+      month: sql<number>`MONTH(${multiparkBookings.checkOut})`,
+      campaign: multiparkBookings.campaign,
+      revenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .where(and(...revConds, isNotNull(multiparkBookings.campaign)))
+    .groupBy(sql`MONTH(${multiparkBookings.checkOut})`, multiparkBookings.campaign);
+
+  const salesCommissionByMonth: Record<number, number> = {};
+  for (const r of bookingsByMonthCampaign) {
+    const key = (r.campaign ?? "").trim().toLowerCase();
+    const partner = partnerByCampaign.get(key);
+    if (!partner) continue;
+    const m = Number(r.month);
+    salesCommissionByMonth[m] = (salesCommissionByMonth[m] ?? 0) + Number(r.revenue) * (partner.rate / 100);
+  }
+
+  // Operacional: para parceiros tipo "operacional" com operatesProjects
+  const { parsePartnerConfig } = await import("../shared/partnerTypes");
+  const operationalPartnersList = allPartners
+    .filter(p => (p.partnerType ?? "outro") === "operacional")
+    .map(p => ({ p, cfg: parsePartnerConfig(p.notes ?? null) }))
+    .filter(({ cfg }) => Array.isArray(cfg.operatesProjects) && cfg.operatesProjects!.length > 0);
+
+  const operationalCommissionByMonth: Record<number, number> = {};
+  for (const { p, cfg } of operationalPartnersList) {
+    const expanded = new Set<number>();
+    for (const root of cfg.operatesProjects ?? []) {
+      const ids = await resolveProjectIds(root);
+      for (const pid of ids) expanded.add(pid);
+    }
+    if (expanded.size === 0) continue;
+    const rows = await db
+      .select({
+        month: sql<number>`MONTH(${multiparkBookings.checkOut})`,
+        revenue: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+      })
+      .from(multiparkBookings)
+      .where(
+        and(
+          gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-01-01`))),
+          lte(multiparkBookings.checkOut, toMysqlDateTime(new Date(`${year}-12-31T23:59:59`))),
+          sql`${multiparkBookings.status} != 'CANCELLED'`,
+          inArray(multiparkBookings.projectId, Array.from(expanded)),
+        ),
+      )
+      .groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
+    const rate = Number(p.commissionRate ?? 0) / 100;
+    for (const r of rows) {
+      const m = Number(r.month);
+      operationalCommissionByMonth[m] = (operationalCommissionByMonth[m] ?? 0) + Number(r.revenue) * rate;
     }
   }
 
-  // Build monthly breakdown
+  // ─── 7. Payroll por mês COM RATEIO hierárquico — em paralelo ────────────
+  // Resolver descendentes folha para rateio do salário de quem está no
+  // topo (igual ao que se faz em getPartnerInvoicingSummary).
+  const allProjsForRateio = await db
+    .select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level })
+    .from(projects);
+  const childrenMap = new Map<number, number[]>();
+  for (const p of allProjsForRateio) {
+    if (p.parentId != null) {
+      if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+      childrenMap.get(p.parentId)!.push(p.id);
+    }
+  }
+  function leafDescendants(pid: number): number[] {
+    const self = allProjsForRateio.find(x => x.id === pid);
+    if (!self) return [pid];
+    if (self.level === "project") return [pid];
+    const kids = childrenMap.get(pid) ?? [];
+    if (kids.length === 0) return [pid];
+    const out: number[] = [];
+    for (const k of kids) out.push(...leafDescendants(k));
+    return out.length > 0 ? out : [pid];
+  }
+
+  // TSU employer rate in Portugal: 23.75%
+  const TSU_EMPLOYER = 0.2375;
+
+  // PARALELIZA as 12 chamadas em vez de loop sequencial — 12x mais rápido
+  const monthIds = Array.from({ length: 12 }, (_, i) => i + 1);
+  const payrollResults = await Promise.all(monthIds.map(async (m) => {
+    try {
+      const payroll = await getPayrollData(year, m);
+      // Rateio: para cada entrada, expande para descendentes folha
+      let totalSalaries = 0;
+      let totalEmployerTax = 0;
+      for (const p of payroll) {
+        const taxableBase = p.isExtra
+          ? p.extraPayment
+          : (p.baseSalary + p.overtimePayment + p.nightPayment + p.weekendPayment);
+        const employerTaxForEmp = taxableBase * TSU_EMPLOYER;
+        const empProjectId = p.projectId ?? null;
+        if (empProjectId == null) {
+          // Sem projeto: só conta se não há filtro
+          if (!projectIds) {
+            totalSalaries += p.totalPayment;
+            totalEmployerTax += employerTaxForEmp;
+          }
+          continue;
+        }
+        const targets = leafDescendants(empProjectId);
+        // Se há filtro de projeto, vê quantos targets caem no filtro
+        const matching = projectIds ? targets.filter(t => projectIds!.includes(t)) : targets;
+        if (matching.length === 0) continue;
+        const share = matching.length / targets.length; // fracção que cai no filtro
+        totalSalaries += p.totalPayment * share;
+        totalEmployerTax += employerTaxForEmp * share;
+      }
+      return [m, { salaries: Math.round(totalSalaries * 100) / 100, employerTax: Math.round(totalEmployerTax * 100) / 100 }] as const;
+    } catch {
+      return [m, { salaries: 0, employerTax: 0 }] as const;
+    }
+  }));
+  const payrollByMonth: Record<number, { salaries: number; employerTax: number }> = {};
+  for (const [m, v] of payrollResults) payrollByMonth[m] = v;
+
+  // ─── 8. Build monthly breakdown ──────────────────────────────────────────
   const revMap = new Map(revenueRows.map(r => [Number(r.month), Number(r.total)]));
   const expMap = new Map(expenseRows.map(e => [Number(e.month), Number(e.total)]));
+  const mktExpMap = new Map(mktExpRows.map(r => [Number(r.month), Number(r.total)]));
+  const adsMap = new Map(adsRows.map(r => [Number(r.month), Number(r.total)]));
 
   const months = [];
   for (let m = 1; m <= 12; m++) {
-    const revenueWithVat = revMap.get(m) ?? 0;
+    const revenueGrossWithVat = revMap.get(m) ?? 0;
+    const salesCommissions = Math.round((salesCommissionByMonth[m] ?? 0) * 100) / 100;
+    const operationalCommissions = Math.round((operationalCommissionByMonth[m] ?? 0) * 100) / 100;
+    // Receita líquida: comissões saem ANTES dos impostos
+    const revenueWithVat = revenueGrossWithVat - salesCommissions - operationalCommissions;
+
     const expensesWithVat = expMap.get(m) ?? 0;
+    const marketingCost = (mktExpMap.get(m) ?? 0) + (adsMap.get(m) ?? 0);
+    const extrasDiaCost = extrasDiaByMonth[m] ?? 0;
     const salaries = payrollByMonth[m]?.salaries ?? 0;
     const employerTax = payrollByMonth[m]?.employerTax ?? 0;
 
@@ -4259,21 +4463,26 @@ export async function getAnnualBreakdown(year: number, projectId?: number) {
     const revenueNoVat = Math.round((revenueWithVat - vatRevenue) * 100) / 100;
     const expensesNoVat = Math.round((expensesWithVat - vatExpenses) * 100) / 100;
 
-    const totalCosts = expensesNoVat + salaries + employerTax;
+    const totalCosts = expensesNoVat + marketingCost + extrasDiaCost + salaries + employerTax;
     const profit = Math.round((revenueNoVat - totalCosts) * 100) / 100;
 
     months.push({
       month: m,
-      revenueWithVat,
+      revenueGrossWithVat: Math.round(revenueGrossWithVat * 100) / 100,
+      salesCommissions,
+      operationalCommissions,
+      revenueWithVat: Math.round(revenueWithVat * 100) / 100,
       revenueNoVat,
       vatRevenue,
       expensesWithVat,
       expensesNoVat,
       vatExpenses,
       vatToPay,
+      marketingCost: Math.round(marketingCost * 100) / 100,
+      extrasDiaCost: Math.round(extrasDiaCost * 100) / 100,
       salaries,
       employerTax,
-      totalCosts,
+      totalCosts: Math.round(totalCosts * 100) / 100,
       profit,
     });
   }
