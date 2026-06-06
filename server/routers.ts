@@ -177,7 +177,6 @@ import {
   addLostFoundMessage,
   getLostFoundMessages,
   getLostFoundDriverRanking,
-  importBookingHistory,
   getBookingHistoryByBookingId,
   getBookingHistoryByPlate,
   searchBookingHistory,
@@ -3130,64 +3129,16 @@ export const appRouter = router({
     // Driver ranking (cruzamento de dados)
     driverRanking: protectedProcedure.query(() => getLostFoundDriverRanking()),
 
-    // Vehicle driver history (reuse from operational)
-    vehicleDrivers: protectedProcedure.input(z.object({ plate: z.string() })).query(async ({ input }) => {
-      const allVehicles = await getVehicles();
-      const vehicle = allVehicles.find(v => v.plate === input.plate);
-      if (!vehicle) return [];
-      return getVehicleDriverHistory(vehicle.id);
-    }),
-
-    // ── Booking History (imported from Excel) ──
-    importBookingHistory: protectedProcedure
-      .input(z.object({ fileBase64: z.string(), filename: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-        const buffer = Buffer.from(input.fileBase64, "base64");
-        const wb = XLSX.read(buffer, { type: "buffer" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        if (!ws) throw new Error("Ficheiro Excel vazio");
-        const raw: any[] = XLSX.utils.sheet_to_json(ws);
-        if (raw.length === 0) throw new Error("Sem dados no ficheiro");
-
-        const rows = raw.map((r: any) => {
-          // Convert Excel serial date to MySQL datetime string
-          let actionDate: string | null = null;
-          const rawDate = r["Data da Ação"] || r["Data da Acao"] || r["actionDate"];
-          if (typeof rawDate === "number") {
-            const d = new Date((rawDate - 25569) * 86400 * 1000);
-            actionDate = d.toISOString().slice(0, 19).replace("T", " ");
-          } else if (rawDate) {
-            const d = new Date(rawDate);
-            if (!isNaN(d.getTime())) actionDate = d.toISOString().slice(0, 19).replace("T", " ");
-          }
-
-          const str = (v: any) => (v != null && String(v).trim() !== "") ? String(v).trim() : null;
-          return {
-            historyId: str(r["ID do Histórico"] ?? r["ID do Historico"] ?? r["historyId"]) || `gen_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-            bookingId: str(r["ID da Reserva"] ?? r["bookingId"]) || "",
-            changeType: str(r["Tipo de Alteração"] ?? r["Tipo de Alteracao"] ?? r["changeType"]) || "",
-            userName: str(r["Nome do Utilizador"] ?? r["userName"]),
-            userLastName: str(r["Apelido do Utilizador"] ?? r["userLastName"]),
-            userEmail: str(r["Email do Utilizador"] ?? r["userEmail"]),
-            remarks: str(r["Observações"] ?? r["Observacoes"] ?? r["remarks"]),
-            actionDate,
-            parkName: str(r["Parque"] ?? r["parkName"]),
-            licensePlate: str(r["Matrícula"] ?? r["Matricula"] ?? r["licensePlate"]),
-            bookingStatus: str(r["Estado da Reserva"] ?? r["bookingStatus"]),
-          };
-        }).filter((r: any) => r.bookingId);
-
-        const result = await importBookingHistory(rows);
-        await logActivity({
-          userId: ctx.user.id,
-          action: "import",
-          entity: "booking_history",
-          details: `Importados ${result.imported} registos (${result.skipped} duplicados) de ${input.filename}`,
-        });
-        return { ...result, total: rows.length };
+    // Agentes Multipark que mexeram na matrícula. Sinaliza os que tocaram
+    // especificamente na reserva do caso aberto (currentBookingRef).
+    vehicleAgents: protectedProcedure
+      .input(z.object({ plate: z.string(), currentBookingRef: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { getVehicleAgentsByPlate } = await import("./db");
+        return getVehicleAgentsByPlate(input.plate, input.currentBookingRef);
       }),
 
+    // ── Booking History (Multipark DB local, sincronizado pelo cron job) ──
     bookingHistory: protectedProcedure
       .input(z.object({ bookingId: z.string().optional(), plate: z.string().optional(), search: z.string().optional() }))
       .query(async ({ input }) => {
@@ -3200,7 +3151,7 @@ export const appRouter = router({
     bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
 
     bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
-    // Booking timeline from Multipark API
+    // Booking timeline directo da API Multipark (para o caso aberto)
     bookingTimeline: protectedProcedure.input(z.object({
       bookingId: z.string(),
     })).query(async ({ input }) => {

@@ -13,13 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
-  Search, Plus, MessageSquare, Camera, Clock, User, Car,
+  Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
   BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle,
   Package, DollarSign, Smartphone, Shirt, FileText, Glasses,
-  HelpCircle, TrendingUp, Users, ShieldAlert
+  HelpCircle, TrendingUp, ShieldAlert, Flag, Mail
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -298,8 +298,8 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
   const { data: item, isLoading } = trpc.lostFound.getById.useQuery({ id });
   const { data: photos = [] } = trpc.lostFound.getPhotos.useQuery({ itemId: id });
   const { data: messages = [] } = trpc.lostFound.getMessages.useQuery({ itemId: id });
-  const { data: vehicleDrivers = [] } = trpc.lostFound.vehicleDrivers.useQuery(
-    { plate: item?.vehiclePlate || "" },
+  const { data: vehicleAgents = [] } = trpc.lostFound.vehicleAgents.useQuery(
+    { plate: item?.vehiclePlate || "", currentBookingRef: item?.bookingRef || undefined },
     { enabled: !!item?.vehiclePlate }
   );
   const { data: apiTimeline, isLoading: timelineLoading } = trpc.lostFound.bookingTimeline.useQuery(
@@ -585,23 +585,49 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
-                      <Car className="w-5 h-5" /> Histórico de Condutores — {item.vehiclePlate}
+                      <Car className="w-5 h-5" /> Condutores Multipark — {item.vehiclePlate}
                     </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Quem mexeu nesta viatura em todas as reservas. Condutores que tocaram especificamente na reserva
+                      <span className="font-mono"> {item.bookingRef ? item.bookingRef.slice(-12) : "—"}</span> aparecem sinalizados.
+                    </p>
                   </CardHeader>
                   <CardContent>
-                    {vehicleDrivers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Sem movimentos registados para esta viatura.</p>
+                    {vehicleAgents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sem registos no histórico Multipark para esta matrícula.</p>
                     ) : (
                       <div className="space-y-2">
-                        {vehicleDrivers.slice(0, 20).map((d: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between text-sm p-2 rounded bg-muted">
-                            <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">Condutor #{d.employeeId}</span>
+                        {vehicleAgents.map((a: any, i: number) => (
+                          <div
+                            key={i}
+                            className={`flex items-center justify-between text-sm p-3 rounded border ${
+                              a.flagged
+                                ? "bg-red-50 border-red-300 dark:bg-red-950/30"
+                                : "bg-muted border-transparent"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <User className={`w-4 h-4 ${a.flagged ? "text-red-600" : "text-muted-foreground"}`} />
+                              <span className="font-medium">{a.agentName}</span>
+                              {a.flagged === 1 && (
+                                <Badge className="bg-red-500 text-white text-[10px]">
+                                  <Flag className="w-3 h-3 mr-1" /> Envolvido no caso
+                                </Badge>
+                              )}
+                              {a.agentEmail && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Mail className="w-3 h-3" /> {a.agentEmail}
+                                </span>
+                              )}
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {d.createdAt ? new Date(d.createdAt).toLocaleString("pt-PT") : ""}
-                            </span>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-green-600 font-medium">{a.checkins} in</span>
+                              <span className="text-violet-600 font-medium">{a.checkouts} out</span>
+                              <span className="text-amber-600 font-medium">{a.movements} mov</span>
+                              <span className="text-muted-foreground">
+                                {a.lastActionAt ? new Date(a.lastActionAt).toLocaleDateString("pt-PT") : ""}
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -798,8 +824,9 @@ function DriverRankingView({ onBack }: { onBack: () => void }) {
             <TrendingUp className="w-5 h-5" /> Ranking por Casos Associados
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Condutores ordenados pelo número de casos de perdidos/achados em que estiveram envolvidos
-            (baseado no histórico de reservas importado).
+            Condutores Multipark ordenados pelo número de casos de perdidos/achados em que estiveram envolvidos
+            (cruzamento ao vivo entre <span className="font-mono">lost_found_items.bookingRef</span> e o
+            histórico Multipark sincronizado).
           </p>
         </CardHeader>
         <CardContent>
@@ -809,7 +836,10 @@ function DriverRankingView({ onBack }: { onBack: () => void }) {
             <div className="text-center py-10">
               <Package className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
               <p className="text-muted-foreground">Sem dados suficientes para cruzamento.</p>
-              <p className="text-xs text-muted-foreground mt-1">É necessário ter registos de perdidos/achados com referência de reserva e histórico importado do backoffice.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Necessário ter registos de perdidos/achados com Ref. de Reserva preenchida e o cron job de sincronização
+                Multipark já ter corrido para essas reservas.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -819,6 +849,7 @@ function DriverRankingView({ onBack }: { onBack: () => void }) {
                     <th className="p-2 w-10">#</th>
                     <th className="p-2">Condutor</th>
                     <th className="p-2 text-right">Casos</th>
+                    <th className="p-2 text-right">Matrículas</th>
                     <th className="p-2 text-right">Check-ins</th>
                     <th className="p-2 text-right">Check-outs</th>
                     <th className="p-2 text-right">Movimentos</th>
@@ -833,9 +864,19 @@ function DriverRankingView({ onBack }: { onBack: () => void }) {
                           {i + 1}
                         </span>
                       </td>
-                      <td className="p-2 font-medium">{r.userName}</td>
+                      <td className="p-2 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{r.userName}</span>
+                          <Badge className="bg-red-500 text-white text-[10px]">
+                            <Flag className="w-3 h-3 mr-1" /> Envolvido
+                          </Badge>
+                        </div>
+                      </td>
                       <td className="p-2 text-right">
                         <Badge variant={r.caseCount > 2 ? "destructive" : "outline"}>{r.caseCount}</Badge>
+                      </td>
+                      <td className="p-2 text-right text-muted-foreground" title={(r.plates || []).join(", ")}>
+                        {(r.plates || []).length}
                       </td>
                       <td className="p-2 text-right text-green-600">{r.checkins || 0}</td>
                       <td className="p-2 text-right text-violet-600">{r.checkouts || 0}</td>
@@ -1027,10 +1068,8 @@ const CHANGE_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 function BookingHistoryView({ onBack }: { onBack: () => void }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  const importMut = trpc.lostFound.importBookingHistory.useMutation();
-  const { data: history = [], isLoading, refetch } = trpc.lostFound.bookingHistory.useQuery(
+  const { data: history = [], isLoading } = trpc.lostFound.bookingHistory.useQuery(
     { search: activeSearch || undefined },
     { enabled: !!activeSearch }
   );
@@ -1038,25 +1077,10 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
 
   const handleSearch = () => setActiveSearch(searchTerm.trim());
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      try {
-        const result = await importMut.mutateAsync({ fileBase64: base64, filename: file.name });
-        toast.success(`Importados ${result.imported} registos (${result.skipped} duplicados)`);
-        if (activeSearch) refetch();
-      } catch (err: any) {
-        toast.error(`Erro: ${err.message}`);
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
   const fmtDate = (d: string | null) => d ? new Date(d).toLocaleString("pt-PT") : "—";
+
+  // Conta totais flagged
+  const flaggedDrivers = driverStats.filter((d: any) => d.flagged).length;
 
   return (
     <div className="space-y-6">
@@ -1070,15 +1094,11 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Clock className="w-6 h-6 text-indigo-500" /> Histórico de Reservas
             </h1>
-            <p className="text-muted-foreground">Quem mexeu em cada carro — importar Excel do backoffice MultiPark</p>
+            <p className="text-muted-foreground">
+              Histórico Multipark sincronizado (cron 15min). Condutores envolvidos em casos de perdidos/achados
+              aparecem sinalizados.
+            </p>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importMut.isPending}>
-            <Upload className="w-4 h-4 mr-2" />
-            {importMut.isPending ? "A importar..." : "Importar Excel"}
-          </Button>
         </div>
       </div>
 
@@ -1103,7 +1123,14 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
       {driverStats.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Actividade por Condutor (total importado)</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              Actividade por Condutor (histórico total)
+              {flaggedDrivers > 0 && (
+                <Badge className="bg-red-500 text-white text-[10px]">
+                  <Flag className="w-3 h-3 mr-1" /> {flaggedDrivers} envolvidos em casos
+                </Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -1111,6 +1138,7 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
                 <thead>
                   <tr className="bg-muted/50 text-left">
                     <th className="p-2">Condutor</th>
+                    <th className="p-2 text-right">Casos</th>
                     <th className="p-2 text-right">Total</th>
                     <th className="p-2 text-right">Check-ins</th>
                     <th className="p-2 text-right">Check-outs</th>
@@ -1119,8 +1147,28 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
                 </thead>
                 <tbody>
                   {driverStats.filter((d: any) => d.userName).map((d: any) => (
-                    <tr key={d.userName} className="border-t hover:bg-muted/30 cursor-pointer" onClick={() => { setSearchTerm(d.userName); setActiveSearch(d.userName); }}>
-                      <td className="p-2 font-medium">{d.userName}</td>
+                    <tr
+                      key={d.userName}
+                      className={`border-t cursor-pointer ${d.flagged ? "bg-red-50 hover:bg-red-100" : "hover:bg-muted/30"}`}
+                      onClick={() => { setSearchTerm(d.userName); setActiveSearch(d.userName); }}
+                    >
+                      <td className="p-2 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{d.userName}</span>
+                          {d.flagged === 1 && (
+                            <Badge className="bg-red-500 text-white text-[10px]">
+                              <Flag className="w-3 h-3 mr-1" /> Envolvido
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 text-right">
+                        {d.caseCount > 0 ? (
+                          <Badge variant={d.caseCount > 2 ? "destructive" : "outline"}>{d.caseCount}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="p-2 text-right">{d.total}</td>
                       <td className="p-2 text-right text-green-600">{d.checkins}</td>
                       <td className="p-2 text-right text-violet-600">{d.checkouts}</td>
@@ -1144,7 +1192,9 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
           </CardHeader>
           <CardContent className="p-0">
             {history.length === 0 ? (
-              <p className="p-4 text-center text-muted-foreground">Sem resultados. Importa primeiro o Excel do backoffice.</p>
+              <p className="p-4 text-center text-muted-foreground">
+                Sem resultados. Confirma que a reserva já foi sincronizada pela API Multipark.
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1162,12 +1212,22 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
                     {history.map((h: any) => {
                       const cfg = CHANGE_TYPE_CONFIG[h.changeType] || { label: h.changeType, color: "bg-gray-100 text-gray-800" };
                       return (
-                        <tr key={h.id} className="border-t hover:bg-muted/30">
+                        <tr
+                          key={h.id}
+                          className={`border-t ${h.flagged ? "bg-red-50 hover:bg-red-100" : "hover:bg-muted/30"}`}
+                        >
                           <td className="p-2 text-xs whitespace-nowrap">{fmtDate(h.actionDate)}</td>
                           <td className="p-2">
                             <Badge className={cfg.color}>{cfg.label}</Badge>
                           </td>
-                          <td className="p-2 font-medium">{h.userName || "—"}</td>
+                          <td className="p-2 font-medium">
+                            <div className="flex items-center gap-1">
+                              <span>{[h.userName, h.userLastName].filter(Boolean).join(" ") || "—"}</span>
+                              {h.flagged === 1 && (
+                                <Flag className="w-3 h-3 text-red-500" />
+                              )}
+                            </div>
+                          </td>
                           <td className="p-2 font-mono text-xs">{h.bookingId?.slice(-12)}</td>
                           <td className="p-2 font-mono">{h.licensePlate || "—"}</td>
                           <td className="p-2 text-xs text-muted-foreground">{h.remarks || "—"}</td>

@@ -4346,68 +4346,215 @@ export async function importBookingHistory(rows: {
   return { imported, skipped };
 }
 
-export async function getBookingHistoryByBookingId(bookingId: string) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(bookingHistory)
-    .where(eq(bookingHistory.bookingId, bookingId))
-    .orderBy(desc(bookingHistory.actionDate));
+// ─── Booking history (Multipark API, via DB local) ──────────────────────────
+// As funções a seguir devolvem o histórico de reservas Multipark já sincronizado
+// para a DB local (multipark_booking_history populado pelo cron job de 15 min).
+// Shape mantido compatível com a UI antiga (que esperava colunas do Excel
+// import). Adicionado o campo `flagged: 1` nas linhas/condutores que tocaram
+// numa reserva que está ligada a um caso de Perdidos/Achados.
+
+function splitAgentName(full: string | null | undefined): { first: string | null; last: string | null } {
+  if (!full) return { first: null, last: null };
+  const parts = full.trim().split(/\s+/);
+  if (parts.length === 0) return { first: null, last: null };
+  if (parts.length === 1) return { first: parts[0], last: null };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
-export async function getBookingHistoryByPlate(plate: string) {
+async function getLostFoundBookingRefSet(): Promise<Set<string>> {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(bookingHistory)
-    .where(like(bookingHistory.licensePlate, `%${plate}%`))
-    .orderBy(desc(bookingHistory.actionDate));
+  if (!db) return new Set();
+  const items = await db
+    .select({ bookingRef: lostFoundItems.bookingRef })
+    .from(lostFoundItems);
+  const refs = new Set<string>();
+  for (const it of items) {
+    const r = it.bookingRef?.trim();
+    if (r) refs.add(r);
+  }
+  return refs;
 }
 
-export async function searchBookingHistory(search: string) {
+type HistoryRow = {
+  id: number;
+  historyId: string;
+  bookingId: string;
+  changeType: string;
+  userName: string | null;
+  userLastName: string | null;
+  userEmail: string | null;
+  remarks: string | null;
+  actionDate: string | null;
+  parkName: string | null;
+  licensePlate: string | null;
+  bookingStatus: string | null;
+  flagged: 0 | 1;
+};
+
+async function mapMultiparkHistoryRows(
+  rows: Array<{
+    id: number;
+    historyId: string;
+    bookingExternalId: string;
+    changeType: string | null;
+    actionTime: string | null;
+    remarks: string | null;
+    agentName: string | null;
+    agentEmail: string | null;
+    parkName: string | null;
+    licensePlate: string | null;
+    bookingStatus: string | null;
+  }>,
+): Promise<HistoryRow[]> {
+  const flaggedRefs = await getLostFoundBookingRefSet();
+  return rows.map((r) => {
+    const { first, last } = splitAgentName(r.agentName);
+    return {
+      id: r.id,
+      historyId: r.historyId,
+      bookingId: r.bookingExternalId,
+      changeType: r.changeType ?? "",
+      userName: first,
+      userLastName: last,
+      userEmail: r.agentEmail,
+      remarks: r.remarks,
+      actionDate: r.actionTime,
+      parkName: r.parkName,
+      licensePlate: r.licensePlate,
+      bookingStatus: r.bookingStatus,
+      flagged: flaggedRefs.has(r.bookingExternalId) ? 1 : 0,
+    };
+  });
+}
+
+export async function getBookingHistoryByBookingId(bookingId: string): Promise<HistoryRow[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: multiparkBookingHistory.id,
+      historyId: multiparkBookingHistory.historyId,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      changeType: multiparkBookingHistory.changeType,
+      actionTime: multiparkBookingHistory.actionTime,
+      remarks: multiparkBookingHistory.remarks,
+      agentName: multiparkBookingHistory.agentName,
+      agentEmail: multiparkBookingHistory.agentEmail,
+      parkName: multiparkBookings.parkName,
+      licensePlate: multiparkBookings.licensePlate,
+      bookingStatus: multiparkBookings.status,
+    })
+    .from(multiparkBookingHistory)
+    .leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
+    .where(eq(multiparkBookingHistory.bookingExternalId, bookingId))
+    .orderBy(desc(multiparkBookingHistory.actionTime))
+    .limit(500);
+  return mapMultiparkHistoryRows(rows);
+}
+
+export async function getBookingHistoryByPlate(plate: string): Promise<HistoryRow[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: multiparkBookingHistory.id,
+      historyId: multiparkBookingHistory.historyId,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      changeType: multiparkBookingHistory.changeType,
+      actionTime: multiparkBookingHistory.actionTime,
+      remarks: multiparkBookingHistory.remarks,
+      agentName: multiparkBookingHistory.agentName,
+      agentEmail: multiparkBookingHistory.agentEmail,
+      parkName: multiparkBookings.parkName,
+      licensePlate: multiparkBookings.licensePlate,
+      bookingStatus: multiparkBookings.status,
+    })
+    .from(multiparkBookingHistory)
+    .innerJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
+    .where(like(multiparkBookings.licensePlate, `%${plate}%`))
+    .orderBy(desc(multiparkBookingHistory.actionTime))
+    .limit(500);
+  return mapMultiparkHistoryRows(rows);
+}
+
+export async function searchBookingHistory(search: string): Promise<HistoryRow[]> {
   const db = await getDb();
   if (!db) return [];
   const s = `%${search}%`;
-  return db.select().from(bookingHistory)
+  const rows = await db
+    .select({
+      id: multiparkBookingHistory.id,
+      historyId: multiparkBookingHistory.historyId,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      changeType: multiparkBookingHistory.changeType,
+      actionTime: multiparkBookingHistory.actionTime,
+      remarks: multiparkBookingHistory.remarks,
+      agentName: multiparkBookingHistory.agentName,
+      agentEmail: multiparkBookingHistory.agentEmail,
+      parkName: multiparkBookings.parkName,
+      licensePlate: multiparkBookings.licensePlate,
+      bookingStatus: multiparkBookings.status,
+    })
+    .from(multiparkBookingHistory)
+    .leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
     .where(or(
-      like(bookingHistory.bookingId, s),
-      like(bookingHistory.licensePlate, s),
-      like(bookingHistory.userName, s),
-      like(bookingHistory.changeType, s),
+      like(multiparkBookingHistory.bookingExternalId, s),
+      like(multiparkBookings.licensePlate, s),
+      like(multiparkBookingHistory.agentName, s),
+      like(multiparkBookingHistory.changeType, s),
     ))
-    .orderBy(desc(bookingHistory.actionDate))
+    .orderBy(desc(multiparkBookingHistory.actionTime))
     .limit(200);
+  return mapMultiparkHistoryRows(rows);
 }
 
-/** Cross-reference: for each driver in booking_history, count how many lost/found cases they touched */
-export async function getBookingHistoryCrossReference() {
+/**
+ * Cruzamento de dados: para cada agente Multipark, conta quantos casos
+ * distintos de Perdidos/Achados ele tocou. Devolve só os agentes com
+ * pelo menos um caso associado, ordenados por nº de casos (decrescente).
+ */
+export async function getBookingHistoryCrossReference(): Promise<
+  Array<{
+    userName: string;
+    caseCount: number;
+    plates: string[];
+    totalActions: number;
+    checkins: number;
+    checkouts: number;
+    movements: number;
+    flagged: 1;
+  }>
+> {
   const db = await getDb();
   if (!db) return [];
 
-  // Get all lost/found items with bookingRef
-  const items = await db.select().from(lostFoundItems);
-  const itemsWithRef = items.filter(i => i.bookingRef && i.bookingRef.trim());
-  if (itemsWithRef.length === 0) return [];
+  const flaggedRefs = await getLostFoundBookingRefSet();
+  if (flaggedRefs.size === 0) return [];
+  const refs = Array.from(flaggedRefs);
 
-  // Get booking IDs from items
-  const bookingRefs = itemsWithRef.map(i => i.bookingRef!.trim());
+  const rows = await db
+    .select({
+      agentName: multiparkBookingHistory.agentName,
+      changeType: multiparkBookingHistory.changeType,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+      licensePlate: multiparkBookings.licensePlate,
+    })
+    .from(multiparkBookingHistory)
+    .leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
+    .where(inArray(multiparkBookingHistory.bookingExternalId, refs));
 
-  // Get all history for those bookings
-  const allHistory = await db.select().from(bookingHistory);
-  const relevantHistory = allHistory.filter(h => bookingRefs.some(ref => h.bookingId.includes(ref) || ref.includes(h.bookingId)));
-
-  // Count per driver: how many distinct cases they appear in
   const driverMap = new Map<string, { cases: Set<string>; plates: Set<string>; total: number; checkins: number; checkouts: number; movements: number }>();
-
-  for (const h of relevantHistory) {
-    if (!h.userName) continue;
-    const driver = h.userName;
-    const existing = driverMap.get(driver) || { cases: new Set(), plates: new Set(), total: 0, checkins: 0, checkouts: 0, movements: 0 };
-    existing.cases.add(h.bookingId);
-    if (h.licensePlate) existing.plates.add(h.licensePlate);
-    existing.total++;
-    if (h.changeType === "CHECK_IN") existing.checkins++;
-    else if (h.changeType === "CHECK_OUT") existing.checkouts++;
-    else if (h.changeType === "MOVEMENT") existing.movements++;
-    driverMap.set(driver, existing);
+  for (const r of rows) {
+    if (!r.agentName) continue;
+    const entry = driverMap.get(r.agentName) ?? { cases: new Set(), plates: new Set(), total: 0, checkins: 0, checkouts: 0, movements: 0 };
+    entry.cases.add(r.bookingExternalId);
+    if (r.licensePlate) entry.plates.add(r.licensePlate);
+    entry.total++;
+    const ct = (r.changeType ?? "").toUpperCase();
+    if (ct === "CHECK_IN") entry.checkins++;
+    else if (ct === "CHECK_OUT") entry.checkouts++;
+    else if (ct === "MOVEMENT") entry.movements++;
+    driverMap.set(r.agentName, entry);
   }
 
   return Array.from(driverMap.entries())
@@ -4419,23 +4566,140 @@ export async function getBookingHistoryCrossReference() {
       checkins: data.checkins,
       checkouts: data.checkouts,
       movements: data.movements,
+      flagged: 1 as const,
     }))
     .sort((a, b) => b.caseCount - a.caseCount);
 }
 
-export async function getBookingHistoryDriverStats() {
+/**
+ * Stats globais de todos os agentes que apareceram no histórico Multipark.
+ * Marca `flagged = 1` quem está envolvido em casos de Perdidos/Achados.
+ */
+export async function getBookingHistoryDriverStats(): Promise<
+  Array<{
+    userName: string | null;
+    total: number;
+    checkins: number;
+    checkouts: number;
+    movements: number;
+    flagged: 0 | 1;
+    caseCount: number;
+  }>
+> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({
-    userName: bookingHistory.userName,
-    total: sql<number>`COUNT(*)`,
-    checkins: sql<number>`SUM(CASE WHEN ${bookingHistory.changeType} = 'CHECK_IN' THEN 1 ELSE 0 END)`,
-    checkouts: sql<number>`SUM(CASE WHEN ${bookingHistory.changeType} = 'CHECK_OUT' THEN 1 ELSE 0 END)`,
-    movements: sql<number>`SUM(CASE WHEN ${bookingHistory.changeType} = 'MOVEMENT' THEN 1 ELSE 0 END)`,
-  }).from(bookingHistory)
-    .groupBy(bookingHistory.userName)
+
+  const rows = await db
+    .select({
+      userName: multiparkBookingHistory.agentName,
+      total: sql<number>`COUNT(*)`,
+      checkins: sql<number>`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_IN' THEN 1 ELSE 0 END)`,
+      checkouts: sql<number>`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_OUT' THEN 1 ELSE 0 END)`,
+      movements: sql<number>`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'MOVEMENT' THEN 1 ELSE 0 END)`,
+    })
+    .from(multiparkBookingHistory)
+    .groupBy(multiparkBookingHistory.agentName)
     .orderBy(desc(sql`COUNT(*)`));
-  return rows;
+
+  // Anota com caseCount (nº de casos distintos de Perdidos/Achados associados)
+  const cross = await getBookingHistoryCrossReference();
+  const caseMap = new Map(cross.map((c) => [c.userName, c.caseCount]));
+
+  return rows.map((r) => {
+    const caseCount = caseMap.get(r.userName ?? "") ?? 0;
+    return {
+      userName: r.userName,
+      total: Number(r.total),
+      checkins: Number(r.checkins),
+      checkouts: Number(r.checkouts),
+      movements: Number(r.movements),
+      caseCount,
+      flagged: (caseCount > 0 ? 1 : 0) as 0 | 1,
+    };
+  });
+}
+
+/**
+ * Para uma matrícula, devolve todos os agentes Multipark que mexeram em
+ * reservas dessa matrícula. Marca `flagged = 1` para agentes que tocaram
+ * especificamente no `currentBookingRef` (a reserva do caso aberto).
+ */
+export async function getVehicleAgentsByPlate(
+  plate: string,
+  currentBookingRef?: string | null,
+): Promise<
+  Array<{
+    agentName: string;
+    agentEmail: string | null;
+    actions: number;
+    checkins: number;
+    checkouts: number;
+    movements: number;
+    lastActionAt: string | null;
+    bookings: string[];
+    flagged: 0 | 1;
+  }>
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db
+    .select({
+      agentName: multiparkBookingHistory.agentName,
+      agentEmail: multiparkBookingHistory.agentEmail,
+      changeType: multiparkBookingHistory.changeType,
+      actionTime: multiparkBookingHistory.actionTime,
+      bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    })
+    .from(multiparkBookingHistory)
+    .innerJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId))
+    .where(eq(multiparkBookings.licensePlate, plate))
+    .orderBy(desc(multiparkBookingHistory.actionTime))
+    .limit(2000);
+
+  const map = new Map<
+    string,
+    { agentName: string; agentEmail: string | null; actions: number; checkins: number; checkouts: number; movements: number; lastActionAt: string | null; bookings: Set<string>; touchedRef: boolean }
+  >();
+
+  for (const r of rows) {
+    if (!r.agentName) continue;
+    const e = map.get(r.agentName) ?? {
+      agentName: r.agentName,
+      agentEmail: r.agentEmail ?? null,
+      actions: 0,
+      checkins: 0,
+      checkouts: 0,
+      movements: 0,
+      lastActionAt: null as string | null,
+      bookings: new Set<string>(),
+      touchedRef: false,
+    };
+    if (!e.agentEmail && r.agentEmail) e.agentEmail = r.agentEmail;
+    e.actions++;
+    const ct = (r.changeType ?? "").toUpperCase();
+    if (ct === "CHECK_IN") e.checkins++;
+    else if (ct === "CHECK_OUT") e.checkouts++;
+    else if (ct === "MOVEMENT") e.movements++;
+    if (r.actionTime && (!e.lastActionAt || r.actionTime > e.lastActionAt)) e.lastActionAt = r.actionTime;
+    e.bookings.add(r.bookingExternalId);
+    if (currentBookingRef && r.bookingExternalId === currentBookingRef) e.touchedRef = true;
+    map.set(r.agentName, e);
+  }
+
+  return Array.from(map.values())
+    .map((e) => ({
+      agentName: e.agentName,
+      agentEmail: e.agentEmail,
+      actions: e.actions,
+      checkins: e.checkins,
+      checkouts: e.checkouts,
+      movements: e.movements,
+      lastActionAt: e.lastActionAt,
+      bookings: Array.from(e.bookings),
+      flagged: (e.touchedRef ? 1 : 0) as 0 | 1,
+    }))
+    .sort((a, b) => (b.flagged - a.flagged) || (b.actions - a.actions));
 }
 
 // ─── MULTIPARK BOOKING HISTORY (local DB instead of remote API) ─────────────
