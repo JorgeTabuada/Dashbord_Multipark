@@ -96,6 +96,49 @@ function fmtEur(v: number | string) {
   return parseFloat(String(v || 0)).toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
 }
 
+// ─── Hierarquia de projetos (Grupo → Cidade → Marca → Projeto) ─────────────
+const LEVEL_LABEL: Record<string, string> = {
+  group: "Grupo",
+  city: "Cidade",
+  brand: "Marca",
+  project: "Projeto",
+};
+const LEVEL_COLOR: Record<string, string> = {
+  group: "bg-violet-100 text-violet-700 border-violet-200",
+  city: "bg-blue-100 text-blue-700 border-blue-200",
+  brand: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  project: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
+/** Devolve a lista de projetos ordenada hierarquicamente (pai antes dos
+ * filhos) com `__depth` calculado para indentação no UI. */
+function sortProjectsHierarchical<T extends { id: number; name: string; parentId?: number | null; level?: string | null }>(
+  list: T[],
+): Array<T & { __depth: number }> {
+  const byParent = new Map<number | null, T[]>();
+  for (const p of list) {
+    const key = p.parentId ?? null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(p);
+  }
+  for (const arr of byParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  const out: Array<T & { __depth: number }> = [];
+  function walk(parentId: number | null, depth: number) {
+    const children = byParent.get(parentId) ?? [];
+    for (const c of children) {
+      out.push({ ...c, __depth: depth });
+      walk(c.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  // Captura órfãos (parentId que não existe na lista)
+  const seen = new Set(out.map((p) => p.id));
+  for (const p of list) {
+    if (!seen.has(p.id)) out.push({ ...p, __depth: 0 });
+  }
+  return out;
+}
+
 export default function ExpensesPage() {
   const { user } = useAuth();
   const filters = useGlobalFilters();
@@ -357,11 +400,19 @@ export default function ExpensesPage() {
             </Select>
             <Select value={filterProject} onValueChange={setFilterProject}>
               <SelectTrigger>
-                <SelectValue placeholder="Projeto" />
+                <SelectValue placeholder="Centro de custos" />
               </SelectTrigger>
               <SelectContent>
-                {[{ id: "all", name: "Todos os projetos" }, ...(projectsList ?? [])].map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                <SelectItem value="all">Todos (grupo / cidade / marca / projeto)</SelectItem>
+                {sortProjectsHierarchical(projectsList ?? []).map((p: any) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_COLOR[p.level] ?? ""}`}>
+                        {LEVEL_LABEL[p.level] ?? p.level}
+                      </span>
+                      {p.name}
+                    </span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -736,9 +787,10 @@ function ExpenseFormModal({
     { enabled: !!editId }
   );
 
-  // Pre-fill form when editing
+  // Pre-fill form when editing — em useEffect para evitar setState durante render
   const [prefilled, setPrefilled] = useState(false);
-  if (editId && existingExpense && !prefilled) {
+  useEffect(() => {
+    if (!editId || !existingExpense || prefilled) return;
     const e = existingExpense.expense;
     setForm({
       supplier: e.supplier ?? "",
@@ -759,7 +811,7 @@ function ExpenseFormModal({
     });
     if (e.invoiceImageUrl) setPreviewUrl(e.invoiceImageUrl);
     setPrefilled(true);
-  }
+  }, [editId, existingExpense, prefilled]);
 
   const set = (key: keyof FormData, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -833,6 +885,10 @@ function ExpenseFormModal({
       toast.error("Valor e data são obrigatórios");
       return;
     }
+    if (!form.projectId) {
+      toast.error("Tens de associar a despesa a um centro de custos (grupo / cidade / marca / projeto)");
+      return;
+    }
     const sanitize = (v: string) => (!v || v === 'null' || v === 'undefined' ? undefined : v);
 
     if (editId) {
@@ -845,7 +901,7 @@ function ExpenseFormModal({
         expenseDate: form.expenseDate,
         paymentDueDate: sanitize(form.paymentDueDate),
         categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
-        projectId: form.projectId ? parseInt(form.projectId) : undefined,
+        projectId: parseInt(form.projectId),
         status: form.status as any,
         notes: form.notes || undefined,
       });
@@ -859,7 +915,7 @@ function ExpenseFormModal({
         expenseDate: form.expenseDate,
         paymentDueDate: sanitize(form.paymentDueDate),
         categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
-        projectId: form.projectId ? parseInt(form.projectId) : undefined,
+        projectId: parseInt(form.projectId),
         buyerId: (form.buyerId && form.buyerId !== "none") ? parseInt(form.buyerId) : undefined,
         notes: form.notes || undefined,
         invoiceImageUrl: form.invoiceImageUrl || undefined,
@@ -1064,17 +1120,30 @@ function ExpenseFormModal({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Projeto</Label>
+              <Label className="flex items-center gap-1">
+                Centro de custos *
+                <span className="text-xs text-muted-foreground font-normal">(Grupo / Cidade / Marca / Projeto)</span>
+              </Label>
               <Select value={form.projectId} onValueChange={(v) => set("projectId", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Associar a projeto" />
+                <SelectTrigger className={!form.projectId ? "border-amber-400" : undefined}>
+                  <SelectValue placeholder="Escolher centro de custos..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  {sortProjectsHierarchical(projects).map((p: any) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_COLOR[p.level] ?? ""}`}>
+                          {LEVEL_LABEL[p.level] ?? p.level}
+                        </span>
+                        {p.name}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Esta despesa vai entrar nos custos deste centro <em>e</em> de todos os pais (rollup automático).
+              </p>
             </div>
             {/* Buyer / Employee */}
             <div className="space-y-1.5">

@@ -810,7 +810,10 @@ export const appRouter = router({
           expenseDate: z.string(),
           paymentDueDate: z.string().nullable().optional(),
           categoryId: z.number().optional(),
-          projectId: z.number().optional(),
+          // projectId obrigatório: cada despesa tem de ir para um centro
+          // de custos (grupo / cidade / marca / projeto). O rollup
+          // hierárquico do ProjectCostsDashboard agrega para cima.
+          projectId: z.number(),
           buyerId: z.number().optional(),
           invoiceImageUrl: z.string().optional(),
           invoiceImageKey: z.string().optional(),
@@ -828,7 +831,7 @@ export const appRouter = router({
           expenseDate: new Date(input.expenseDate).toISOString().slice(0, 19).replace("T", " "),
           paymentDueDate: (input.paymentDueDate && input.paymentDueDate !== 'null') ? new Date(input.paymentDueDate).toISOString().slice(0, 19).replace("T", " ") : null,
           categoryId: input.categoryId ?? null,
-          projectId: input.projectId ?? null,
+          projectId: input.projectId,
           buyerId: input.buyerId ?? null,
           insertedById: ctx.user.id,
           invoiceImageUrl: input.invoiceImageUrl ?? null,
