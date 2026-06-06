@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   FolderTree, Plus, ChevronRight, ChevronDown, Users, Pencil, Trash2,
-  Building2, Tag, MapPin, FolderKanban, UserPlus, X, Euro, Handshake
+  Building2, Tag, MapPin, FolderKanban, UserPlus, X, Euro, Handshake,
+  Search, ChevronsUpDown, ChevronsDownUp
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -56,6 +57,7 @@ export default function ProjectsPage() {
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [showAssign, setShowAssign] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", description: "", color: "#6366f1", managerId: "", budget: "", partnerName: "", partnerPercent: "" });
+  const [searchTerm, setSearchTerm] = useState("");
   const { data: usersList = [] } = trpc.users.list.useQuery();
 
   const createMut = trpc.projects.create.useMutation({
@@ -70,16 +72,65 @@ export default function ProjectsPage() {
     onSuccess: () => { utils.projects.list.invalidate(); toast.success("Projeto eliminado!"); },
     onError: (e) => toast.error(e.message),
   });
-  const assignMut = trpc.projects.assignEmployee.useMutation({
-    onSuccess: () => { utils.projects.getEmployees.invalidate(); toast.success("Colaborador atribuído!"); },
-    onError: (e) => toast.error(e.message),
-  });
-  const removeMut = trpc.projects.removeEmployee.useMutation({
-    onSuccess: () => { utils.projects.getEmployees.invalidate(); toast.success("Colaborador removido!"); },
-    onError: (e) => toast.error(e.message),
-  });
-
   const tree = useMemo(() => buildTree(allProjects as Project[]), [allProjects]);
+
+  // Pesquisa: quando há termo, calcula os ids que devem aparecer (matches + os
+  // seus ancestrais). Faz force-expand desses ancestrais.
+  const searchMatches = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return null;
+    const list = allProjects as Project[];
+    const directMatches = new Set<number>(
+      list.filter((p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q)).map((p) => p.id),
+    );
+    // Inclui ancestrais para que a árvore mostre o caminho até ao match
+    const visible = new Set<number>(directMatches);
+    const byId = new Map(list.map((p) => [p.id, p]));
+    for (const id of Array.from(directMatches)) {
+      let cur = byId.get(id);
+      while (cur?.parentId != null) {
+        visible.add(cur.parentId);
+        cur = byId.get(cur.parentId);
+      }
+    }
+    return { visible, directMatches };
+  }, [searchTerm, allProjects]);
+
+  // Quando há pesquisa, expande automaticamente o caminho até aos matches.
+  const effectiveExpanded = useMemo(() => {
+    if (!searchMatches) return expanded;
+    return new Set<number>([...expanded, ...searchMatches.visible]);
+  }, [expanded, searchMatches]);
+
+  // Contagens: nº de descendentes e nº de colaboradores atribuídos por nó.
+  const descendantCount = useMemo(() => {
+    const list = allProjects as Project[];
+    const childrenMap = new Map<number, number[]>();
+    for (const p of list) {
+      if (p.parentId != null) {
+        if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+        childrenMap.get(p.parentId)!.push(p.id);
+      }
+    }
+    const counts = new Map<number, number>();
+    function count(id: number): number {
+      if (counts.has(id)) return counts.get(id)!;
+      const kids = childrenMap.get(id) ?? [];
+      let total = kids.length;
+      for (const k of kids) total += count(k);
+      counts.set(id, total);
+      return total;
+    }
+    for (const p of list) count(p.id);
+    return counts;
+  }, [allProjects]);
+
+  function expandAll() {
+    setExpanded(new Set((allProjects as Project[]).map((p) => p.id)));
+  }
+  function collapseAll() {
+    setExpanded(new Set());
+  }
 
   function resetForm() {
     setForm({ name: "", description: "", color: "#6366f1", managerId: "", budget: "", partnerName: "", partnerPercent: "" });
@@ -114,15 +165,22 @@ export default function ProjectsPage() {
   const isAdmin = user && ["super_admin", "admin"].includes(user.role);
 
   function TreeNode({ node, depth = 0 }: { node: Project & { children: any[] }; depth?: number }) {
-    const isOpen = expanded.has(node.id);
+    // Filtra invisíveis quando há pesquisa em curso
+    if (searchMatches && !searchMatches.visible.has(node.id)) return null;
+
+    const isOpen = effectiveExpanded.has(node.id);
     const hasChildren = node.children.length > 0;
     const Icon = LEVEL_ICONS[node.level] || FolderKanban;
     const childLevel = CHILD_LEVEL[node.level];
+    const descCount = descendantCount.get(node.id) ?? 0;
+    const isMatch = searchMatches?.directMatches.has(node.id);
 
     return (
       <div>
         <div
-          className={`flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group`}
+          className={`flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group ${
+            isMatch ? "bg-amber-50 dark:bg-amber-950/20" : ""
+          }`}
           style={{ paddingLeft: `${depth * 24 + 12}px` }}
           onClick={() => hasChildren && toggleExpand(node.id)}
         >
@@ -134,11 +192,16 @@ export default function ProjectsPage() {
           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: node.color ?? "#6366f1" }} />
           <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="font-medium text-sm flex-1">{node.name}</span>
+          {descCount > 0 && (
+            <Badge variant="secondary" className="text-[10px] px-1.5">
+              {descCount} sub
+            </Badge>
+          )}
           {node.managerId && getManagerName(node.managerId) && (
-            <span className="text-xs text-muted-foreground">Resp: {getManagerName(node.managerId)}</span>
+            <span className="text-xs text-muted-foreground hidden md:inline">Resp: {getManagerName(node.managerId)}</span>
           )}
           {node.partnerName && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span className="text-xs text-muted-foreground hidden md:flex items-center gap-1">
               <Handshake className="h-3 w-3" /> {node.partnerName} ({node.partnerPercent}%)
             </span>
           )}
@@ -152,17 +215,17 @@ export default function ProjectsPage() {
           {isAdmin && (
             <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
               {childLevel && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openCreate(node.id, childLevel); }}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" title={`Criar ${LEVEL_LABELS[childLevel]}`} onClick={(e) => { e.stopPropagation(); openCreate(node.id, childLevel); }}>
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setShowAssign(node.id); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Colaboradores" onClick={(e) => { e.stopPropagation(); setShowAssign(node.id); }}>
                 <UserPlus className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEdit(node); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={(e) => { e.stopPropagation(); openEdit(node); }}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); if (confirm("Eliminar este projeto e todos os sub-projetos?")) deleteMut.mutate({ id: node.id }); }}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Eliminar" onClick={(e) => { e.stopPropagation(); if (confirm("Eliminar este projeto e todos os sub-projetos?")) deleteMut.mutate({ id: node.id }); }}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -175,67 +238,6 @@ export default function ProjectsPage() {
     );
   }
 
-  function AssignDialog() {
-    const { data: assigned = [] } = trpc.projects.getEmployees.useQuery(
-      { projectId: showAssign! },
-      { enabled: !!showAssign }
-    );
-    const [selectedEmp, setSelectedEmp] = useState("");
-    const assignedIds = new Set(assigned.map((a: any) => a.employeeId));
-    const available = employees.filter((e: any) => !assignedIds.has((e.employee ?? e).id));
-
-    return (
-      <Dialog open={!!showAssign} onOpenChange={() => setShowAssign(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Colaboradores do Projeto</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {assigned.length > 0 ? (
-              <div className="space-y-2">
-                {assigned.map((a: any) => {
-                  const empRow = employees.find((e: any) => (e as any).employee ? (e as any).employee.id === a.employeeId : (e as any).id === a.employeeId);
-                  const emp = empRow ? ((empRow as any).employee ?? empRow) : null;
-                  return (
-                    <div key={a.id} className="flex items-center justify-between py-1.5 px-3 bg-muted/50 rounded-md">
-                      <span className="text-sm">{emp ? emp.fullName : `#${a.employeeId}`}</span>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeMut.mutate({ projectId: showAssign!, employeeId: a.employeeId })}>
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum colaborador atribuído.</p>
-            )}
-            {available.length > 0 && (
-              <div className="flex gap-2">
-                <Select value={selectedEmp} onValueChange={setSelectedEmp}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Selecionar colaborador..." /></SelectTrigger>
-                  <SelectContent>
-                    {available.map((e: any) => {
-                      const emp = e.employee ?? e;
-                      return <SelectItem key={emp.id} value={emp.id.toString()}>{emp.fullName}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-                <Button
-                  disabled={!selectedEmp || assignMut.isPending}
-                  onClick={() => {
-                    assignMut.mutate({ projectId: showAssign!, employeeId: parseInt(selectedEmp) });
-                    setSelectedEmp("");
-                  }}
-                >
-                  <UserPlus className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   // Stats
   const stats = useMemo(() => {
@@ -289,7 +291,26 @@ export default function ProjectsPage() {
       {/* Tree */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Árvore de Projetos</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-base">Árvore de Projetos</CardTitle>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar por nome ou descrição..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-9 w-64"
+                />
+              </div>
+              <Button variant="outline" size="sm" onClick={expandAll} title="Expandir tudo">
+                <ChevronsUpDown className="h-3.5 w-3.5 mr-1" /> Expandir
+              </Button>
+              <Button variant="outline" size="sm" onClick={collapseAll} title="Colapsar tudo">
+                <ChevronsDownUp className="h-3.5 w-3.5 mr-1" /> Colapsar
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -300,6 +321,10 @@ export default function ProjectsPage() {
               <p className="text-muted-foreground">Nenhum projeto criado.</p>
               {isAdmin && <Button variant="outline" className="mt-3" onClick={() => openCreate(null, "group")}><Plus className="h-4 w-4 mr-2" /> Criar Grupo</Button>}
             </div>
+          ) : searchMatches && searchMatches.directMatches.size === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              Sem resultados para "<span className="font-medium">{searchTerm}</span>".
+            </p>
           ) : (
             <div className="divide-y">
               {tree.map(node => <TreeNode key={node.id} node={node} />)}
@@ -446,7 +471,95 @@ export default function ProjectsPage() {
       </Dialog>
 
       {/* Assign Dialog */}
-      {showAssign && <AssignDialog />}
+      {showAssign !== null && (
+        <AssignDialog
+          projectId={showAssign}
+          employees={employees}
+          onClose={() => setShowAssign(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function AssignDialog({
+  projectId,
+  employees,
+  onClose,
+}: {
+  projectId: number;
+  employees: any[];
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data: assigned = [] } = trpc.projects.getEmployees.useQuery({ projectId });
+  const assignMut = trpc.projects.assignEmployee.useMutation({
+    onSuccess: () => {
+      utils.projects.getEmployees.invalidate({ projectId });
+      toast.success("Colaborador atribuído!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const removeMut = trpc.projects.removeEmployee.useMutation({
+    onSuccess: () => {
+      utils.projects.getEmployees.invalidate({ projectId });
+      toast.success("Colaborador removido!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const [selectedEmp, setSelectedEmp] = useState("");
+  const assignedIds = new Set((assigned as any[]).map((a) => a.employeeId));
+  const available = employees.filter((e: any) => !assignedIds.has((e.employee ?? e).id));
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Colaboradores do Projeto</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {(assigned as any[]).length > 0 ? (
+            <div className="space-y-2">
+              {(assigned as any[]).map((a) => {
+                const empRow = employees.find((e: any) => (e.employee ?? e).id === a.employeeId);
+                const emp = empRow ? (empRow.employee ?? empRow) : null;
+                return (
+                  <div key={a.id} className="flex items-center justify-between py-1.5 px-3 bg-muted/50 rounded-md">
+                    <span className="text-sm">{emp ? emp.fullName : `#${a.employeeId}`}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeMut.mutate({ projectId, employeeId: a.employeeId })}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum colaborador atribuído.</p>
+          )}
+          {available.length > 0 && (
+            <div className="flex gap-2">
+              <Select value={selectedEmp} onValueChange={setSelectedEmp}>
+                <SelectTrigger className="flex-1"><SelectValue placeholder="Selecionar colaborador..." /></SelectTrigger>
+                <SelectContent>
+                  {available.map((e: any) => {
+                    const emp = e.employee ?? e;
+                    return <SelectItem key={emp.id} value={emp.id.toString()}>{emp.fullName}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
+              <Button
+                disabled={!selectedEmp || assignMut.isPending}
+                onClick={() => {
+                  assignMut.mutate({ projectId, employeeId: parseInt(selectedEmp) });
+                  setSelectedEmp("");
+                }}
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

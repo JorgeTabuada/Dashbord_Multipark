@@ -150,10 +150,21 @@ export default function ProjectCostsDashboard() {
     return rollup;
   }, [data]);
 
-  // Aggregate totals from ALL items (not just project level)
+  // Aggregate totals from ALL items (sem double-counting do orçamento).
+  // O orçamento total da empresa = soma dos budgets dos roots (top-level
+  // Grupos), porque um budget hierárquico inclui o dos filhos. Despesas
+  // e salários NÃO duplicam (cada despesa vai a um projecto e cada
+  // salário a um único projecto), por isso somam-se todos os itens.
   const totals = useMemo(() => {
-    // Sum only direct costs across all items (no double counting)
-    const totalBudget = data.reduce((s, d) => s + d.budget, 0);
+    const roots = data.filter(d => d.parentId === null);
+    // Se algum root tem budget próprio, usa-se isso; senão usa-se o rollup
+    // (soma dos filhos) para captar empresas que definem budget só ao nível
+    // de Cidade/Marca/Projeto.
+    const totalBudget = roots.reduce((s, root) => {
+      if (root.budget > 0) return s + root.budget;
+      const r = rollupData.get(root.id);
+      return s + (r?.budget ?? 0);
+    }, 0);
     const totalExpenses = data.reduce((s, d) => s + d.expenses, 0);
     const totalSalary = data.reduce((s, d) => s + d.salaryCost, 0);
     const totalCost = totalExpenses + totalSalary;
@@ -293,12 +304,17 @@ export default function ProjectCostsDashboard() {
     const hasChildren = children.length > 0 && levelFilter === "all";
     const isExpanded = expandedIds.has(item.id);
 
-    // Use rollup data for items with children, direct data for leaf items
+    // Use rollup para custos/salários quando há filhos (cada despesa/salário
+    // só vive num projecto, por isso somar não duplica). Para o orçamento
+    // usamos sempre o do próprio item — o budget é hierárquico, definido
+    // em cima, e os filhos "consomem" desse pool. Se o próprio item não
+    // tem budget definido mas tem filhos com budget, caímos no rollup
+    // (cobertura para empresas que só atribuem budget aos filhos).
     const r = rollupData.get(item.id);
     const displayExpenses = hasChildren && r ? r.expenses : item.expenses;
     const displaySalary = hasChildren && r ? r.salaryCost : item.salaryCost;
     const displayTotal = hasChildren && r ? r.totalCost : item.totalCost;
-    const displayBudget = hasChildren && r ? r.budget : item.budget;
+    const displayBudget = item.budget > 0 ? item.budget : (hasChildren && r ? r.budget : item.budget);
     const displayPercent = displayBudget > 0 ? (displayTotal / displayBudget) * 100 : 0;
 
     return (
@@ -595,10 +611,10 @@ export default function ProjectCostsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Cost by city pie */}
+        {/* Cost by root group pie */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Custos por Marca</CardTitle>
+            <CardTitle className="text-base font-semibold">Custos por Grupo</CardTitle>
           </CardHeader>
           <CardContent>
             {costByLevel.length === 0 ? (
