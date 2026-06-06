@@ -3950,6 +3950,15 @@ export const appRouter = router({
         return fetchAgentHistoryByName(input.agentName, input.date);
       }),
 
+    // Avaliação operacional do dia: por extra (com métricas) + agregado
+    // por turno + agregado total. TL recebe também score da equipa.
+    dayEvaluation: protectedProcedure
+      .input(z.object({ date: z.string() }))
+      .query(async ({ input }) => {
+        const { evaluateDay } = await import("./multiparkEvaluation");
+        return evaluateDay(input.date);
+      }),
+
     // Set multipark mapping para um empregado (nome curto + userId)
     setMultiparkAgentMapping: protectedProcedure
       .input(z.object({

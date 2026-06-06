@@ -26,11 +26,15 @@ function deriveShortName(fullName: string): string {
   return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
+const fmtEur = (n: number) => n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
+
 export default function AvaliacaoOperacionalPage() {
   const [date, setDate] = useState(todayISO());
 
   const assignmentsQ = trpc.extrasDia.assignments.useQuery({ date });
   const assignments = assignmentsQ.data ?? [];
+  const evaluationQ = trpc.multipark.dayEvaluation.useQuery({ date });
+  const evaluation = evaluationQ.data;
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
@@ -41,7 +45,7 @@ export default function AvaliacaoOperacionalPage() {
             Avaliação Operacional
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Equipa de extras escalados para o dia + histórico de actividade na API Multipark.
+            Cruza extras escalados em /extras-dia com actividade real registada na API Multipark.
           </p>
         </div>
         <div className="space-y-1">
@@ -68,6 +72,46 @@ export default function AvaliacaoOperacionalPage() {
         </Card>
       )}
 
+      {/* Totais do dia */}
+      {evaluation && evaluation.totals.people > 0 && (
+        <Card className="bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200">
+          <CardHeader>
+            <CardTitle className="text-base">Equipa do dia · {evaluation.totals.people} pessoas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">Acções totais</div>
+                <div className="text-2xl font-bold">{evaluation.totals.totalActions}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-1">
+                  {Object.entries(evaluation.totals.byType).map(([k, v]) => (
+                    <span key={k}>{k}: {v}</span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Custo total</div>
+                <div className="text-2xl font-bold">{fmtEur(evaluation.totals.totalCost)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">€/acção</div>
+                <div className="text-2xl font-bold">
+                  {evaluation.totals.totalActions > 0 ? fmtEur(evaluation.totals.costPerAction) : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Acções média/pessoa</div>
+                <div className="text-2xl font-bold">
+                  {evaluation.totals.people > 0
+                    ? (evaluation.totals.totalActions / evaluation.totals.people).toFixed(1)
+                    : "—"}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {assignments.length > 0 && (
         <BulkActions
           date={date}
@@ -75,11 +119,70 @@ export default function AvaliacaoOperacionalPage() {
         />
       )}
 
-      <div className="grid gap-3">
-        {assignments.map(a => (
-          <AgentCard key={a.id} assignment={a} date={date} />
-        ))}
-      </div>
+      {/* Totais por turno + TL + drivers */}
+      {evaluation?.shifts.map(s => (
+        s.drivers > 0 ? (
+          <ShiftSection key={s.shift} shiftEval={s} date={date} assignments={assignments} />
+        ) : null
+      ))}
+    </div>
+  );
+}
+
+function ShiftSection({
+  shiftEval,
+  date,
+  assignments,
+}: {
+  shiftEval: any;
+  date: string;
+  assignments: any[];
+}) {
+  const shiftLabel = shiftEval.shift === "morning" ? "Manhã (03–15)" : "Noite (15–03)";
+
+  return (
+    <div className="space-y-2">
+      <Card className={shiftEval.shift === "morning" ? "border-blue-200" : "border-indigo-200"}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-semibold text-sm">{shiftLabel}</h2>
+              <div className="text-xs text-muted-foreground">
+                {shiftEval.drivers} pessoas · {shiftEval.totalActions} acções · {fmtEur(shiftEval.totalCost)}
+                {shiftEval.totalActions > 0 && (
+                  <span> · {fmtEur(shiftEval.costPerAction)}/acção</span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 text-[10px]">
+              {Object.entries(shiftEval.byType).map(([k, v]: any) => (
+                <Badge key={k} variant="secondary" className="text-[10px]">{k}: {v}</Badge>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* TL em destaque */}
+      {shiftEval.tl && (() => {
+        const tlAssignment = assignments.find(a => a.id === shiftEval.tl.assignmentId);
+        return tlAssignment ? (
+          <AgentCard
+            key={shiftEval.tl.assignmentId}
+            assignment={tlAssignment}
+            date={date}
+            metrics={shiftEval.tl}
+          />
+        ) : null;
+      })()}
+
+      {/* Drivers do turno */}
+      {shiftEval.members.map((m: any) => {
+        const a = assignments.find(x => x.id === m.assignmentId);
+        return a ? (
+          <AgentCard key={m.assignmentId} assignment={a} date={date} metrics={m} />
+        ) : null;
+      })}
     </div>
   );
 }
@@ -127,7 +230,7 @@ function BulkActions({ date, agents }: { date: string; agents: string[] }) {
   );
 }
 
-function AgentCard({ assignment, date }: { assignment: any; date: string }) {
+function AgentCard({ assignment, date, metrics }: { assignment: any; date: string; metrics?: any }) {
   const utils = trpc.useUtils();
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -181,7 +284,7 @@ function AgentCard({ assignment, date }: { assignment: any; date: string }) {
   };
 
   return (
-    <Card>
+    <Card className={assignment.isTeamLeader ? "border-amber-200 bg-amber-50/30" : ""}>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -264,15 +367,62 @@ function AgentCard({ assignment, date }: { assignment: any; date: string }) {
               </div>
             </div>
           </div>
-          <Button size="sm" variant="outline" onClick={handleFetch} disabled={fetchMut.isPending}>
-            {fetchMut.isPending ? (
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-            ) : (
-              <Download className="w-3 h-3 mr-1" />
+          <div className="flex items-center gap-2 shrink-0">
+            {metrics && (
+              <div className="text-right">
+                <div className="text-xl font-bold leading-none">{metrics.totalActions}</div>
+                <div className="text-[10px] text-muted-foreground">acções</div>
+                {metrics.totalActions > 0 && (
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {fmtEur(metrics.costPerAction)}/acção
+                  </div>
+                )}
+              </div>
             )}
-            Buscar histórico
-          </Button>
+            <Button size="sm" variant="outline" onClick={handleFetch} disabled={fetchMut.isPending}>
+              {fetchMut.isPending ? (
+                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Download className="w-3 h-3 mr-1" />
+              )}
+              Buscar
+            </Button>
+          </div>
         </div>
+
+        {/* Breakdown métrico */}
+        {metrics && metrics.totalActions > 0 && (
+          <div className="text-xs flex flex-wrap gap-1 pl-9">
+            {Object.entries(metrics.byType).map(([k, v]: any) => (
+              <Badge key={k} variant="outline" className="text-[10px]">
+                {k}: {v}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {/* TL: score da equipa */}
+        {assignment.isTeamLeader && metrics?.teamAggregate && metrics.teamAggregate.drivers > 0 && (
+          <div className="ml-9 mt-2 rounded-md border border-amber-300 bg-amber-100/40 p-2 text-xs">
+            <div className="font-semibold text-amber-900 mb-1">
+              Score da equipa ({metrics.teamAggregate.drivers} condutores)
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <span><strong>{metrics.teamAggregate.totalActions}</strong> acções</span>
+              <span>custo {fmtEur(metrics.teamAggregate.totalCost)}</span>
+              {metrics.teamAggregate.totalActions > 0 && (
+                <span>{fmtEur(metrics.teamAggregate.costPerAction)}/acção</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {Object.entries(metrics.teamAggregate.byType).map(([k, v]: any) => (
+                <Badge key={k} variant="secondary" className="text-[10px] bg-amber-200/60">
+                  {k}: {v}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {expanded && (
           <div className="border-t pt-2 mt-2 text-xs">
