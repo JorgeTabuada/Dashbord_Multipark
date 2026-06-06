@@ -2452,8 +2452,52 @@ export async function getBillingData(filters: {
     .where(and(...mktAdsConds))
     .groupBy(campaigns.projectId, projects.name);
 
-  // ─── 7. PARCEIROS (comissões a partners) ─────────────────────────────────
-  // partnership_invoices não tem projectId — agrupamos por estado.
+  // ─── 7a. PARCEIROS DE VENDA (comissões calculadas via campaign matching) ──
+  // Para cada parceria com campaignKey, soma totalPrice das reservas com
+  // checkout no período cujo campaign bate certo e aplica commissionRate %.
+  // A comissão é atribuída ao projectId da reserva (a Marca que "perde" a
+  // comissão por ter recebido aquela venda).
+  const salesPartnerRows = await db
+    .select({
+      partnerId: partnerships.id,
+      partnerName: partnerships.name,
+      commissionRate: partnerships.commissionRate,
+      campaignKey: partnerships.campaignKey,
+      projectId: multiparkBookings.projectId,
+      projectName: projects.name,
+      bookingsCount: sql<number>`COUNT(*)`,
+      revenueGross: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    })
+    .from(multiparkBookings)
+    .innerJoin(partnerships, eq(partnerships.campaignKey, multiparkBookings.campaign))
+    .leftJoin(projects, eq(multiparkBookings.projectId, projects.id))
+    .where(and(...deliveryConds, isNotNull(partnerships.campaignKey)))
+    .groupBy(
+      partnerships.id,
+      partnerships.name,
+      partnerships.commissionRate,
+      partnerships.campaignKey,
+      multiparkBookings.projectId,
+      projects.name,
+    );
+
+  const salesCommissions = salesPartnerRows.map(r => {
+    const rate = Number(r.commissionRate ?? 0) / 100;
+    return {
+      partnerId: r.partnerId,
+      partnerName: r.partnerName,
+      projectId: r.projectId,
+      projectName: r.projectName,
+      bookingsCount: Number(r.bookingsCount ?? 0),
+      revenueGross: Number(r.revenueGross ?? 0),
+      commissionRate: Number(r.commissionRate ?? 0),
+      commission: Number(r.revenueGross ?? 0) * rate,
+    };
+  });
+
+  // ─── 7b. PARCEIROS OPERACIONAIS (partnership_invoices) ───────────────────
+  // Ex.: Top Parking a operar marcas do Porto — taxa fixa mensal/comissão
+  // operacional. Vem das partnership_invoices.
   const partnerInvRows = await db
     .select({
       status: partnershipInvoices.invoiceStatus,
@@ -2469,6 +2513,140 @@ export async function getBillingData(filters: {
       ),
     )
     .groupBy(partnershipInvoices.invoiceStatus);
+
+  // Lista detalhada para mostrar a quem é paga + projeto inferido pelo nome
+  // do parceiro (ex.: "Top Parking Porto" → Cidade Porto). Sem migration:
+  // procura o nome do parceiro contra os nomes dos projetos.
+  const partnerOpRows = await db
+    .select({
+      invoiceId: partnershipInvoices.id,
+      partnershipId: partnershipInvoices.partnershipId,
+      partnerName: partnerships.name,
+      partnerType: partnerships.partnerType,
+      amount: partnershipInvoices.amount,
+      status: partnershipInvoices.invoiceStatus,
+      sentAt: partnershipInvoices.sentAt,
+      paidAt: partnershipInvoices.paidAt,
+      referenceMonth: partnershipInvoices.referenceMonth,
+      referenceYear: partnershipInvoices.referenceYear,
+    })
+    .from(partnershipInvoices)
+    .innerJoin(partnerships, eq(partnerships.id, partnershipInvoices.partnershipId))
+    .where(
+      and(
+        gte(partnershipInvoices.sentAt, fromStr),
+        lte(partnershipInvoices.sentAt, toStr),
+        sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`,
+      ),
+    );
+
+  // Mapa para inferir projeto pelo nome do parceiro
+  const allProjsForPartnerMap = await db.select({ id: projects.id, name: projects.name }).from(projects);
+  const operationalPartners = partnerOpRows.map(r => {
+    const pname = (r.partnerName ?? "").toLowerCase();
+    const matched = allProjsForPartnerMap.find(p => p.name && pname.includes(p.name.toLowerCase()));
+    return {
+      invoiceId: r.invoiceId,
+      partnerName: r.partnerName,
+      partnerType: r.partnerType,
+      amount: Number(r.amount ?? 0),
+      status: r.status,
+      sentAt: r.sentAt,
+      paidAt: r.paidAt,
+      referenceMonth: r.referenceMonth,
+      referenceYear: r.referenceYear,
+      projectId: matched?.id ?? null,
+      projectName: matched?.name ?? null,
+    };
+  });
+
+  // ─── 7c. SALÁRIOS rateados ao dia, atribuídos ao projecto do colaborador ──
+  // Empregados com salário fixo (não-extra). O salário mensal é proporcional
+  // ao nº de dias do período. Se o empregado está num nível hierárquico
+  // (Grupo / Cidade / Marca), o custo é distribuído equitativamente pelos
+  // descendentes que sejam folha (level='project').
+  const allEmps = await db
+    .select({
+      id: employees.id,
+      fullName: employees.fullName,
+      projectId: employees.projectId,
+      contractType: employees.contractType,
+      monthlySalary: employees.monthlySalary,
+      isActive: employees.isActive,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, 1));
+
+  const allProjectsForHierarchy = await db
+    .select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level })
+    .from(projects);
+  const childrenMap = new Map<number, number[]>();
+  for (const p of allProjectsForHierarchy) {
+    if (p.parentId != null) {
+      if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+      childrenMap.get(p.parentId)!.push(p.id);
+    }
+  }
+  function leafDescendants(projectId: number): number[] {
+    const self = allProjectsForHierarchy.find(p => p.id === projectId);
+    if (!self) return [];
+    if (self.level === "project") return [projectId];
+    const kids = childrenMap.get(projectId) ?? [];
+    if (kids.length === 0) return [projectId]; // sem filhos: fica no próprio
+    const out: number[] = [];
+    for (const kid of kids) out.push(...leafDescendants(kid));
+    return out.length > 0 ? out : [projectId];
+  }
+
+  // Dias do período (inclusive)
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const periodDays = Math.max(
+    1,
+    Math.floor((new Date(filters.to).getTime() - new Date(filters.from).getTime()) / msPerDay) + 1,
+  );
+
+  // Atribui salários por projecto (com rateio)
+  const salaryPerProject = new Map<number, number>();
+  const salaryDetailRows: Array<{ employeeId: number; fullName: string; projectId: number | null; cost: number; ratedTo: number[] }> = [];
+  for (const e of allEmps) {
+    const monthlySalary = parseFloat(String(e.monthlySalary ?? "0"));
+    if (e.contractType === "extra" || monthlySalary <= 0) continue;
+    const periodCost = (monthlySalary / 30) * periodDays;
+    const directProjectId = e.projectId ?? null;
+
+    let targets: number[];
+    if (directProjectId == null) {
+      targets = []; // sem projeto — não soma a nenhum (entra no custo "Geral" abaixo)
+    } else {
+      targets = leafDescendants(directProjectId);
+    }
+
+    if (targets.length === 0) {
+      // Sem destino: regista como "sem alocação"
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: [] });
+    } else if (targets.length === 1 && targets[0] === directProjectId) {
+      const cur = salaryPerProject.get(targets[0]) ?? 0;
+      salaryPerProject.set(targets[0], cur + periodCost);
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: targets });
+    } else {
+      // Empregado em nível superior → rateia equitativamente pelos folhas
+      const share = periodCost / targets.length;
+      for (const t of targets) {
+        const cur = salaryPerProject.get(t) ?? 0;
+        salaryPerProject.set(t, cur + share);
+      }
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: targets });
+    }
+  }
+
+  // Filtra salaryPerProject pelo projectId de input (hierarquia já resolvida)
+  const salariesByProject = Array.from(salaryPerProject.entries())
+    .filter(([pid]) => !projectIds || projectIds.includes(pid))
+    .map(([pid, cost]) => {
+      const p = allProjectsForHierarchy.find(x => x.id === pid);
+      return { projectId: pid, projectName: p?.name ?? null, cost };
+    })
+    .sort((a, b) => b.cost - a.cost);
 
   // ─── 8. FORECAST: reservas futuras (checkin no futuro) ───────────────────
   const now = new Date();
@@ -2576,11 +2754,15 @@ export async function getBillingData(filters: {
   const mktAdsSpend = mktAdsRows.reduce((s, r) => s + Number(r.totalSpend ?? 0), 0);
   const marketingCost = mktExpensesTotal + mktAdsSpend;
   const partnerInvByStatus = new Map(partnerInvRows.map(r => [r.status as string, Number(r.totalAmount ?? 0)]));
-  const partnerCommissionsPaid = partnerInvByStatus.get("paid") ?? 0;
-  const partnerCommissionsPending = (partnerInvByStatus.get("sent") ?? 0) + (partnerInvByStatus.get("overdue") ?? 0) + (partnerInvByStatus.get("draft") ?? 0);
+  const operationalPartnersPaid = partnerInvByStatus.get("paid") ?? 0;
+  const operationalPartnersPending = (partnerInvByStatus.get("sent") ?? 0) + (partnerInvByStatus.get("overdue") ?? 0) + (partnerInvByStatus.get("draft") ?? 0);
+  // Comissões a parceiros de venda — calculadas a partir das reservas.
+  // Custo "sempre devido" assim que o checkout aconteceu.
+  const salesCommissionsTotal = salesCommissions.reduce((s, r) => s + r.commission, 0);
+  const totalSalaries = Array.from(salaryPerProject.values()).reduce((s, v) => s + v, 0);
 
-  const totalCostsPaid = expensesPaidTotal + extrasDiaCost + marketingCost + partnerCommissionsPaid;
-  const totalCostsAll = totalCostsPaid + expensesPendingTotal + partnerCommissionsPending;
+  const totalCostsPaid = expensesPaidTotal + extrasDiaCost + marketingCost + operationalPartnersPaid + salesCommissionsTotal + totalSalaries;
+  const totalCostsAll = totalCostsPaid + expensesPendingTotal + operationalPartnersPending;
 
   const summary = {
     produced, invoiced,
@@ -2588,12 +2770,18 @@ export async function getBillingData(filters: {
     expensesPending: expensesPendingTotal,
     extrasDiaCost,
     marketingCost,
-    partnerCommissionsPaid,
-    partnerCommissionsPending,
+    salariesCost: totalSalaries,
+    salesCommissions: salesCommissionsTotal,
+    // back-compat
+    partnerCommissionsPaid: operationalPartnersPaid,
+    partnerCommissionsPending: operationalPartnersPending,
+    operationalPartnersPaid,
+    operationalPartnersPending,
     totalCostsPaid,
     totalCostsAll,
     marginRealized: produced - totalCostsPaid,
     marginAll: produced - totalCostsAll,
+    periodDays,
   };
 
   return {
@@ -2610,7 +2798,14 @@ export async function getBillingData(filters: {
     invoices: invoicedRows,
     extrasDia: extrasDiaSummary,
     marketing: { expenses: mktExpRows, ads: mktAdsRows },
-    partnerCommissions: partnerInvRows,
+    partnerCommissions: partnerInvRows, // back-compat (estado agregado)
+    salesCommissions, // novo: comissões parceiros de venda por projeto
+    operationalPartners, // novo: faturas a parceiros operacionais com projeto inferido
+    salaries: {
+      byProject: salariesByProject,
+      details: salaryDetailRows,
+      total: totalSalaries,
+    },
   };
 }
 
