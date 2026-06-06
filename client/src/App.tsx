@@ -25,6 +25,7 @@ import IncidentsPage from "./pages/IncidentsPage";
 import PerformancePage from "./pages/PerformancePage";
 import InvoicesPage from "./pages/InvoicesPage";
 import PartnershipsPage from "./pages/PartnershipsPage";
+import PartnerInferPage from "./pages/PartnerInferPage";
 import AnnualPage from "./pages/AnnualPage";
 import MultiparkPage from "./pages/MultiparkPage";
 import ExtrasDiaPage from "./pages/ExtrasDiaPage";
@@ -136,6 +137,9 @@ function Router() {
       </Route>
       <Route path="/parcerias">
         {() => (<DashboardLayout><PartnershipsPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/parcerias/inferir">
+        {() => (<DashboardLayout><PartnerInferPage /></DashboardLayout>)}
       </Route>
       <Route path="/anual">
         {() => (<DashboardLayout><AnnualPage /></DashboardLayout>)}

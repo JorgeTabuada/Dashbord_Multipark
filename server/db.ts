@@ -2444,6 +2444,111 @@ export async function getPartnerships(filters?: { partnerType?: string; status?:
   return db.select().from(partnerships).where(where).orderBy(desc(partnerships.createdAt));
 }
 
+/**
+ * Agrupa reservas com partnerId e infere o nome do parceiro a partir de
+ * paymentMethod (mais comum) e remarks (1ª palavra). Devolve agregado por
+ * partnerId com totais e nome sugerido. Marca partnerIds já associados a
+ * um parceiro nosso.
+ */
+export async function inferPartnersFromBookings(): Promise<Array<{
+  multiparkPartnerId: string;
+  suggestedName: string;
+  paymentMethod: string | null;
+  remarksSample: string | null;
+  bookings: number;
+  totalValue: number;
+  linkedPartnershipId: number | null;
+  linkedPartnershipName: string | null;
+}>> {
+  const db = await getDb(); if (!db) return [];
+
+  // Agregação directa via SQL para performance
+  const [rows] = await (db as any).execute(sql`
+    SELECT
+      JSON_UNQUOTE(JSON_EXTRACT(mb.rawJson, '$.partnerId')) AS partnerId,
+      COUNT(*) AS bookings,
+      ROUND(SUM(mb.totalPrice), 2) AS totalValue,
+      (
+        SELECT mb2.paymentMethod FROM multipark_bookings mb2
+        WHERE JSON_UNQUOTE(JSON_EXTRACT(mb2.rawJson, '$.partnerId')) = JSON_UNQUOTE(JSON_EXTRACT(mb.rawJson, '$.partnerId'))
+          AND mb2.paymentMethod IS NOT NULL
+        GROUP BY mb2.paymentMethod
+        ORDER BY COUNT(*) DESC LIMIT 1
+      ) AS topPaymentMethod,
+      MAX(mb.remarks) AS remarksSample
+    FROM multipark_bookings mb
+    WHERE mb.rawJson LIKE '%partnerId%'
+    GROUP BY partnerId
+    ORDER BY bookings DESC
+  `);
+
+  // Match existentes
+  const partnersByPartnerId = new Map<string, { id: number; name: string }>();
+  const all = await db.select({
+    id: partnerships.id,
+    name: partnerships.name,
+    multiparkPartnerId: partnerships.multiparkPartnerId,
+  }).from(partnerships);
+  for (const p of all) {
+    if (p.multiparkPartnerId) partnersByPartnerId.set(p.multiparkPartnerId, { id: p.id, name: p.name });
+  }
+
+  function firstAlphaToken(s: string | null): string | null {
+    if (!s) return null;
+    const m = s.match(/^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+
+  return (rows as any[]).map(r => {
+    const fromPayment = r.topPaymentMethod && !/online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance/i.test(r.topPaymentMethod)
+      ? r.topPaymentMethod
+      : null;
+    const fromRemarks = firstAlphaToken(r.remarksSample);
+    const suggestedName = fromPayment ?? fromRemarks ?? "Desconhecido";
+    const linked = partnersByPartnerId.get(r.partnerId);
+    return {
+      multiparkPartnerId: r.partnerId,
+      suggestedName,
+      paymentMethod: r.topPaymentMethod ?? null,
+      remarksSample: r.remarksSample ?? null,
+      bookings: Number(r.bookings),
+      totalValue: Number(r.totalValue ?? 0),
+      linkedPartnershipId: linked?.id ?? null,
+      linkedPartnershipName: linked?.name ?? null,
+    };
+  });
+}
+
+/**
+ * Associa um partnerId da Multipark a uma parceria existente.
+ * Opcionalmente actualiza a coluna `campaign` de todas as reservas com esse
+ * partnerId para o nome do parceiro (substitui "Unknown User").
+ */
+export async function linkMultiparkPartnerId(
+  partnershipId: number,
+  multiparkPartnerId: string,
+  applyToBookings: boolean,
+): Promise<number> {
+  const db = await getDb(); if (!db) return 0;
+
+  await db.update(partnerships)
+    .set({ multiparkPartnerId })
+    .where(eq(partnerships.id, partnershipId));
+
+  if (!applyToBookings) return 0;
+
+  const [p] = await db.select({ name: partnerships.name })
+    .from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  if (!p) return 0;
+
+  const [result] = await (db as any).execute(sql`
+    UPDATE multipark_bookings
+    SET campaign = ${p.name}
+    WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${multiparkPartnerId}
+  `);
+  return (result as any).affectedRows ?? 0;
+}
+
 export async function getPartnershipById(id: number) {
   const db = await getDb(); if (!db) return null;
   const rows = await db.select().from(partnerships).where(eq(partnerships.id, id)).limit(1);

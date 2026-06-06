@@ -215,6 +215,8 @@ import {
   // Partnerships
   createPartnership,
   getPartnerships,
+  inferPartnersFromBookings,
+  linkMultiparkPartnerId,
   getPartnershipById,
   updatePartnership,
   deletePartnership,
@@ -3424,6 +3426,35 @@ export const appRouter = router({
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership", entityId: input.id });
       return { success: true };
     }),
+
+    // ── Inferência de parceiros a partir das reservas Multipark ──────────────
+    inferList: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return inferPartnersFromBookings();
+    }),
+
+    linkMultiparkPartnerId: protectedProcedure
+      .input(z.object({
+        partnershipId: z.number(),
+        multiparkPartnerId: z.string().min(1).max(128),
+        applyToBookings: z.boolean().default(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const updated = await linkMultiparkPartnerId(
+          input.partnershipId,
+          input.multiparkPartnerId,
+          input.applyToBookings,
+        );
+        await logActivity({
+          userId: ctx.user.id,
+          action: "link",
+          entity: "partnership",
+          entityId: input.partnershipId,
+          details: `Link partnerId=${input.multiparkPartnerId} (${updated} reservas actualizadas)`,
+        });
+        return { updated };
+      }),
 
     // Transactions
     getTransactions: protectedProcedure.input(z.object({ partnershipId: z.number() })).query(({ input }) => getPartnershipTransactions(input.partnershipId)),

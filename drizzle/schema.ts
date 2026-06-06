@@ -599,6 +599,7 @@ export const partnerships = mysqlTable("partnerships", {
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 	partnerNif: varchar("partner_nif", { length: 20 }),
 	monthlyFee: int().default(0),
+	multiparkPartnerId: varchar({ length: 128 }),
 });
 
 export const payslipHistory = mysqlTable("payslip_history", {
