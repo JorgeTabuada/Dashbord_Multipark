@@ -2462,27 +2462,42 @@ export async function inferPartnersFromBookings(): Promise<Array<{
 }>> {
   const db = await getDb(); if (!db) return [];
 
-  // Agregação directa via SQL para performance
-  const [rows] = await (db as any).execute(sql`
+  // Buscar campos essenciais e agregar em JS (evita problemas com only_full_group_by)
+  const [rawRows] = await (db as any).execute(sql`
     SELECT
-      JSON_UNQUOTE(JSON_EXTRACT(mb.rawJson, '$.partnerId')) AS partnerId,
-      COUNT(*) AS bookings,
-      ROUND(SUM(mb.totalPrice), 2) AS totalValue,
-      (
-        SELECT mb2.paymentMethod FROM multipark_bookings mb2
-        WHERE JSON_UNQUOTE(JSON_EXTRACT(mb2.rawJson, '$.partnerId')) = JSON_UNQUOTE(JSON_EXTRACT(mb.rawJson, '$.partnerId'))
-          AND mb2.paymentMethod IS NOT NULL
-        GROUP BY mb2.paymentMethod
-        ORDER BY COUNT(*) DESC LIMIT 1
-      ) AS topPaymentMethod,
-      MAX(mb.remarks) AS remarksSample
-    FROM multipark_bookings mb
-    WHERE mb.rawJson LIKE '%partnerId%'
-    GROUP BY partnerId
-    ORDER BY bookings DESC
+      JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) AS partnerId,
+      paymentMethod,
+      remarks,
+      totalPrice
+    FROM multipark_bookings
+    WHERE rawJson LIKE '%partnerId%'
   `);
 
-  // Match existentes
+  type Agg = {
+    bookings: number;
+    totalValue: number;
+    paymentMethods: Map<string, number>; // paymentMethod → count
+    remarksSample: string | null;
+  };
+  const byPartner = new Map<string, Agg>();
+  for (const r of (rawRows as any[])) {
+    const pid: string = r.partnerId;
+    if (!pid) continue;
+    let agg = byPartner.get(pid);
+    if (!agg) {
+      agg = { bookings: 0, totalValue: 0, paymentMethods: new Map(), remarksSample: null };
+      byPartner.set(pid, agg);
+    }
+    agg.bookings++;
+    const tp = r.totalPrice ? parseFloat(String(r.totalPrice)) : 0;
+    if (Number.isFinite(tp)) agg.totalValue += tp;
+    if (r.paymentMethod) {
+      agg.paymentMethods.set(r.paymentMethod, (agg.paymentMethods.get(r.paymentMethod) ?? 0) + 1);
+    }
+    if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
+  }
+
+  // Parceiros já associados
   const partnersByPartnerId = new Map<string, { id: number; name: string }>();
   const all = await db.select({
     id: partnerships.id,
@@ -2498,25 +2513,32 @@ export async function inferPartnersFromBookings(): Promise<Array<{
     const m = s.match(/^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)/);
     return m ? m[1] : null;
   }
+  function topPayment(m: Map<string, number>): string | null {
+    let best: [string, number] | null = null;
+    for (const [k, v] of m) if (!best || v > best[1]) best = [k, v];
+    return best ? best[0] : null;
+  }
+  const GENERIC = /^(online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance|pro_plan|cash|multbanco|sibs)/i;
 
-  return (rows as any[]).map(r => {
-    const fromPayment = r.topPaymentMethod && !/online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance/i.test(r.topPaymentMethod)
-      ? r.topPaymentMethod
-      : null;
-    const fromRemarks = firstAlphaToken(r.remarksSample);
+  const result = Array.from(byPartner.entries()).map(([pid, agg]) => {
+    const top = topPayment(agg.paymentMethods);
+    const fromPayment = top && !GENERIC.test(top.trim()) ? top : null;
+    const fromRemarks = firstAlphaToken(agg.remarksSample);
     const suggestedName = fromPayment ?? fromRemarks ?? "Desconhecido";
-    const linked = partnersByPartnerId.get(r.partnerId);
+    const linked = partnersByPartnerId.get(pid);
     return {
-      multiparkPartnerId: r.partnerId,
+      multiparkPartnerId: pid,
       suggestedName,
-      paymentMethod: r.topPaymentMethod ?? null,
-      remarksSample: r.remarksSample ?? null,
-      bookings: Number(r.bookings),
-      totalValue: Number(r.totalValue ?? 0),
+      paymentMethod: top,
+      remarksSample: agg.remarksSample,
+      bookings: agg.bookings,
+      totalValue: Math.round(agg.totalValue * 100) / 100,
       linkedPartnershipId: linked?.id ?? null,
       linkedPartnershipName: linked?.name ?? null,
     };
   });
+  result.sort((a, b) => b.bookings - a.bookings);
+  return result;
 }
 
 /**
