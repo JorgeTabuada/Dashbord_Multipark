@@ -3959,6 +3959,15 @@ export const appRouter = router({
         return evaluateDay(input.date);
       }),
 
+    // Dashboard por intervalo: daily series + per-person summary com
+    // in-shift vs out-of-shift actions
+    dashboardRange: protectedProcedure
+      .input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => {
+        const { getDashboardRange } = await import("./multiparkEvaluation");
+        return getDashboardRange(input.startDate, input.endDate);
+      }),
+
     // Set multipark mapping para um empregado (nome curto + userId)
     setMultiparkAgentMapping: protectedProcedure
       .input(z.object({

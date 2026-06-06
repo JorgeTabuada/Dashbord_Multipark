@@ -61,424 +61,243 @@ export default function OperationalPage() {
 // Posições que devem estar no terreno (excluídos: backoffice, supervisor, director)
 const FIELD_POSITIONS = ["driver", "senior_driver", "extra", "frontoffice", "team_leader"];
 
+// Novo DashboardTab: range de datas + KPIs + per-driver in-shift vs out-of-shift
 function DashboardTab() {
-  // GPS em tempo real (auto-refresh 15s)
-  const { data: locations, refetch: refetchLocs } = trpc.operational.zello.locations.useQuery(undefined, { refetchInterval: 15000 });
-  // Check-ins activos de PDA (quem está no terreno)
-  const { data: activeCheckins } = trpc.operational.pdas.checkins.active.useQuery(undefined, { refetchInterval: 30000 });
-  // Funcionários (para saber posições e nomes)
-  const { data: employees } = trpc.rh.list.useQuery({});
-  // Últimas infrações de velocidade
-  const { data: violations } = trpc.operational.speedMonitoring.violations.list.useQuery({ acknowledged: false });
-  // Mapa ref
-  const mapRef = React.useRef<google.maps.Map | null>(null);
-  const markersRef = React.useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const [preset, setPreset] = useState<"today" | "yesterday" | "last7" | "last30" | "month" | "custom">("today");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
 
-  // ── Condutores com GPS ativo ──
-  const activeDrivers = useMemo(() => {
-    return (locations || []).filter((l: any) => l.latitude !== 0 && l.longitude !== 0);
-  }, [locations]);
+  const { startDate, endDate } = useMemo(() => {
+    const today = new Date();
+    const fmt = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    if (preset === "custom") return { startDate: customStart, endDate: customEnd };
+    if (preset === "today") return { startDate: fmt(today), endDate: fmt(today) };
+    if (preset === "yesterday") {
+      const y = new Date(today); y.setDate(y.getDate() - 1);
+      return { startDate: fmt(y), endDate: fmt(y) };
+    }
+    if (preset === "last7") {
+      const s = new Date(today); s.setDate(s.getDate() - 6);
+      return { startDate: fmt(s), endDate: fmt(today) };
+    }
+    if (preset === "last30") {
+      const s = new Date(today); s.setDate(s.getDate() - 29);
+      return { startDate: fmt(s), endDate: fmt(today) };
+    }
+    // month
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { startDate: fmt(first), endDate: fmt(today) };
+  }, [preset, customStart, customEnd]);
 
-  // ── Mapa de employeeId → employee data ──
-  const empById = useMemo(() => {
-    const m = new Map<number, any>();
-    (employees || []).forEach((e: any) => m.set(e.employee.id, e.employee));
-    return m;
-  }, [employees]);
-
-  // ── Quem devia estar ativo mas NÃO está ──
-  // Funcionários com check-in ativo (PDA) que são posições de terreno
-  // mas que NÃO aparecem nas localizações Zello
-  const missingDrivers = useMemo(() => {
-    if (!activeCheckins || !employees || !locations) return [];
-    const zelloUsernames = new Set(activeDrivers.map((l: any) => l.username?.toLowerCase()));
-
-    return (activeCheckins || []).filter((checkin: any) => {
-      // Tem de ter zelloUsername para comparar
-      if (!checkin.zelloUsername) return false;
-      // Verificar se o funcionário é de terreno
-      if (checkin.employeeId) {
-        const emp = empById.get(checkin.employeeId);
-        if (emp && !FIELD_POSITIONS.includes(emp.position)) return false;
-      }
-      // Não aparece no GPS → está em falta
-      return !zelloUsernames.has(checkin.zelloUsername?.toLowerCase());
-    });
-  }, [activeCheckins, employees, locations, activeDrivers, empById]);
-
-  // ── 5 baterias mais baixas ──
-  const lowestBatteries = useMemo(() => {
-    return [...activeDrivers]
-      .filter((l: any) => l.batteryLevel != null)
-      .sort((a: any, b: any) => a.batteryLevel - b.batteryLevel)
-      .slice(0, 5);
-  }, [activeDrivers]);
-
-  // ── Condutores em excesso de velocidade (> 50 km/h por defeito) ──
-  const speedingNow = useMemo(() => {
-    return activeDrivers.filter((l: any) => l.speed > 50).sort((a: any, b: any) => b.speed - a.speed);
-  }, [activeDrivers]);
-
-  // ── Actualizar marcadores no mapa ──
-  React.useEffect(() => {
-    if (!mapRef.current || !window.google?.maps) return;
-    // Limpar marcadores antigos
-    markersRef.current.forEach((m) => (m.map = null));
-    markersRef.current = [];
-
-    if (activeDrivers.length === 0) return;
-
-    const bounds = new google.maps.LatLngBounds();
-    activeDrivers.forEach((loc: any) => {
-      const pos = { lat: loc.latitude, lng: loc.longitude };
-      bounds.extend(pos);
-
-      const isSpeeding = loc.speed > 50;
-      const pin = document.createElement("div");
-      pin.innerHTML = `
-        <div style="display:flex;align-items:center;gap:4px;background:${isSpeeding ? '#DC2626' : '#16A34A'};color:white;padding:4px 8px;border-radius:20px;font-size:11px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.25);white-space:nowrap;">
-          <span>${loc.displayName || loc.username}</span>
-          <span style="background:rgba(255,255,255,0.25);padding:1px 5px;border-radius:10px;font-size:10px;">${loc.speed.toFixed(0)} km/h</span>
-        </div>`;
-
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        map: mapRef.current!,
-        position: pos,
-        content: pin,
-        title: `${loc.displayName || loc.username} — ${loc.speed.toFixed(0)} km/h`,
-      });
-      markersRef.current.push(marker);
-    });
-    mapRef.current.fitBounds(bounds, 60);
-  }, [activeDrivers]);
-
-  return (
-    <div className="space-y-5 mt-4">
-      {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Satellite className="w-4 h-4" />GPS Ativos</div>
-            <p className="text-2xl font-bold mt-1 text-green-600">{activeDrivers.length}</p>
-          </CardContent>
-        </Card>
-        <Card className={speedingNow.length > 0 ? "border-red-300" : ""}>
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Gauge className="w-4 h-4" />Em Excesso</div>
-            <p className={`text-2xl font-bold mt-1 ${speedingNow.length > 0 ? "text-red-600" : ""}`}>{speedingNow.length}</p>
-          </CardContent>
-        </Card>
-        <Card className={missingDrivers.length > 0 ? "border-amber-300" : ""}>
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><XCircle className="w-4 h-4" />GPS/Tel Desligado</div>
-            <p className={`text-2xl font-bold mt-1 ${missingDrivers.length > 0 ? "text-amber-600" : ""}`}>{missingDrivers.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="w-4 h-4" />Infrações Pendentes</div>
-            <p className="text-2xl font-bold mt-1 text-red-600">{violations?.length ?? 0}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Mapa GPS em tempo real ── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><MapPin className="w-4 h-4 text-green-600" />Mapa em Tempo Real</CardTitle>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Auto-refresh 15s</span>
-              <Button variant="outline" size="sm" onClick={() => refetchLocs()}><Satellite className="w-3 h-3 mr-1" />Atualizar</Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {activeDrivers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Satellite className="w-10 h-10 mb-2 opacity-30" />
-              <p>Sem condutores com GPS ativo.</p>
-            </div>
-          ) : (
-            <MapView
-              className="h-[400px] rounded-b-xl"
-              initialCenter={{ lat: 38.75, lng: -9.15 }}
-              initialZoom={8}
-              onMapReady={(map) => { mapRef.current = map; }}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* ── Velocidades em tempo real ── */}
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Gauge className="w-4 h-4 text-blue-600" />Velocidade em Tempo Real</CardTitle></CardHeader>
-          <CardContent>
-            {activeDrivers.length === 0 ? (
-              <p className="text-muted-foreground text-center py-6">Sem condutores ativos.</p>
-            ) : (
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
-                {[...activeDrivers].sort((a: any, b: any) => b.speed - a.speed).map((loc: any) => {
-                  const isSpeeding = loc.speed > 50;
-                  return (
-                    <div key={loc.username} className={`flex items-center justify-between p-2.5 rounded-lg border text-sm ${isSpeeding ? "bg-red-50 border-red-200 dark:bg-red-950/20" : "border-border"}`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${loc.status === "available" ? "bg-green-500" : "bg-gray-400"}`} />
-                        <span className="font-medium truncate">{loc.displayName || loc.username}</span>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className={`font-bold tabular-nums ${isSpeeding ? "text-red-600" : "text-foreground"}`}>
-                          {loc.speed.toFixed(0)} km/h
-                        </span>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Battery className="w-3 h-3" />{loc.batteryLevel}%
-                        </div>
-                        <a href={`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`} target="_blank" rel="noopener">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"><MapPin className="w-3.5 h-3.5" /></Button>
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── Alertas: GPS/Telemóvel desligado ── */}
-        <Card className={missingDrivers.length > 0 ? "border-amber-300" : ""}>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <XCircle className="w-4 h-4 text-amber-600" />
-              GPS / Telemóvel Desligado
-              {missingDrivers.length > 0 && <Badge variant="destructive">{missingDrivers.length}</Badge>}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Funcionários com check-in ativo mas sem GPS (exclui backoffice, supervisor, director)</p>
-          </CardHeader>
-          <CardContent>
-            {missingDrivers.length === 0 ? (
-              <div className="flex flex-col items-center py-6 text-muted-foreground">
-                <Check className="w-8 h-8 mb-2 text-green-500" />
-                <p className="text-sm">Todos os funcionários de terreno com GPS ativo.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {missingDrivers.map((checkin: any) => {
-                  const emp = checkin.employeeId ? empById.get(checkin.employeeId) : null;
-                  return (
-                    <div key={checkin.id} className="flex items-center justify-between p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 text-sm">
-                      <div className="flex items-center gap-2">
-                        <XCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <div>
-                          <p className="font-medium">{emp?.fullName || checkin.zelloUsername || `Emp #${checkin.employeeId}`}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Zello: {checkin.zelloUsername || "—"}
-                            {emp?.position ? ` · ${emp.position}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Check-in: {new Date(checkin.checkinAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* ── Últimas infrações de velocidade ── */}
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500" />Infrações de Velocidade Pendentes</CardTitle></CardHeader>
-          <CardContent>
-            {(!violations || violations.length === 0) ? (
-              <div className="flex flex-col items-center py-6 text-muted-foreground">
-                <Shield className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm">Sem infrações pendentes.</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                {violations.slice(0, 10).map((v: any) => (
-                  <div key={v.id} className="flex items-center justify-between p-2.5 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Gauge className="w-4 h-4 text-red-500 shrink-0" />
-                      <div>
-                        <p className="font-medium">{v.displayName || v.zelloUsername}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(v.occurredAt).toLocaleString("pt-PT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-red-600 tabular-nums">{parseFloat(v.speed).toFixed(0)} km/h</span>
-                      <span className="text-xs text-muted-foreground">(limite {v.speedLimit})</span>
-                      <Badge variant="destructive" className="text-xs">+{parseFloat(v.excessPercent).toFixed(0)}%</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── 5 baterias mais baixas ── */}
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Battery className="w-4 h-4 text-amber-500" />Baterias Mais Baixas</CardTitle></CardHeader>
-          <CardContent>
-            {lowestBatteries.length === 0 ? (
-              <p className="text-muted-foreground text-center py-6 text-sm">Sem dados de bateria.</p>
-            ) : (
-              <div className="space-y-3">
-                {lowestBatteries.map((loc: any, i: number) => {
-                  const pct = loc.batteryLevel;
-                  const barColor = pct > 50 ? "bg-green-500" : pct > 20 ? "bg-amber-500" : "bg-red-500";
-                  return (
-                    <div key={loc.username} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{loc.displayName || loc.username}</span>
-                        <span className={`font-bold tabular-nums ${pct <= 20 ? "text-red-600" : pct <= 50 ? "text-amber-600" : "text-green-600"}`}>{pct}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+  const { data, isLoading } = trpc.multipark.dashboardRange.useQuery(
+    { startDate, endDate },
+    { enabled: !!startDate && !!endDate },
   );
-}
 
-// ─── RADIO ───────────────────────────────────────────────────────────────────
-
-function RadioTab() {
-  const [showTranscribe, setShowTranscribe] = useState(false);
-  const { data: transcriptions } = trpc.operational.radio.list.useQuery();
-  const { data: employees } = trpc.rh.list.useQuery();
-  const { data: vehiclesList } = trpc.operational.vehicles.list.useQuery();
-
-  const empMap = useMemo(() => {
-    const m = new Map<number, string>();
-    (employees || []).forEach((e: any) => m.set(e.employee.id, e.employee.fullName));
-    return m;
-  }, [employees]);
-  const vehMap = useMemo(() => {
-    const m = new Map<number, string>();
-    (vehiclesList || []).forEach((v: any) => m.set(v.id, v.plate));
-    return m;
-  }, [vehiclesList]);
+  const fmtEur = (n: number) => n.toLocaleString("pt-PT", { style: "currency", currency: "EUR" });
 
   return (
     <div className="space-y-4 mt-4">
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">Transcrições de comunicações rádio</p>
-        <Button onClick={() => setShowTranscribe(true)}><Plus className="w-4 h-4 mr-1" />Nova Transcrição</Button>
-      </div>
-
-      <div className="grid gap-4">
-        {(!transcriptions || transcriptions.length === 0) ? (
-          <Card><CardContent className="py-8 text-center text-muted-foreground">Sem transcrições. Carrega um áudio para começar.</CardContent></Card>
-        ) : transcriptions.map((t: any) => (
-          <Card key={t.id}>
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-muted-foreground">{new Date(t.createdAt).toLocaleString("pt-PT")}</span>
-                  {t.employeeId && <Badge variant="outline">{empMap.get(t.employeeId) || `#${t.employeeId}`}</Badge>}
-                  {t.vehicleId && <Badge variant="secondary">{vehMap.get(t.vehicleId) || `#${t.vehicleId}`}</Badge>}
-                  {t.duration && <span className="text-xs text-muted-foreground">{Math.floor(t.duration / 60)}:{String(t.duration % 60).padStart(2, "0")}</span>}
-                </div>
-                {t.audioUrl && <a href={t.audioUrl} target="_blank" rel="noopener"><Button size="sm" variant="outline"><Eye className="w-4 h-4 mr-1" />Áudio</Button></a>}
+      {/* Date range picker */}
+      <Card>
+        <CardContent className="p-4 flex flex-wrap items-end gap-2">
+          {([
+            ["today", "Hoje"],
+            ["yesterday", "Ontem"],
+            ["last7", "Últimos 7d"],
+            ["last30", "Últimos 30d"],
+            ["month", "Este mês"],
+            ["custom", "Personalizado"],
+          ] as const).map(([k, label]) => (
+            <Button
+              key={k}
+              size="sm"
+              variant={preset === k ? "default" : "outline"}
+              onClick={() => setPreset(k)}
+            >
+              {label}
+            </Button>
+          ))}
+          {preset === "custom" && (
+            <>
+              <div>
+                <Label className="text-xs">De</Label>
+                <Input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="w-40"
+                />
               </div>
-              {t.summary && <p className="text-sm font-medium bg-muted/50 p-2 rounded">{t.summary}</p>}
-              {t.transcription && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.transcription}</p>}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              <div>
+                <Label className="text-xs">Até</Label>
+                <Input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="w-40"
+                />
+              </div>
+            </>
+          )}
+          <div className="ml-auto text-xs text-muted-foreground">
+            {startDate} → {endDate}
+          </div>
+        </CardContent>
+      </Card>
 
-      {showTranscribe && <TranscribeDialog employees={employees || []} vehicles={vehiclesList || []} onClose={() => setShowTranscribe(false)} />}
+      {isLoading && <p className="text-sm text-muted-foreground">A carregar...</p>}
+
+      {data && (
+        <>
+          {/* KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Custo total</div>
+                <div className="text-2xl font-bold">{fmtEur(data.totals.totalCost)}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {data.totals.days} dias · {data.totals.drivers} pessoas
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Acções totais</div>
+                <div className="text-2xl font-bold">{data.totals.totalActions}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-1">
+                  {Object.entries(data.totals.byType).map(([k, v]) => (
+                    <span key={k}>{k}: {v}</span>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-emerald-200">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">No horário</div>
+                <div className="text-2xl font-bold text-emerald-700">{data.totals.inShift}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {data.totals.totalActions > 0
+                    ? `${((data.totals.inShift / data.totals.totalActions) * 100).toFixed(0)}%`
+                    : "—"}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-amber-200">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Fora do horário</div>
+                <div className="text-2xl font-bold text-amber-700">{data.totals.outOfShift}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {data.totals.totalActions > 0
+                    ? `${((data.totals.outOfShift / data.totals.totalActions) * 100).toFixed(0)}%`
+                    : "—"}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">€/acção</div>
+                <div className="text-2xl font-bold">
+                  {data.totals.totalActions > 0 ? fmtEur(data.totals.costPerAction) : "—"}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Daily breakdown */}
+          {data.daily.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Por dia</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs uppercase text-muted-foreground">
+                        <th className="text-left py-2 px-2">Dia</th>
+                        <th className="text-right py-2 px-2">Pessoas</th>
+                        <th className="text-right py-2 px-2">Custo</th>
+                        <th className="text-right py-2 px-2">Acções</th>
+                        <th className="text-right py-2 px-2 text-emerald-700">No horário</th>
+                        <th className="text-right py-2 px-2 text-amber-700">Fora horário</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.daily.map((d) => (
+                        <tr key={d.date} className="border-b hover:bg-muted/30">
+                          <td className="py-1.5 px-2 font-mono">{d.date}</td>
+                          <td className="py-1.5 px-2 text-right">{d.drivers}</td>
+                          <td className="py-1.5 px-2 text-right">{fmtEur(d.totalCost)}</td>
+                          <td className="py-1.5 px-2 text-right font-semibold">{d.totalActions}</td>
+                          <td className="py-1.5 px-2 text-right text-emerald-700">{d.inShift}</td>
+                          <td className="py-1.5 px-2 text-right text-amber-700">{d.outOfShift}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Por pessoa */}
+          {data.byPerson.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Por pessoa</CardTitle>
+                <p className="text-xs text-muted-foreground">Ordenado por nº de acções totais</p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs uppercase text-muted-foreground">
+                        <th className="text-left py-2 px-2">Pessoa</th>
+                        <th className="text-right py-2 px-2">Dias</th>
+                        <th className="text-right py-2 px-2">Horas</th>
+                        <th className="text-right py-2 px-2">Custo</th>
+                        <th className="text-right py-2 px-2">Acções</th>
+                        <th className="text-right py-2 px-2 text-emerald-700">No horário</th>
+                        <th className="text-right py-2 px-2 text-amber-700">Fora horário</th>
+                        <th className="text-right py-2 px-2">€/acção</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.byPerson.map((p) => (
+                        <tr key={p.personName} className="border-b hover:bg-muted/30">
+                          <td className="py-1.5 px-2">
+                            <div className="flex items-center gap-1.5">
+                              {p.personName}
+                              {p.isTeamLeader && (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[9px]">TL</Badge>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono">{p.resolvedAgentName}</div>
+                          </td>
+                          <td className="py-1.5 px-2 text-right">{p.daysWorked}</td>
+                          <td className="py-1.5 px-2 text-right">{p.hoursPaid}</td>
+                          <td className="py-1.5 px-2 text-right">{fmtEur(p.totalCost)}</td>
+                          <td className="py-1.5 px-2 text-right font-semibold">{p.totalActions}</td>
+                          <td className="py-1.5 px-2 text-right text-emerald-700">{p.inShiftActions}</td>
+                          <td className="py-1.5 px-2 text-right text-amber-700">{p.outOfShiftActions}</td>
+                          <td className="py-1.5 px-2 text-right">
+                            {p.totalActions > 0 ? fmtEur(p.costPerAction) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
     </div>
-  );
-}
-
-function TranscribeDialog({ employees, vehicles, onClose }: { employees: any[]; vehicles: any[]; onClose: () => void }) {
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [employeeId, setEmployeeId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const utils = trpc.useUtils();
-  const transcribeMut = trpc.operational.radio.transcribe.useMutation({
-    onSuccess: (data) => { utils.operational.radio.list.invalidate(); toast.success("Transcrição concluída!"); onClose(); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const handleSubmit = async () => {
-    if (!audioFile) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", audioFile);
-      const resp = await fetch("/api/upload", { method: "POST", body: formData });
-      const { url } = await resp.json();
-      transcribeMut.mutate({
-        audioUrl: url,
-        employeeId: employeeId && employeeId !== "none" ? Number(employeeId) : undefined,
-        vehicleId: vehicleId && vehicleId !== "none" ? Number(vehicleId) : undefined,
-        duration: undefined,
-      });
-    } catch {
-      toast.error("Erro ao carregar áudio");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Transcrever Áudio de Rádio</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Ficheiro Áudio *</Label>
-            <Input type="file" accept="audio/*,.webm,.mp3,.wav,.ogg,.m4a" onChange={e => setAudioFile(e.target.files?.[0] || null)} />
-          </div>
-          <div><Label>Condutor</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">N/A</SelectItem>
-                {employees.map((e: any) => <SelectItem key={e.employee.id} value={String(e.employee.id)}>{e.employee.fullName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div><Label>Viatura</Label>
-            <Select value={vehicleId} onValueChange={setVehicleId}>
-              <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">N/A</SelectItem>
-                {vehicles.map((v: any) => <SelectItem key={v.id} value={String(v.id)}>{v.plate} - {v.brand} {v.model}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!audioFile || uploading || transcribeMut.isPending} onClick={handleSubmit}>
-            {uploading || transcribeMut.isPending ? "A processar..." : "Transcrever"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -1687,5 +1506,127 @@ function GpsAlertsTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+function RadioTab() {
+  const [showTranscribe, setShowTranscribe] = useState(false);
+  const { data: transcriptions } = trpc.operational.radio.list.useQuery();
+  const { data: employees } = trpc.rh.list.useQuery();
+  const { data: vehiclesList } = trpc.operational.vehicles.list.useQuery();
+
+  const empMap = useMemo(() => {
+    const m = new Map<number, string>();
+    (employees || []).forEach((e: any) => m.set(e.employee.id, e.employee.fullName));
+    return m;
+  }, [employees]);
+  const vehMap = useMemo(() => {
+    const m = new Map<number, string>();
+    (vehiclesList || []).forEach((v: any) => m.set(v.id, v.plate));
+    return m;
+  }, [vehiclesList]);
+
+  return (
+    <div className="space-y-4 mt-4">
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground">Transcrições de comunicações rádio</p>
+        <Button onClick={() => setShowTranscribe(true)}><Plus className="w-4 h-4 mr-1" />Nova Transcrição</Button>
+      </div>
+
+      <div className="grid gap-4">
+        {(!transcriptions || transcriptions.length === 0) ? (
+          <Card><CardContent className="py-8 text-center text-muted-foreground">Sem transcrições. Carrega um áudio para começar.</CardContent></Card>
+        ) : transcriptions.map((t: any) => (
+          <Card key={t.id}>
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-primary" />
+                  <span className="text-sm text-muted-foreground">{new Date(t.createdAt).toLocaleString("pt-PT")}</span>
+                  {t.employeeId && <Badge variant="outline">{empMap.get(t.employeeId) || `#${t.employeeId}`}</Badge>}
+                  {t.vehicleId && <Badge variant="secondary">{vehMap.get(t.vehicleId) || `#${t.vehicleId}`}</Badge>}
+                  {t.duration && <span className="text-xs text-muted-foreground">{Math.floor(t.duration / 60)}:{String(t.duration % 60).padStart(2, "0")}</span>}
+                </div>
+                {t.audioUrl && <a href={t.audioUrl} target="_blank" rel="noopener"><Button size="sm" variant="outline"><Eye className="w-4 h-4 mr-1" />Áudio</Button></a>}
+              </div>
+              {t.summary && <p className="text-sm font-medium bg-muted/50 p-2 rounded">{t.summary}</p>}
+              {t.transcription && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.transcription}</p>}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {showTranscribe && <TranscribeDialog employees={employees || []} vehicles={vehiclesList || []} onClose={() => setShowTranscribe(false)} />}
+    </div>
+  );
+}
+
+function TranscribeDialog({ employees, vehicles, onClose }: { employees: any[]; vehicles: any[]; onClose: () => void }) {
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [employeeId, setEmployeeId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const utils = trpc.useUtils();
+  const transcribeMut = trpc.operational.radio.transcribe.useMutation({
+    onSuccess: (data) => { utils.operational.radio.list.invalidate(); toast.success("Transcrição concluída!"); onClose(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = async () => {
+    if (!audioFile) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", audioFile);
+      const resp = await fetch("/api/upload", { method: "POST", body: formData });
+      const { url } = await resp.json();
+      transcribeMut.mutate({
+        audioUrl: url,
+        employeeId: employeeId && employeeId !== "none" ? Number(employeeId) : undefined,
+        vehicleId: vehicleId && vehicleId !== "none" ? Number(vehicleId) : undefined,
+        duration: undefined,
+      });
+    } catch {
+      toast.error("Erro ao carregar áudio");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Transcrever Áudio de Rádio</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Ficheiro Áudio *</Label>
+            <Input type="file" accept="audio/*,.webm,.mp3,.wav,.ogg,.m4a" onChange={e => setAudioFile(e.target.files?.[0] || null)} />
+          </div>
+          <div><Label>Condutor</Label>
+            <Select value={employeeId} onValueChange={setEmployeeId}>
+              <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">N/A</SelectItem>
+                {employees.map((e: any) => <SelectItem key={e.employee.id} value={String(e.employee.id)}>{e.employee.fullName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label>Viatura</Label>
+            <Select value={vehicleId} onValueChange={setVehicleId}>
+              <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">N/A</SelectItem>
+                {vehicles.map((v: any) => <SelectItem key={v.id} value={String(v.id)}>{v.plate} - {v.brand} {v.model}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!audioFile || uploading || transcribeMut.isPending} onClick={handleSubmit}>
+            {uploading || transcribeMut.isPending ? "A processar..." : "Transcrever"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
