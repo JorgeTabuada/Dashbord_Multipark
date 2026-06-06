@@ -3687,6 +3687,26 @@ export const appRouter = router({
 
   // ── MULTIPARK INTEGRATION ──────────────────────────────────────────────────
   multipark: router({
+    // Pesquisa partilhada de reservas — usada por reclamações, perdidos/achados,
+    // ocorrências e críticas Google. Procura por nº reserva / externalId /
+    // matrícula / email / nome do cliente. DB local.
+    searchBooking: protectedProcedure
+      .input(z.object({ search: z.string().min(2) }))
+      .query(async ({ input }) => {
+        return searchBookingByRef(input.search);
+      }),
+    // Detalhe de uma reserva específica via API Multipark
+    fetchBookingDetails: protectedProcedure
+      .input(z.object({ externalId: z.string() }))
+      .query(async ({ input }) => {
+        const { getBooking } = await import("./multipark");
+        try {
+          return await getBooking(input.externalId);
+        } catch {
+          return null;
+        }
+      }),
+
     // Test API connection
     testConnection: protectedProcedure.query(async ({ ctx }) => {
       requireRole(ctx.user.role, "admin");

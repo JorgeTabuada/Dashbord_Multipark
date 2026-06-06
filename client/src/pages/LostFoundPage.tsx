@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
+import BookingSearchField from "@/components/BookingSearchField";
 import {
   Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
@@ -1018,11 +1019,31 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
               <Label>Telefone</Label>
               <Input value={form.clientPhone} onChange={e => setForm(f => ({ ...f, clientPhone: e.target.value }))} placeholder="+351 ..." />
             </div>
-            <div className="col-span-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200">
-              <Label className="text-emerald-700 dark:text-emerald-300 font-medium">ID da Reserva (Multipark) *</Label>
-              <p className="text-xs text-muted-foreground mb-1">O histórico completo é carregado automaticamente da API</p>
-              <Input value={form.bookingRef} onChange={e => setForm(f => ({ ...f, bookingRef: e.target.value }))} placeholder="Ex: 6789abc..." className="font-mono" />
-              <LostFoundReservationPreview bookingId={form.bookingRef} />
+            <div className="col-span-2">
+              <BookingSearchField
+                accent="emerald"
+                label="Buscar reserva (nº reserva, matrícula, email, nome) *"
+                hint="Escolhe uma reserva e os dados do cliente / matrícula são preenchidos automaticamente"
+                onSelect={(b, details) => {
+                  const ref = b.externalId || b.bookingNumber || "";
+                  const client = details?.customer || details?.client;
+                  setForm(f => ({
+                    ...f,
+                    bookingRef: ref,
+                    clientName: f.clientName || [client?.firstName, client?.lastName, b.clientFirstName, b.clientLastName].filter(Boolean).slice(0, 2).join(" "),
+                    clientEmail: f.clientEmail || client?.email || b.clientEmail || "",
+                    clientPhone: f.clientPhone || client?.phoneNumber || b.clientPhone || "",
+                    vehiclePlate: f.vehiclePlate || details?.vehicle?.licensePlate || b.licensePlate || "",
+                  }));
+                }}
+              />
+              {form.bookingRef && (
+                <div className="mt-2 p-2 rounded border bg-muted text-xs flex items-center justify-between">
+                  <span className="font-mono">Reserva: {form.bookingRef}</span>
+                  <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setForm(f => ({ ...f, bookingRef: "" }))}>limpar</button>
+                </div>
+              )}
+              {form.bookingRef && <LostFoundReservationPreview bookingId={form.bookingRef} />}
             </div>
             <div>
               <Label>Matrícula</Label>

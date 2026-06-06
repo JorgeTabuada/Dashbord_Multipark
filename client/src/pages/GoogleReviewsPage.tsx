@@ -19,6 +19,7 @@ import {
   BarChart3, TrendingUp, Clock, XCircle, Edit, Mail, RefreshCw, Loader2,
   Car, Users, Calendar
 } from "lucide-react";
+import BookingSearchField from "@/components/BookingSearchField";
 
 const RATING_COLORS: Record<number, string> = {
   1: "text-red-500",
@@ -292,6 +293,7 @@ function CreateReviewDialog({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
     reviewerName: "", reviewerEmail: "", rating: 5,
     reviewText: "", reviewDate: "", projectId: "", vehiclePlate: "",
+    bookingRef: "",
   });
 
   const handleSubmit = async () => {
@@ -322,6 +324,28 @@ function CreateReviewDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Importar Avaliação Google</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          <BookingSearchField
+            accent="violet"
+            hint="Opcional — escolhe a reserva e o nome/email/matrícula são preenchidos automaticamente"
+            onSelect={(b, details) => {
+              const client = details?.customer || details?.client;
+              const fullName = [client?.firstName, client?.lastName, b.clientFirstName, b.clientLastName].filter(Boolean).slice(0, 2).join(" ");
+              setForm(f => ({
+                ...f,
+                bookingRef: b.externalId || b.bookingNumber || f.bookingRef,
+                reviewerName: f.reviewerName || fullName,
+                reviewerEmail: f.reviewerEmail || client?.email || b.clientEmail || "",
+                vehiclePlate: f.vehiclePlate || details?.vehicle?.licensePlate || b.licensePlate || "",
+                projectId: f.projectId || (b.projectId ? String(b.projectId) : ""),
+              }));
+            }}
+          />
+          {form.bookingRef && (
+            <div className="p-2 rounded border bg-muted text-xs flex items-center justify-between">
+              <span className="font-mono">Reserva: {form.bookingRef}</span>
+              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setForm(f => ({ ...f, bookingRef: "" }))}>limpar</button>
+            </div>
+          )}
           <div>
             <Label>Nome do Reviewer *</Label>
             <Input value={form.reviewerName} onChange={e => setForm(f => ({ ...f, reviewerName: e.target.value }))} />

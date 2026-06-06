@@ -16,6 +16,7 @@ import {
   BarChart3, AlertCircle, CheckCircle2, ShieldAlert,
   RefreshCw, Loader2, Bot, MapPin
 } from "lucide-react";
+import BookingSearchField from "@/components/BookingSearchField";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   open: { label: "Aberta", color: "bg-red-100 text-red-800" },
@@ -289,6 +290,7 @@ function CreateIncidentDialog({ employees, onClose }: { employees: any[]; onClos
     incidentType: "outro" as const,
     severity: "medium" as const,
     description: "",
+    bookingRef: "",
   });
   const createMut = trpc.incidents.create.useMutation();
   const utils = trpc.useUtils();
@@ -315,6 +317,23 @@ function CreateIncidentDialog({ employees, onClose }: { employees: any[]; onClos
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Nova Ocorrência</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          <BookingSearchField
+            accent="amber"
+            hint="Opcional — escolhe a reserva e a matrícula é preenchida automaticamente"
+            onSelect={(b, _details) => {
+              setForm(f => ({
+                ...f,
+                bookingRef: b.externalId || b.bookingNumber || f.bookingRef,
+                vehiclePlate: f.vehiclePlate || b.licensePlate || "",
+              }));
+            }}
+          />
+          {form.bookingRef && (
+            <div className="p-2 rounded border bg-muted text-xs flex items-center justify-between">
+              <span className="font-mono">Reserva: {form.bookingRef}</span>
+              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setForm(f => ({ ...f, bookingRef: "" }))}>limpar</button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Tipo</Label>
