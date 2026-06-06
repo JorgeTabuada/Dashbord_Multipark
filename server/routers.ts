@@ -709,8 +709,50 @@ export const appRouter = router({
     checkNotifications: protectedProcedure
       .mutation(async ({ ctx }) => {
         requireRole(ctx.user.role, "admin");
+        const { createNotification } = await import("./complaintsExtended");
+        const { sendEmail } = await import("./_core/notification");
         const results: string[] = [];
-        
+
+        async function notifyAssignees(
+          taskTitle: string,
+          taskId: number,
+          assignees: Array<{ employee?: { fullName?: string | null; userId?: number | null; email?: string | null } | null }>,
+          kind: "overdue" | "complete",
+        ) {
+          const link = `/tarefas?focus=${taskId}`;
+          const title = kind === "overdue"
+            ? `⚠️ Tarefa em atraso: ${taskTitle}`
+            : `✅ Tarefa concluída: ${taskTitle}`;
+          for (const a of assignees) {
+            const emp = a.employee;
+            if (!emp) continue;
+            if (emp.userId) {
+              try {
+                await createNotification({
+                  userId: emp.userId,
+                  title,
+                  body: kind === "overdue"
+                    ? `A tarefa "${taskTitle}" ultrapassou o prazo.`
+                    : `A tarefa "${taskTitle}" foi marcada como concluída.`,
+                  kind: "task",
+                  link,
+                });
+              } catch (e) { console.warn("[tasks notify] in-app:", e); }
+            }
+            if (emp.email) {
+              try {
+                await sendEmail({
+                  to: emp.email,
+                  subject: title,
+                  text: kind === "overdue"
+                    ? `Olá ${emp.fullName ?? ""},\n\nA tarefa "${taskTitle}" ultrapassou o prazo. Por favor verifica o seu estado.`
+                    : `Olá ${emp.fullName ?? ""},\n\nA tarefa "${taskTitle}" foi marcada como concluída. Obrigado!`,
+                });
+              } catch (e) { console.warn("[tasks notify] email:", e); }
+            }
+          }
+        }
+
         // Check overdue tasks
         const overdue = await getOverdueTasks();
         for (const task of overdue) {
@@ -731,10 +773,11 @@ export const appRouter = router({
             title: `⚠️ Tarefa em atraso: ${task.title}`,
             content: `A tarefa "${task.title}" ultrapassou o prazo (${task.dueDate ? new Date(task.dueDate).toLocaleDateString("pt-PT") : "?"}).\nResponsáveis: ${assigneeNames || "Nenhum"}\nHierarquia: ${managers.join(" → ") || "N/A"}`,
           });
+          await notifyAssignees(task.title, task.id, assignees as any, "overdue");
           await markTaskNotified(task.id, "notifiedOverdue");
           results.push(`Overdue: ${task.title}`);
         }
-        
+
         // Check recently completed tasks
         const completed = await getRecentlyCompletedTasks();
         for (const task of completed) {
@@ -744,10 +787,11 @@ export const appRouter = router({
             title: `✅ Tarefa concluída: ${task.title}`,
             content: `A tarefa "${task.title}" foi concluída.\nResponsáveis: ${assigneeNames || "Nenhum"}\nConcluída em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateString("pt-PT") : "agora"}`,
           });
+          await notifyAssignees(task.title, task.id, assignees as any, "complete");
           await markTaskNotified(task.id, "notifiedComplete");
           results.push(`Completed: ${task.title}`);
         }
-        
+
         return { notified: results.length, details: results };
       }),
   }),
@@ -1124,6 +1168,20 @@ export const appRouter = router({
     me: protectedProcedure.query(async ({ ctx }) => {
       return getEmployeeByUserId(ctx.user.id);
     }),
+
+    // ── ROSTER MÍNIMO ──────────────────────────────────────────────────────────────────────────
+    // Lista pública (id + fullName) para selectors em qualquer página
+    // (atribuir responsáveis, condutores envolvidos, etc.). Sem requireRole
+    // para que frontoffice/team_leader/extra possam usar dropdowns também.
+    roster: protectedProcedure
+      .input(z.object({ activeOnly: z.boolean().optional() }).optional())
+      .query(async ({ input }) => {
+        const rows = await getAllEmployees({ isActive: input?.activeOnly ?? true });
+        return rows.map((row: any) => ({
+          id: row.employee.id,
+          fullName: row.employee.fullName,
+        }));
+      }),
 
     // ── STATS ──────────────────────────────────────────────────────────────────────────────────
     stats: protectedProcedure.query(async ({ ctx }) => {

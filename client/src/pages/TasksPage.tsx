@@ -107,7 +107,7 @@ export default function TasksPage() {
   const { data: allTasks = [], isLoading } = trpc.tasks.list.useQuery();
   const { data: stats } = trpc.tasks.stats.useQuery();
   const { data: projects = [] } = trpc.projects.list.useQuery();
-  const { data: employees = [] } = trpc.rh.list.useQuery();
+  const { data: employees = [] } = trpc.rh.roster.useQuery({ activeOnly: true });
   const [showCreate, setShowCreate] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [filterProject, setFilterProject] = useState<string>("all");
@@ -133,8 +133,31 @@ export default function TasksPage() {
     onSuccess: () => { utils.tasks.list.invalidate(); utils.tasks.stats.invalidate(); toast.success("Tarefa eliminada!"); },
     onError: (e) => toast.error(e.message),
   });
+  // Drag & drop com optimistic update — actualiza a UI imediatamente e faz
+  // rollback se o servidor falhar.
   const moveMut = trpc.tasks.update.useMutation({
-    onSuccess: () => { utils.tasks.list.invalidate(); utils.tasks.stats.invalidate(); },
+    onMutate: async (vars: { id: number; status?: string }) => {
+      if (!vars.status) return { prev: undefined };
+      await utils.tasks.list.cancel();
+      const prev = utils.tasks.list.getData();
+      if (prev) {
+        utils.tasks.list.setData(undefined, (old: any) => {
+          if (!old) return old;
+          return old.map((t: any) =>
+            t.id === vars.id ? { ...t, taskStatus: vars.status } : t,
+          );
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) utils.tasks.list.setData(undefined, ctx.prev);
+      toast.error("Não foi possível mover a tarefa");
+    },
+    onSettled: () => {
+      utils.tasks.list.invalidate();
+      utils.tasks.stats.invalidate();
+    },
   });
   const checkNotifMut = trpc.tasks.checkNotifications.useMutation({
     onSuccess: (data) => {
@@ -267,8 +290,7 @@ export default function TasksPage() {
           {(employees as any[]).length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-2">Nenhum funcionário registado</p>
           )}
-          {(employees as any[]).map((e: any) => {
-            const emp = e.employee ?? e;
+          {(employees as Array<{ id: number; fullName: string }>).map((emp) => {
             const checked = form.assigneeIds.includes(emp.id);
             return (
               <label key={emp.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/50 cursor-pointer">
