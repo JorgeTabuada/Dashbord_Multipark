@@ -505,6 +505,8 @@ export const multiparkBookings = mysqlTable("multipark_bookings", {
 	departingFlight: varchar({ length: 32 }),
 	remarks: varchar({ length: 512 }),
 	enrichedAt: timestamp({ mode: 'string' }),
+	origin: varchar({ length: 64 }),
+	originUrl: varchar({ length: 512 }),
 	spotType: mysqlEnum(['covered','uncovered','indoor','unknown']),
 	parkBrand: varchar({ length: 16 }),
 	paymentMethod: varchar({ length: 128 }),

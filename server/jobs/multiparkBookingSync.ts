@@ -229,6 +229,8 @@ async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promis
     if (b.vehicle?.model) update.vehicleModel = b.vehicle.model;
     if (b.vehicle?.color) update.vehicleColor = b.vehicle.color;
     if (b.vehicle?.vehicleType) update.vehicleType = b.vehicle.vehicleType;
+    if (typeof b.origin === "string" && b.origin) update.origin = b.origin.slice(0, 64);
+    if (typeof b.originUrl === "string" && b.originUrl) update.originUrl = b.originUrl.slice(0, 512);
 
     await db.update(multiparkBookings).set(update).where(eq(multiparkBookings.externalId, externalId));
     return true;
