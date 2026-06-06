@@ -164,49 +164,20 @@ export default function ExtrasDiaPage() {
             </div>
           )}
 
-          {/* Tipo de lugar (covered/uncovered/indoor) */}
-          {data.spotTypeCounts && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Lugares por tipo</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Inferido do número da alocação. Reservas únicas por dia.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  <div className="border rounded-md p-3 bg-card">
-                    <div className="text-xs text-muted-foreground">Descobertos</div>
-                    <div className="text-2xl font-bold">{data.spotTypeCounts.uncovered}</div>
-                  </div>
-                  <div className="border rounded-md p-3 bg-card">
-                    <div className="text-xs text-muted-foreground">Cobertos</div>
-                    <div className="text-2xl font-bold">{data.spotTypeCounts.covered}</div>
-                  </div>
-                  <div className="border rounded-md p-3 bg-card">
-                    <div className="text-xs text-muted-foreground">Indoor</div>
-                    <div className="text-2xl font-bold">{data.spotTypeCounts.indoor}</div>
-                  </div>
-                  <div className="border rounded-md p-3 bg-card">
-                    <div className="text-xs text-muted-foreground">Sem classif.</div>
-                    <div className="text-2xl font-bold text-muted-foreground">{data.spotTypeCounts.unknown}</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard
               icon={<ArrowDownToLine className="h-4 w-4 text-emerald-600" />}
-              label="Chegadas"
+              label="Recolhas"
               value={data.totals.checkins}
+              breakdown={data.spotTypeByDirection?.checkin}
             />
             <KpiCard
               icon={<ArrowUpFromLine className="h-4 w-4 text-orange-600" />}
-              label="Saídas"
+              label="Entregas"
               value={data.totals.checkouts}
+              breakdown={data.spotTypeByDirection?.checkout}
             />
             <KpiCard
               icon={<Users className="h-4 w-4 text-blue-600" />}
@@ -930,11 +901,13 @@ function KpiCard({
   label,
   value,
   hint,
+  breakdown,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | string;
   hint?: string;
+  breakdown?: { covered: number; uncovered: number; indoor: number; unknown: number };
 }) {
   return (
     <Card>
@@ -945,6 +918,14 @@ function KpiCard({
         </div>
         <div className="text-2xl font-bold mt-1">{value}</div>
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
+        {breakdown && (breakdown.uncovered + breakdown.covered + breakdown.indoor + breakdown.unknown > 0) && (
+          <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
+            {breakdown.uncovered > 0 && <span>{breakdown.uncovered} desc.</span>}
+            {breakdown.covered > 0 && <span className="ml-1">{breakdown.covered} cob.</span>}
+            {breakdown.indoor > 0 && <span className="ml-1">{breakdown.indoor} ind.</span>}
+            {breakdown.unknown > 0 && <span className="ml-1">{breakdown.unknown} ?</span>}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

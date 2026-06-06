@@ -250,6 +250,12 @@ export interface ExtrasDiaForecast {
     indoor: number;
     unknown: number;
   };
+  // Mesma classificação mas separada por sentido — para mostrar debaixo
+  // dos KPIs de Chegadas e Saídas.
+  spotTypeByDirection: {
+    checkin: { covered: number; uncovered: number; indoor: number; unknown: number };
+    checkout: { covered: number; uncovered: number; indoor: number; unknown: number };
+  };
   washes: {
     base: DailyWash;
     target: DailyWash;
@@ -815,17 +821,31 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
     if (label) allParks.add(label);
   }
 
-  // Contadores por tipo de lugar (covered/uncovered/indoor) — distintos
-  // por reserva (não somar in+out): usa as chegadas + saídas no dia,
-  // dedup por externalId.
+  // Contadores por tipo de lugar (covered/uncovered/indoor).
+  // spotTypeCounts: dedup por reserva (cada externalId conta 1× só)
+  // spotTypeByDirection: por sentido, sem dedup (uma reserva pode ter
+  // chegada E saída no mesmo dia operacional).
   const spotTypeCounts = { covered: 0, uncovered: 0, indoor: 0, unknown: 0 };
+  const spotTypeByDirection = {
+    checkin: { covered: 0, uncovered: 0, indoor: 0, unknown: 0 },
+    checkout: { covered: 0, uncovered: 0, indoor: 0, unknown: 0 },
+  };
   const seenForSpot = new Set<string>();
-  for (const r of [...targetCheckins, ...targetCheckouts]) {
-    if (seenForSpot.has(r.externalId)) continue;
-    seenForSpot.add(r.externalId);
+  for (const r of targetCheckins) {
     const st = (r.spotType ?? "unknown") as keyof typeof spotTypeCounts;
-    if (st in spotTypeCounts) spotTypeCounts[st]++;
-    else spotTypeCounts.unknown++;
+    if (st in spotTypeByDirection.checkin) spotTypeByDirection.checkin[st]++;
+    if (!seenForSpot.has(r.externalId)) {
+      seenForSpot.add(r.externalId);
+      if (st in spotTypeCounts) spotTypeCounts[st]++;
+    }
+  }
+  for (const r of targetCheckouts) {
+    const st = (r.spotType ?? "unknown") as keyof typeof spotTypeCounts;
+    if (st in spotTypeByDirection.checkout) spotTypeByDirection.checkout[st]++;
+    if (!seenForSpot.has(r.externalId)) {
+      seenForSpot.add(r.externalId);
+      if (st in spotTypeCounts) spotTypeCounts[st]++;
+    }
   }
 
   return {
@@ -842,6 +862,7 @@ export async function getExtrasDiaForecast(baseDateInput?: string): Promise<Extr
       operations: hourly.reduce((s, h) => s + h.checkins + h.checkouts, 0),
     },
     spotTypeCounts,
+    spotTypeByDirection,
     washes: {
       base: { date: dateKey(baseStart), exitsWithWash: countWashes(baseCheckouts) },
       target: { date: dateKey(targetStart), exitsWithWash: countWashes(targetCheckouts) },
