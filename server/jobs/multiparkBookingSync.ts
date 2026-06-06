@@ -171,6 +171,9 @@ function bookingToRecord(booking: MultiparkBooking, projectMap: Map<string, numb
     notes: booking.notes || null,
     rawJson: JSON.stringify(booking),
     bookingCreatedAt: parseMultiparkDate(booking.createdAt),
+    paymentMethod: typeof pricing?.paymentMethod === "string"
+      ? pricing.paymentMethod.slice(0, 128)
+      : null,
     ...classifyAllocation((booking as any).allocation),
   };
 }
