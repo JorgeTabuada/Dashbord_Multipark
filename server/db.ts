@@ -2453,47 +2453,92 @@ export async function getBillingData(filters: {
     .groupBy(campaigns.projectId, projects.name);
 
   // ─── 7a. PARCEIROS DE VENDA (comissões calculadas via campaign matching) ──
-  // Para cada parceria com campaignKey, soma totalPrice das reservas com
-  // checkout no período cujo campaign bate certo e aplica commissionRate %.
-  // A comissão é atribuída ao projectId da reserva (a Marca que "perde" a
-  // comissão por ter recebido aquela venda).
-  const salesPartnerRows = await db
+  // IMPORTANTE: NÃO fazemos INNER JOIN entre bookings e partnerships porque,
+  // se existirem várias partnerships com o mesmo campaignKey, cada reserva
+  // seria contada N vezes (Cartesian product). Em vez disso:
+  //   1) agrupamos as reservas no SQL por (campaign, projectId);
+  //   2) carregamos as partnerships com campaignKey à parte;
+  //   3) fazemos o match e o cálculo de comissão em memória.
+  const bookingsByCampaignRows = await db
     .select({
-      partnerId: partnerships.id,
-      partnerName: partnerships.name,
-      commissionRate: partnerships.commissionRate,
-      campaignKey: partnerships.campaignKey,
+      campaign: multiparkBookings.campaign,
       projectId: multiparkBookings.projectId,
       projectName: projects.name,
       bookingsCount: sql<number>`COUNT(*)`,
       revenueGross: sql<number>`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
     })
     .from(multiparkBookings)
-    .innerJoin(partnerships, eq(partnerships.campaignKey, multiparkBookings.campaign))
     .leftJoin(projects, eq(multiparkBookings.projectId, projects.id))
-    .where(and(...deliveryConds, isNotNull(partnerships.campaignKey)))
-    .groupBy(
-      partnerships.id,
-      partnerships.name,
-      partnerships.commissionRate,
-      partnerships.campaignKey,
-      multiparkBookings.projectId,
-      projects.name,
-    );
+    .where(and(...deliveryConds, isNotNull(multiparkBookings.campaign)))
+    .groupBy(multiparkBookings.campaign, multiparkBookings.projectId, projects.name);
 
-  const salesCommissions = salesPartnerRows.map(r => {
-    const rate = Number(r.commissionRate ?? 0) / 100;
-    return {
-      partnerId: r.partnerId,
-      partnerName: r.partnerName,
-      projectId: r.projectId,
-      projectName: r.projectName,
-      bookingsCount: Number(r.bookingsCount ?? 0),
-      revenueGross: Number(r.revenueGross ?? 0),
-      commissionRate: Number(r.commissionRate ?? 0),
-      commission: Number(r.revenueGross ?? 0) * rate,
-    };
-  });
+  // Carrega partnerships com campaignKey. Se houver duplicados, escolhe o
+  // mais recentemente actualizado.
+  const partnershipsWithCampaign = await db
+    .select({
+      id: partnerships.id,
+      name: partnerships.name,
+      campaignKey: partnerships.campaignKey,
+      commissionRate: partnerships.commissionRate,
+      updatedAt: partnerships.updatedAt,
+    })
+    .from(partnerships)
+    .where(isNotNull(partnerships.campaignKey));
+
+  const partnerByCampaign = new Map<string, { id: number; name: string; commissionRate: number; updatedAt: string }>();
+  for (const p of partnershipsWithCampaign) {
+    const key = (p.campaignKey ?? "").trim().toLowerCase();
+    if (!key) continue;
+    const existing = partnerByCampaign.get(key);
+    if (!existing || (p.updatedAt ?? "") > (existing.updatedAt ?? "")) {
+      partnerByCampaign.set(key, {
+        id: p.id,
+        name: p.name,
+        commissionRate: Number(p.commissionRate ?? 0),
+        updatedAt: p.updatedAt ?? "",
+      });
+    }
+  }
+
+  // Consolida por (parceiro, projecto): se duas campaigns diferentes
+  // apontarem ao mesmo parceiro, somam-se receitas/contagens em vez de
+  // aparecerem 2 linhas separadas.
+  const salesAgg = new Map<string, {
+    partnerId: number;
+    partnerName: string;
+    projectId: number | null;
+    projectName: string | null;
+    bookingsCount: number;
+    revenueGross: number;
+    commissionRate: number;
+    commission: number;
+  }>();
+  for (const r of bookingsByCampaignRows) {
+    const cmpKey = (r.campaign ?? "").trim().toLowerCase();
+    const partner = partnerByCampaign.get(cmpKey);
+    if (!partner) continue; // sem partnership associada → ignorar
+    const revenueGross = Number(r.revenueGross ?? 0);
+    const rate = partner.commissionRate / 100;
+    const key = `${partner.id}|${r.projectId ?? "null"}`;
+    const ex = salesAgg.get(key);
+    if (ex) {
+      ex.bookingsCount += Number(r.bookingsCount ?? 0);
+      ex.revenueGross += revenueGross;
+      ex.commission += revenueGross * rate;
+    } else {
+      salesAgg.set(key, {
+        partnerId: partner.id,
+        partnerName: partner.name,
+        projectId: r.projectId,
+        projectName: r.projectName,
+        bookingsCount: Number(r.bookingsCount ?? 0),
+        revenueGross,
+        commissionRate: partner.commissionRate,
+        commission: revenueGross * rate,
+      });
+    }
+  }
+  const salesCommissions = Array.from(salesAgg.values()).sort((a, b) => b.commission - a.commission);
 
   // ─── 7b. PARCEIROS OPERACIONAIS (partnership_invoices) ───────────────────
   // Ex.: Top Parking a operar marcas do Porto — taxa fixa mensal/comissão
