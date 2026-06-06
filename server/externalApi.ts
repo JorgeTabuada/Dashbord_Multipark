@@ -294,7 +294,7 @@ export function createExternalApiRouter(): Router {
               gpsLatitude: occ.gpsLatitude || undefined,
               gpsLongitude: occ.gpsLongitude || undefined,
               reservationLink: occ.reservationLink || undefined,
-              importedAt: now,
+              importedAt: now.toISOString().slice(0, 19).replace("T", " "),
             });
             result.incidentsImported++;
             result.details.push(`Ocorr\u00eancia: ${occ.description?.substring(0, 60) || "sem descri\u00e7\u00e3o"}`);

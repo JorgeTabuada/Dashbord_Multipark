@@ -53,11 +53,15 @@ export default function GoogleReviewsPage() {
   const [syncResult, setSyncResult] = useState<any>(null);
   const utils = trpc.useUtils();
   const syncGmail = trpc.reviews.syncFromGmail.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       setSyncResult(data);
       utils.reviews.list.invalidate();
       utils.reviews.stats.invalidate();
-      toast.success(`Sync concluído: ${data.reviewsImported} reviews, ${data.incidentsImported} ocorrências importadas`);
+      if (data.message) {
+        toast.info(data.message);
+      } else {
+        toast.success(`Sync concluído: ${data.reviewsImported} reviews, ${data.incidentsImported} ocorrências importadas`);
+      }
     },
     onError: (err) => toast.error("Erro no sync: " + err.message),
   });
@@ -545,7 +549,7 @@ function ReviewDetailDialog({ id, onClose }: { id: number; onClose: () => void }
                       <div key={c.id} className="text-sm p-2 bg-muted rounded mb-1 flex items-center gap-2">
                         <AlertTriangle className="w-3 h-3 text-orange-500" />
                         <span>{c.title}</span>
-                        <Badge variant="outline" className="text-[10px] ml-auto">{c.status}</Badge>
+                        <Badge variant="outline" className="text-[10px] ml-auto">{c.complaintStatus}</Badge>
                       </div>
                     ))}
                   </div>
@@ -555,7 +559,7 @@ function ReviewDetailDialog({ id, onClose }: { id: number; onClose: () => void }
                     <p className="text-xs font-medium text-muted-foreground mb-1">Movimentos de viatura ({clientHistory.movements.length})</p>
                     {clientHistory.movements.slice(0, 5).map((m: any) => (
                       <div key={m.id} className="text-sm p-2 bg-muted rounded mb-1">
-                        {m.type} — {new Date(m.createdAt).toLocaleDateString("pt-PT")}
+                        {m.movementType} — {new Date(m.createdAt).toLocaleDateString("pt-PT")}
                       </div>
                     ))}
                   </div>

@@ -2784,7 +2784,7 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       if (data.status === "manually_responded" || data.aiResponse) {
-        (data as any).respondedAt = new Date();
+        (data as any).respondedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
         (data as any).respondedBy = ctx.user.id;
       }
       await updateGoogleReview(id, data);
