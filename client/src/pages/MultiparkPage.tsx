@@ -355,6 +355,7 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                     <th className="p-2">Tipo Recolha/Entrega</th>
                     <th className="p-2">Estado</th>
                     <th className="p-2 text-right">Preço</th>
+                    <th className="p-2 text-right">Extras</th>
                     <th className="p-2">Tipo</th>
                   </tr>
                 </thead>
@@ -365,6 +366,15 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                     const parkName = b.parkName || "—";
                     const parkCity = b.city || "";
                     const isNonValet = (b.parkingType ?? "").toUpperCase() !== "VALET";
+
+                    // Para decidir se é "estimativa" (futuro) ou "real" (passado)
+                    // usa a data relevante ao tipo de página:
+                    // checkin → b.checkIn; checkout → b.checkOut; outros → checkOut.
+                    const relevantDateStr =
+                      actionType === "checkin" ? b.checkIn : b.checkOut;
+                    const relevantDate = relevantDateStr ? new Date(relevantDateStr) : null;
+                    const isFuture = !!relevantDate && relevantDate.getTime() > Date.now();
+                    const hasExtras = b.extrasTotal != null && parseFloat(String(b.extrasTotal)) > 0;
 
                     return (
                       <tr
@@ -391,6 +401,21 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                           </Badge>
                         </td>
                         <td className="p-2 text-right font-medium">{fmtEur(b.totalPrice)}</td>
+                        <td className="p-2 text-right text-xs">
+                          {hasExtras ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="font-medium">{fmtEur(b.extrasTotal)}</span>
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] ${isFuture ? "border-blue-300 bg-blue-50 text-blue-700" : "border-emerald-300 bg-emerald-50 text-emerald-700"}`}
+                              >
+                                {isFuture ? "estim." : "real"}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="p-2 text-xs">
                           {b.parkingType || "—"}
                           {isNonValet && <span className="ml-1 text-red-600 font-semibold">⚠ não-valet</span>}
