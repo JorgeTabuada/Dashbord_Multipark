@@ -602,6 +602,18 @@ export const partnerships = mysqlTable("partnerships", {
 	multiparkPartnerId: varchar({ length: 128 }),
 });
 
+export const partnerAliases = mysqlTable("partner_aliases", {
+	id: int().autoincrement().primaryKey(),
+	partnershipId: int().notNull(),
+	aliasType: mysqlEnum(['multipark_partner_id','payment_method']).notNull(),
+	aliasValue: varchar({ length: 128 }).notNull(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	uniqueIndex("uq_alias").on(table.aliasType, table.aliasValue),
+	index("idx_partner_aliases_partnership").on(table.partnershipId),
+]);
+
 export const payslipHistory = mysqlTable("payslip_history", {
 	id: int().autoincrement().primaryKey(),
 	employeeId: int(),

@@ -22,7 +22,8 @@ export default function PartnerInferPage() {
   const partnersQ = trpc.partnerships.list.useQuery();
 
   const [linkTarget, setLinkTarget] = useState<{
-    multiparkPartnerId: string;
+    aliasType: "multipark_partner_id" | "payment_method";
+    aliasValue: string;
     suggestedName: string;
     bookings: number;
     totalValue: number;
@@ -63,13 +64,13 @@ export default function PartnerInferPage() {
                     <th className="text-left py-2 px-2">Remarks (amostra)</th>
                     <th className="text-right py-2 px-2">Reservas</th>
                     <th className="text-right py-2 px-2">€ Total</th>
-                    <th className="text-left py-2 px-2">PartnerId</th>
+                    <th className="text-left py-2 px-2">Alias</th>
                     <th className="text-right py-2 px-2">Acção</th>
                   </tr>
                 </thead>
                 <tbody>
                   {inferred.map(r => (
-                    <tr key={r.multiparkPartnerId} className="border-b hover:bg-muted/30">
+                    <tr key={`${r.aliasType}:${r.aliasValue}`} className="border-b hover:bg-muted/30">
                       <td className="py-2 px-2 font-medium">
                         {r.linkedPartnershipId ? (
                           <span className="flex items-center gap-1">
@@ -93,7 +94,10 @@ export default function PartnerInferPage() {
                       <td className="py-2 px-2 text-right">{r.bookings}</td>
                       <td className="py-2 px-2 text-right font-medium">{fmtEur(r.totalValue)}</td>
                       <td className="py-2 px-2 font-mono text-[10px] text-muted-foreground">
-                        {r.multiparkPartnerId.slice(0, 16)}…
+                        <Badge variant="secondary" className="text-[9px] mr-1">
+                          {r.aliasType === "multipark_partner_id" ? "ID" : "pgto"}
+                        </Badge>
+                        {r.aliasValue.length > 16 ? r.aliasValue.slice(0, 16) + "…" : r.aliasValue}
                       </td>
                       <td className="py-2 px-2 text-right">
                         {r.linkedPartnershipId ? (
@@ -136,13 +140,19 @@ function LinkDialog({
   onClose,
   onSaved,
 }: {
-  target: { multiparkPartnerId: string; suggestedName: string; bookings: number; totalValue: number };
+  target: {
+    aliasType: "multipark_partner_id" | "payment_method";
+    aliasValue: string;
+    suggestedName: string;
+    bookings: number;
+    totalValue: number;
+  };
   partners: any[];
   onClose: () => void;
   onSaved: (updated: number) => void;
 }) {
   const create = trpc.partnerships.create.useMutation();
-  const link = trpc.partnerships.linkMultiparkPartnerId.useMutation();
+  const addAlias = trpc.partnerships.addAlias.useMutation();
 
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState(target.suggestedName);
@@ -166,9 +176,10 @@ function LinkDialog({
         toast.error("Escolhe ou cria um parceiro");
         return;
       }
-      const result = await link.mutateAsync({
+      const result = await addAlias.mutateAsync({
         partnershipId,
-        multiparkPartnerId: target.multiparkPartnerId,
+        aliasType: target.aliasType,
+        aliasValue: target.aliasValue,
         applyToBookings: true,
       });
       onSaved(result.updated);
@@ -179,15 +190,18 @@ function LinkDialog({
     }
   };
 
+  const typeLabel = target.aliasType === "multipark_partner_id" ? "partnerId" : "paymentMethod";
+
   return (
     <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Associar partnerId a um parceiro</DialogTitle>
+          <DialogTitle>Associar {typeLabel} a um parceiro</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="rounded-md border p-3 bg-muted/40">
-            <div className="font-mono text-xs">{target.multiparkPartnerId}</div>
+            <div className="text-xs text-muted-foreground mb-1">{typeLabel}:</div>
+            <div className="font-mono text-xs">{target.aliasValue}</div>
             <div className="text-xs text-muted-foreground mt-1">
               {target.bookings} reservas · {fmtEur(target.totalValue)} · sugestão: <strong>{target.suggestedName}</strong>
             </div>
@@ -223,7 +237,7 @@ function LinkDialog({
                 <SelectContent>
                   {partners.map((p: any) => (
                     <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name} {p.multiparkPartnerId ? " (já tem ID)" : ""}
+                      {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

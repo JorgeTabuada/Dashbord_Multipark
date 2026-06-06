@@ -57,6 +57,7 @@ import {
   services,
   invoices,
   partnerships,
+  partnerAliases,
   partnershipTransactions,
   partnershipInvoices,
   annualReports,
@@ -2445,13 +2446,16 @@ export async function getPartnerships(filters?: { partnerType?: string; status?:
 }
 
 /**
- * Agrupa reservas com partnerId e infere o nome do parceiro a partir de
- * paymentMethod (mais comum) e remarks (1ª palavra). Devolve agregado por
- * partnerId com totais e nome sugerido. Marca partnerIds já associados a
- * um parceiro nosso.
+ * Inferência de parceiros. Devolve dois tipos de grupos:
+ *   • aliasType="multipark_partner_id" → reservas com partnerId real
+ *   • aliasType="payment_method" → reservas SEM partnerId mas com
+ *     paymentMethod identificador (Parkos, Looking4parking, etc.)
+ * Um parceiro nosso pode ter vários aliases (vários partnerIds + vários
+ * paymentMethods).
  */
 export async function inferPartnersFromBookings(): Promise<Array<{
-  multiparkPartnerId: string;
+  aliasType: "multipark_partner_id" | "payment_method";
+  aliasValue: string;
   suggestedName: string;
   paymentMethod: string | null;
   remarksSample: string | null;
@@ -2462,7 +2466,10 @@ export async function inferPartnersFromBookings(): Promise<Array<{
 }>> {
   const db = await getDb(); if (!db) return [];
 
-  // Buscar campos essenciais e agregar em JS (evita problemas com only_full_group_by)
+  // Buscar TODAS as reservas (com ou sem partnerId) que tenham paymentMethod
+  // ou partnerId — para agrupar de duas formas:
+  //   (A) com partnerId → grupo "multipark_partner_id"
+  //   (B) sem partnerId mas paymentMethod identificador → grupo "payment_method"
   const [rawRows] = await (db as any).execute(sql`
     SELECT
       JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) AS partnerId,
@@ -2470,42 +2477,63 @@ export async function inferPartnersFromBookings(): Promise<Array<{
       remarks,
       totalPrice
     FROM multipark_bookings
-    WHERE rawJson LIKE '%partnerId%'
+    WHERE (rawJson LIKE '%partnerId%' AND JSON_EXTRACT(rawJson, '$.partnerId') IS NOT NULL)
+       OR paymentMethod IS NOT NULL
   `);
 
   type Agg = {
     bookings: number;
     totalValue: number;
-    paymentMethods: Map<string, number>; // paymentMethod → count
+    paymentMethods: Map<string, number>;
     remarksSample: string | null;
   };
-  const byPartner = new Map<string, Agg>();
+  const byPartner = new Map<string, Agg>(); // key = partnerId
+  const byPaymentNoPartner = new Map<string, Agg>(); // key = paymentMethod (só quando partnerId é null)
+
   for (const r of (rawRows as any[])) {
-    const pid: string = r.partnerId;
-    if (!pid) continue;
-    let agg = byPartner.get(pid);
-    if (!agg) {
-      agg = { bookings: 0, totalValue: 0, paymentMethods: new Map(), remarksSample: null };
-      byPartner.set(pid, agg);
-    }
-    agg.bookings++;
+    const pid: string | null = r.partnerId;
     const tp = r.totalPrice ? parseFloat(String(r.totalPrice)) : 0;
-    if (Number.isFinite(tp)) agg.totalValue += tp;
-    if (r.paymentMethod) {
-      agg.paymentMethods.set(r.paymentMethod, (agg.paymentMethods.get(r.paymentMethod) ?? 0) + 1);
+    const tpVal = Number.isFinite(tp) ? tp : 0;
+
+    if (pid) {
+      let agg = byPartner.get(pid);
+      if (!agg) {
+        agg = { bookings: 0, totalValue: 0, paymentMethods: new Map(), remarksSample: null };
+        byPartner.set(pid, agg);
+      }
+      agg.bookings++;
+      agg.totalValue += tpVal;
+      if (r.paymentMethod) {
+        agg.paymentMethods.set(r.paymentMethod, (agg.paymentMethods.get(r.paymentMethod) ?? 0) + 1);
+      }
+      if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
+    } else if (r.paymentMethod) {
+      const key = r.paymentMethod;
+      let agg = byPaymentNoPartner.get(key);
+      if (!agg) {
+        agg = { bookings: 0, totalValue: 0, paymentMethods: new Map(), remarksSample: null };
+        byPaymentNoPartner.set(key, agg);
+      }
+      agg.bookings++;
+      agg.totalValue += tpVal;
+      if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
     }
-    if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
   }
 
-  // Parceiros já associados
-  const partnersByPartnerId = new Map<string, { id: number; name: string }>();
-  const all = await db.select({
-    id: partnerships.id,
-    name: partnerships.name,
-    multiparkPartnerId: partnerships.multiparkPartnerId,
-  }).from(partnerships);
-  for (const p of all) {
-    if (p.multiparkPartnerId) partnersByPartnerId.set(p.multiparkPartnerId, { id: p.id, name: p.name });
+  // Aliases já associados (lista actual em partner_aliases)
+  const aliasIndex = new Map<string, { id: number; name: string }>();
+  const aliases = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasType: partnerAliases.aliasType,
+    aliasValue: partnerAliases.aliasValue,
+  }).from(partnerAliases);
+  const partnersById = new Map<number, string>();
+  const partnersAll = await db.select({ id: partnerships.id, name: partnerships.name }).from(partnerships);
+  for (const p of partnersAll) partnersById.set(p.id, p.name);
+  for (const a of aliases) {
+    const key = `${a.aliasType}:${a.aliasValue}`;
+    const name = partnersById.get(a.partnershipId);
+    if (name) aliasIndex.set(key, { id: a.partnershipId, name });
   }
 
   function firstAlphaToken(s: string | null): string | null {
@@ -2518,16 +2546,32 @@ export async function inferPartnersFromBookings(): Promise<Array<{
     for (const [k, v] of m) if (!best || v > best[1]) best = [k, v];
     return best ? best[0] : null;
   }
-  const GENERIC = /^(online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance|pro_plan|cash|multbanco|sibs)/i;
+  const GENERIC = /^(online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance|pro_plan|cash|multbanco|sibs|transferencia)/i;
 
-  const result = Array.from(byPartner.entries()).map(([pid, agg]) => {
+  type Row = {
+    aliasType: "multipark_partner_id" | "payment_method";
+    aliasValue: string;
+    suggestedName: string;
+    paymentMethod: string | null;
+    remarksSample: string | null;
+    bookings: number;
+    totalValue: number;
+    linkedPartnershipId: number | null;
+    linkedPartnershipName: string | null;
+  };
+
+  const result: Row[] = [];
+
+  // Grupos com partnerId
+  for (const [pid, agg] of byPartner) {
     const top = topPayment(agg.paymentMethods);
     const fromPayment = top && !GENERIC.test(top.trim()) ? top : null;
     const fromRemarks = firstAlphaToken(agg.remarksSample);
     const suggestedName = fromPayment ?? fromRemarks ?? "Desconhecido";
-    const linked = partnersByPartnerId.get(pid);
-    return {
-      multiparkPartnerId: pid,
+    const linked = aliasIndex.get(`multipark_partner_id:${pid}`);
+    result.push({
+      aliasType: "multipark_partner_id",
+      aliasValue: pid,
       suggestedName,
       paymentMethod: top,
       remarksSample: agg.remarksSample,
@@ -2535,10 +2579,85 @@ export async function inferPartnersFromBookings(): Promise<Array<{
       totalValue: Math.round(agg.totalValue * 100) / 100,
       linkedPartnershipId: linked?.id ?? null,
       linkedPartnershipName: linked?.name ?? null,
-    };
-  });
+    });
+  }
+
+  // Grupos só por paymentMethod (sem partnerId), apenas se o paymentMethod
+  // não for genérico (Online, Multibanco, etc.)
+  for (const [pm, agg] of byPaymentNoPartner) {
+    if (GENERIC.test(pm.trim())) continue;
+    const linked = aliasIndex.get(`payment_method:${pm}`);
+    result.push({
+      aliasType: "payment_method",
+      aliasValue: pm,
+      suggestedName: pm,
+      paymentMethod: pm,
+      remarksSample: agg.remarksSample,
+      bookings: agg.bookings,
+      totalValue: Math.round(agg.totalValue * 100) / 100,
+      linkedPartnershipId: linked?.id ?? null,
+      linkedPartnershipName: linked?.name ?? null,
+    });
+  }
+
   result.sort((a, b) => b.bookings - a.bookings);
   return result;
+}
+
+/**
+ * Adiciona um alias (partnerId ou paymentMethod) a uma parceria.
+ * Se applyToBookings, actualiza a coluna campaign das reservas que correspondem:
+ *  - alias_type=multipark_partner_id: reservas com partnerId no rawJson
+ *  - alias_type=payment_method: reservas com paymentMethod = alias_value E
+ *    sem partnerId (para não duplicar com o caso anterior)
+ */
+export async function addPartnerAlias(
+  partnershipId: number,
+  aliasType: "multipark_partner_id" | "payment_method",
+  aliasValue: string,
+  applyToBookings: boolean,
+): Promise<number> {
+  const db = await getDb(); if (!db) return 0;
+
+  // Insert (ignora se já existe — UNIQUE)
+  try {
+    await db.insert(partnerAliases).values({ partnershipId, aliasType, aliasValue });
+  } catch (err: any) {
+    if (!String(err.message).includes("Duplicate")) throw err;
+  }
+
+  if (!applyToBookings) return 0;
+
+  const [p] = await db.select({ name: partnerships.name })
+    .from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  if (!p) return 0;
+
+  if (aliasType === "multipark_partner_id") {
+    const [r] = await (db as any).execute(sql`
+      UPDATE multipark_bookings
+      SET campaign = ${p.name}
+      WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${aliasValue}
+    `);
+    return (r as any).affectedRows ?? 0;
+  } else {
+    const [r] = await (db as any).execute(sql`
+      UPDATE multipark_bookings
+      SET campaign = ${p.name}
+      WHERE paymentMethod = ${aliasValue}
+        AND (rawJson NOT LIKE '%partnerId%' OR JSON_EXTRACT(rawJson, '$.partnerId') IS NULL)
+    `);
+    return (r as any).affectedRows ?? 0;
+  }
+}
+
+export async function listPartnerAliases(partnershipId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(partnerAliases).where(eq(partnerAliases.partnershipId, partnershipId));
+}
+
+export async function deletePartnerAlias(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(partnerAliases).where(eq(partnerAliases.id, id));
 }
 
 /**

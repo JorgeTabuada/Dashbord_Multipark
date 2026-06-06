@@ -216,7 +216,9 @@ import {
   createPartnership,
   getPartnerships,
   inferPartnersFromBookings,
-  linkMultiparkPartnerId,
+  addPartnerAlias,
+  listPartnerAliases,
+  deletePartnerAlias,
   getPartnershipById,
   updatePartnership,
   deletePartnership,
@@ -3433,27 +3435,41 @@ export const appRouter = router({
       return inferPartnersFromBookings();
     }),
 
-    linkMultiparkPartnerId: protectedProcedure
+    addAlias: protectedProcedure
       .input(z.object({
         partnershipId: z.number(),
-        multiparkPartnerId: z.string().min(1).max(128),
+        aliasType: z.enum(["multipark_partner_id", "payment_method"]),
+        aliasValue: z.string().min(1).max(128),
         applyToBookings: z.boolean().default(true),
       }))
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
-        const updated = await linkMultiparkPartnerId(
+        const updated = await addPartnerAlias(
           input.partnershipId,
-          input.multiparkPartnerId,
+          input.aliasType,
+          input.aliasValue,
           input.applyToBookings,
         );
         await logActivity({
           userId: ctx.user.id,
-          action: "link",
+          action: "alias_add",
           entity: "partnership",
           entityId: input.partnershipId,
-          details: `Link partnerId=${input.multiparkPartnerId} (${updated} reservas actualizadas)`,
+          details: `${input.aliasType}=${input.aliasValue} (${updated} reservas actualizadas)`,
         });
         return { updated };
+      }),
+
+    listAliases: protectedProcedure
+      .input(z.object({ partnershipId: z.number() }))
+      .query(({ input }) => listPartnerAliases(input.partnershipId)),
+
+    deleteAlias: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await deletePartnerAlias(input.id);
+        return { success: true };
       }),
 
     // Transactions
