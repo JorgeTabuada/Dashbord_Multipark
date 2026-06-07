@@ -269,6 +269,40 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
           <RefreshCw className={`w-4 h-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
           Atualizar
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={bookings.length === 0}
+          onClick={() => {
+            const headers = ["Reserva","Cliente","Email","Matrícula","Parque","Cidade","Check-in","Check-out","Tipo Recolha/Entrega","Estado","Tipo Parque","Preço","Delivery","Extras","Desconto","Campanha"];
+            const rows = (bookings as any[]).map(b => [
+              b.bookingNumber || b.externalId || "",
+              `${b.clientFirstName || ""} ${b.clientLastName || ""}`.trim().replace(/;/g, ","),
+              (b.clientEmail || "").replace(/;/g, ","),
+              b.licensePlate || "",
+              (b.parkName || "").replace(/;/g, ","),
+              b.city || "",
+              b.checkIn || "",
+              b.checkOut || "",
+              b.deliveryType || "",
+              b.status || "",
+              b.parkingType || "",
+              parseFloat(b.totalPrice || "0").toFixed(2),
+              parseFloat(b.deliveryCharges || "0").toFixed(2),
+              parseFloat(b.extrasTotal || "0").toFixed(2),
+              parseFloat(b.discount || "0").toFixed(2),
+              b.campaign || "",
+            ]);
+            const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+            const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `reservas_${actionType}_${startDate}_${endDate}.csv`; a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <Download className="w-4 h-4 mr-1" /> CSV
+        </Button>
       </div>
 
       {/* Summary cards */}
@@ -348,6 +382,14 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
               )}
             </Badge>
           ))}
+        </div>
+      )}
+
+      {/* Legenda */}
+      {bookings.some((b: any) => (b.parkingType ?? "").toUpperCase() !== "VALET") && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="w-3 h-3 bg-red-50 border border-red-200 rounded" />
+          <span>Reservas sem serviço de valet (tipo de parque diferente de VALET) — atenção operacional</span>
         </div>
       )}
 
@@ -1221,6 +1263,12 @@ function SyncTab() {
   const handleSync = async () => {
     if (!syncFrom || !syncTo) {
       toast.error("Seleciona as datas de início e fim");
+      return;
+    }
+    // Range muito grande? Pede confirmação — a API Multipark cobra por chamada
+    // e períodos longos podem demorar minutos.
+    const days = Math.round((new Date(syncTo).getTime() - new Date(syncFrom).getTime()) / 86_400_000) + 1;
+    if (days > 31 && !confirm(`O período tem ${days} dias. A sincronização vai puxar todas as ações (criação/check-in/check-out/cancelamento) da API e pode demorar vários minutos. Continuar?`)) {
       return;
     }
     try {
