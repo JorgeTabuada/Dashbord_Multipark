@@ -14,7 +14,7 @@ import { useState, useMemo } from "react";
 import {
   AlertTriangle, Plus, Clock, User, Car, Trash2, Pencil,
   BarChart3, AlertCircle, CheckCircle2, ShieldAlert,
-  RefreshCw, Loader2, Bot, MapPin
+  RefreshCw, Loader2, Bot, MapPin, Download,
 } from "lucide-react";
 import BookingSearchField from "@/components/BookingSearchField";
 
@@ -118,6 +118,33 @@ export default function IncidentsPage() {
             <p className="text-muted-foreground">Gestão e análise de ocorrências reportadas</p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={incidents.length === 0}
+              onClick={() => {
+                const headers = ["ID","Data","Tipo","Estado","Gravidade","Matrícula","Condutor","Descrição","Resolução","Resolvido"];
+                const rows = (incidents as any[]).map(i => [
+                  i.id,
+                  i.createdAt ? new Date(i.createdAt).toISOString().slice(0, 16) : "",
+                  TYPE_CONFIG[i.incidentType] ?? i.incidentType,
+                  STATUS_CONFIG[i.status]?.label ?? i.status,
+                  SEVERITY_CONFIG[i.severity]?.label ?? i.severity,
+                  i.vehiclePlate ?? "",
+                  i.employeeId ? (employeeMap.get(i.employeeId) ?? `#${i.employeeId}`) : "",
+                  (i.description ?? "").replace(/[;\n\r]/g, " "),
+                  (i.resolution ?? "").replace(/[;\n\r]/g, " "),
+                  i.resolvedAt ? new Date(i.resolvedAt).toISOString().slice(0, 16) : "",
+                ]);
+                const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+                const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `ocorrencias_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download className="w-4 h-4 mr-2" /> CSV
+            </Button>
             <Button variant="outline" onClick={() => syncMultipark.mutate(undefined)} disabled={syncMultipark.isPending}>
               {syncMultipark.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
               {syncMultipark.isPending ? "A sincronizar..." : "Sincronizar Multipark"}

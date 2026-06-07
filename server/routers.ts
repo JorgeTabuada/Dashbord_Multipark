@@ -3616,7 +3616,9 @@ export const appRouter = router({
       severity: z.enum(["low", "medium", "high", "critical"]),
       description: z.string().min(1),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      // Ocorrências afectam a avaliação dos condutores (pontos negativos) e o
+      // sistema RH de penalizações — só frontoffice+ pode criar.
+      requireRole(ctx.user.role, "frontoffice");
       const id = await createIncident({ ...input, reportedBy: ctx.user.id, status: "open" });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "incident", entityId: id || 0, details: `Ocorrência: ${input.description}` });
       if (input.severity === "critical") {
@@ -3635,7 +3637,7 @@ export const appRouter = router({
       vehiclePlate: z.string().optional(),
       employeeId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       if (data.status === "resolved") {
         (data as any).resolvedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -3647,7 +3649,7 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "super_admin");
       await deleteIncident(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "incident", entityId: input.id });
       return { success: true };
