@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Play, BookOpen, HelpCircle, Gamepad2, GraduationCap, Plus, Trash2, Trophy, CheckCircle, XCircle, Clock, Star, ChevronRight, FileText, Newspaper, RefreshCw } from "lucide-react";
 import { Streamdown } from "streamdown";
 
@@ -362,25 +362,42 @@ function QuizTab() {
   const [playing, setPlaying] = useState(false);
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<{ questionId: number; answer: "A" | "B" | "C" | "D" }[]>([]);
+  // Snapshot baralhado das perguntas, congelado quando arranca o quiz —
+  // evita re-shuffle se a query refetches a meio.
+  const [shuffledQuestions, setShuffledQuestions] = useState<any[]>([]);
   const [result, setResult] = useState<any>(null);
-  const [startTime] = useState(() => Date.now());
+  const [startTime, setStartTime] = useState<number>(() => Date.now());
   const [showCreate, setShowCreate] = useState(false);
   const [qForm, setQForm] = useState({ question: "", optionA: "", optionB: "", optionC: "", optionD: "", correctOption: "A" as "A" | "B" | "C" | "D", explanation: "", difficulty: "medium" as "easy" | "medium" | "hard", points: "10" });
 
-  const { data: questions = [], refetch } = trpc.training.quizQuestions.useQuery({});
+  // Admin precisa de ver correctOption; jogador usa o endpoint que omite a resposta.
+  const { data: adminQuestions = [], refetch: refetchAdmin } = trpc.training.quizQuestions.useQuery({}, { enabled: !!isAdmin });
+  const { data: playerQuestions = [] } = trpc.training.quizQuestionsForPlayer.useQuery({});
+  const questions = isAdmin ? adminQuestions : playerQuestions;
   const { data: ranking = [] } = trpc.training.quizRanking.useQuery();
   const { data: employees = [] } = trpc.rh.list.useQuery();
   const submitQuiz = trpc.training.submitQuiz.useMutation({ onSuccess: (data) => { setResult(data); setPlaying(false); } });
-  const createQ = trpc.training.createQuizQuestion.useMutation({ onSuccess: () => { refetch(); setShowCreate(false); toast.success("Pergunta adicionada"); } });
-  const deleteQ = trpc.training.deleteQuizQuestion.useMutation({ onSuccess: () => { refetch(); toast.success("Pergunta eliminada"); } });
+  const createQ = trpc.training.createQuizQuestion.useMutation({ onSuccess: () => { refetchAdmin(); setShowCreate(false); toast.success("Pergunta adicionada"); } });
+  const deleteQ = trpc.training.deleteQuizQuestion.useMutation({ onSuccess: () => { refetchAdmin(); toast.success("Pergunta eliminada"); } });
 
   const employeeMap = useMemo(() => {
     const m = new Map<number, string>();
-    employees.forEach((e: any) => m.set(e.employee?.id || e.id, e.employee?.fullName || e.fullName || "?"));
+    employees.forEach((e: any) => {
+      if (e.employee?.id) m.set(e.employee.id, e.employee.fullName);
+    });
     return m;
   }, [employees]);
 
-  const shuffledQuestions = useMemo(() => [...questions].sort(() => Math.random() - 0.5).slice(0, 10), [questions, playing]);
+  const startQuiz = () => {
+    if (playerQuestions.length === 0) return;
+    const shuffled = [...playerQuestions].sort(() => Math.random() - 0.5).slice(0, 10);
+    setShuffledQuestions(shuffled);
+    setCurrentQ(0);
+    setAnswers([]);
+    setResult(null);
+    setStartTime(Date.now());
+    setPlaying(true);
+  };
 
   if (result) {
     const pct = result.total > 0 ? Math.round((result.correct / result.total) * 100) : 0;
@@ -427,7 +444,7 @@ function QuizTab() {
                   if (currentQ + 1 < shuffledQuestions.length) {
                     setCurrentQ(currentQ + 1);
                   } else {
-                    submitQuiz.mutate({ employeeId: user?.id || 0, answers: newAnswers, timeSpentSeconds: Math.round((Date.now() - startTime) / 1000) });
+                    submitQuiz.mutate({ answers: newAnswers, timeSpentSeconds: Math.round((Date.now() - startTime) / 1000) });
                   }
                 }}>
                   <span className="font-bold mr-3 text-primary">{o.key}.</span> {o.text}
@@ -447,8 +464,8 @@ function QuizTab() {
           <CardContent className="p-8 text-center space-y-4">
             <Gamepad2 className="w-16 h-16 mx-auto text-primary" />
             <h2 className="text-xl font-bold">Quiz Interativo</h2>
-            <p className="text-muted-foreground">{questions.length} perguntas disponíveis. Responde a 10 perguntas aleatórias e ganha pontos!</p>
-            <Button size="lg" disabled={questions.length === 0} onClick={() => { setPlaying(true); setCurrentQ(0); setAnswers([]); setResult(null); }}>
+            <p className="text-muted-foreground">{playerQuestions.length} perguntas disponíveis. Responde a 10 perguntas aleatórias e ganha pontos!</p>
+            <Button size="lg" disabled={playerQuestions.length === 0} onClick={startQuiz}>
               <Play className="w-4 h-4 mr-2" />Jogar
             </Button>
           </CardContent>
@@ -551,13 +568,64 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
   const [examForm, setExamForm] = useState({ level: "extra" as any, title: "", description: "", passingScore: "70", timeLimitMinutes: "30" });
   const [qForm, setQForm] = useState({ question: "", optionA: "", optionB: "", optionC: "", optionD: "", correctOption: "A" as "A" | "B" | "C" | "D", explanation: "" });
   const { user } = useAuth();
+  const isAdminLocal = user && ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY["admin"];
+
+  // Snapshot das perguntas do exame em curso (evita refetch a meio)
+  const [examQuestionsSnapshot, setExamQuestionsSnapshot] = useState<any[]>([]);
+  // Countdown em segundos (null = sem limite)
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const timeoutFiredRef = useRef(false);
 
   const { data: exams = [], refetch } = trpc.training.careerExams.useQuery();
-  const { data: examQuestions = [], refetch: refetchQ } = trpc.training.careerExamQuestions.useQuery({ examId: selectedExam?.id || 0 }, { enabled: !!selectedExam });
+  // Admin vê correctOption (para gerir); jogador usa endpoint que omite
+  const { data: examQuestionsAdmin = [], refetch: refetchQ } = trpc.training.careerExamQuestions.useQuery(
+    { examId: selectedExam?.id || 0 },
+    { enabled: !!selectedExam && !!isAdminLocal },
+  );
+  const { data: examQuestionsPlayer = [] } = trpc.training.careerExamQuestionsForPlayer.useQuery(
+    { examId: selectedExam?.id || 0 },
+    { enabled: !!selectedExam },
+  );
+  const examQuestions = isAdminLocal ? examQuestionsAdmin : examQuestionsPlayer;
+  const { data: myAttempts = [] } = trpc.training.myCareerExamAttempts.useQuery();
   const createExam = trpc.training.createCareerExam.useMutation({ onSuccess: () => { refetch(); setShowCreate(false); toast.success("Exame criado"); } });
   const createExamQ = trpc.training.createCareerExamQuestion.useMutation({ onSuccess: () => { refetchQ(); setShowAddQ(false); toast.success("Pergunta adicionada"); } });
-  const submitExam = trpc.training.submitCareerExam.useMutation({ onSuccess: (data) => { setExamResult(data); setTaking(false); } });
+  const submitExam = trpc.training.submitCareerExam.useMutation({ onSuccess: (data) => { setExamResult(data); setTaking(false); setRemainingSeconds(null); } });
   const deleteExam = trpc.training.deleteCareerExam.useMutation({ onSuccess: () => { refetch(); setSelectedExam(null); toast.success("Exame eliminado"); } });
+
+  // Tick do countdown
+  useEffect(() => {
+    if (!taking || remainingSeconds == null) return;
+    if (remainingSeconds <= 0) {
+      if (!timeoutFiredRef.current) {
+        timeoutFiredRef.current = true;
+        toast.error("Tempo esgotado — a submeter respostas dadas");
+        submitExam.mutate({
+          examId: selectedExam.id,
+          answers,
+          timeSpentSeconds: Math.round((Date.now() - startTime) / 1000),
+        });
+      }
+      return;
+    }
+    const t = setTimeout(() => setRemainingSeconds(remainingSeconds - 1), 1000);
+    return () => clearTimeout(t);
+  }, [taking, remainingSeconds]);
+
+  const startExam = () => {
+    if (examQuestionsPlayer.length === 0) return;
+    setExamQuestionsSnapshot(examQuestionsPlayer);
+    setTaking(true);
+    setCurrentQ(0);
+    setAnswers([]);
+    setStartTime(Date.now());
+    timeoutFiredRef.current = false;
+    if (selectedExam?.timeLimitMinutes) {
+      setRemainingSeconds(selectedExam.timeLimitMinutes * 60);
+    } else {
+      setRemainingSeconds(null);
+    }
+  };
 
   const levelLabels: Record<string, string> = { extra: "Extra", condutor: "Condutor", senior: "Sénior", team_leader: "Team Leader", supervisor: "Supervisor" };
   const levelColors: Record<string, string> = { extra: "bg-gray-100 text-gray-800", condutor: "bg-blue-100 text-blue-800", senior: "bg-green-100 text-green-800", team_leader: "bg-purple-100 text-purple-800", supervisor: "bg-amber-100 text-amber-800" };
@@ -580,8 +648,8 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
     );
   }
 
-  if (taking && examQuestions.length > 0) {
-    const q = examQuestions[currentQ];
+  if (taking && examQuestionsSnapshot.length > 0) {
+    const q = examQuestionsSnapshot[currentQ];
     if (!q) return null;
     const options = [
       { key: "A" as const, text: q.optionA },
@@ -589,13 +657,28 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
       { key: "C" as const, text: q.optionC },
       { key: "D" as const, text: q.optionD },
     ];
+    const timerColor = remainingSeconds == null
+      ? "bg-gray-100 text-gray-800"
+      : remainingSeconds <= 60
+        ? "bg-red-100 text-red-700"
+        : remainingSeconds <= 300
+          ? "bg-amber-100 text-amber-700"
+          : "bg-blue-100 text-blue-700";
     return (
       <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <Badge className={levelColors[selectedExam?.level] || ""}>{levelLabels[selectedExam?.level] || ""}</Badge>
-          <Badge variant="secondary">Pergunta {currentQ + 1} de {examQuestions.length}</Badge>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Badge className={levelColors[selectedExam?.level] || ""}>{levelLabels[selectedExam?.level] || ""}</Badge>
+            <Badge variant="secondary">Pergunta {currentQ + 1} de {examQuestionsSnapshot.length}</Badge>
+          </div>
+          {remainingSeconds != null && (
+            <Badge className={timerColor}>
+              <Clock className="w-3 h-3 mr-1" />
+              {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, "0")}
+            </Badge>
+          )}
         </div>
-        <Progress value={((currentQ) / examQuestions.length) * 100} className="h-2" />
+        <Progress value={((currentQ) / examQuestionsSnapshot.length) * 100} className="h-2" />
         <Card>
           <CardContent className="p-6 space-y-4">
             <h3 className="text-lg font-semibold">{q.question}</h3>
@@ -604,10 +687,10 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
                 <Button key={o.key} variant="outline" className="justify-start text-left h-auto py-3 px-4" onClick={() => {
                   const newAnswers = [...answers, { questionId: q.id, answer: o.key }];
                   setAnswers(newAnswers);
-                  if (currentQ + 1 < examQuestions.length) {
+                  if (currentQ + 1 < examQuestionsSnapshot.length) {
                     setCurrentQ(currentQ + 1);
                   } else {
-                    submitExam.mutate({ examId: selectedExam.id, employeeId: user?.id || 0, answers: newAnswers, timeSpentSeconds: Math.round((Date.now() - startTime) / 1000) });
+                    submitExam.mutate({ examId: selectedExam.id, answers: newAnswers, timeSpentSeconds: Math.round((Date.now() - startTime) / 1000) });
                   }
                 }}>
                   <span className="font-bold mr-3 text-primary">{o.key}.</span> {o.text}
@@ -639,13 +722,31 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
             {selectedExam.description && <p className="text-muted-foreground mt-2">{selectedExam.description}</p>}
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Button size="lg" disabled={examQuestions.length === 0} onClick={() => { setTaking(true); setCurrentQ(0); setAnswers([]); setStartTime(Date.now()); }}>
-                <GraduationCap className="w-4 h-4 mr-2" />Iniciar Exame ({examQuestions.length} perguntas)
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button size="lg" disabled={examQuestionsPlayer.length === 0} onClick={startExam}>
+                <GraduationCap className="w-4 h-4 mr-2" />Iniciar Exame ({examQuestionsPlayer.length} perguntas)
               </Button>
               {isAdmin && <Button variant="outline" onClick={() => setShowAddQ(true)}><Plus className="w-4 h-4 mr-1" />Adicionar Pergunta</Button>}
               {isAdmin && <Button variant="destructive" size="sm" onClick={() => deleteExam.mutate({ id: selectedExam.id })}><Trash2 className="w-4 h-4 mr-1" />Eliminar Exame</Button>}
             </div>
+
+            {/* Histórico das minhas tentativas neste exame */}
+            {(() => {
+              const minhas = myAttempts.filter((a: any) => a.examId === selectedExam.id);
+              if (minhas.length === 0) return null;
+              return (
+                <div className="border rounded-md p-3 bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-2">As tuas tentativas anteriores</p>
+                  <div className="flex flex-wrap gap-2">
+                    {minhas.slice(0, 5).map((a: any) => (
+                      <Badge key={a.id} className={a.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>
+                        {a.score}% {a.passed ? "✓" : "✗"} · {new Date(a.createdAt).toLocaleDateString("pt-PT")}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {isAdmin && examQuestions.length > 0 && (
               <div className="space-y-2 mt-4">
                 <h4 className="font-semibold text-sm text-muted-foreground">Perguntas ({examQuestions.length})</h4>

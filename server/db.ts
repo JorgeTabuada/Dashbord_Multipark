@@ -2201,6 +2201,29 @@ export async function getQuizQuestions(categoryId?: number) {
   return db.select().from(quizQuestions).where(conditions.length ? and(...conditions) : undefined);
 }
 
+/** Versão pública: nunca devolve a resposta correcta nem a explicação.
+ *  Usar nos players (jogadores) para evitar que possam fazer fetch direto
+ *  à API e ver a opção correcta. */
+export async function getQuizQuestionsForPlayer(categoryId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = categoryId ? [eq(quizQuestions.categoryId, categoryId)] : [];
+  return db
+    .select({
+      id: quizQuestions.id,
+      categoryId: quizQuestions.categoryId,
+      question: quizQuestions.question,
+      optionA: quizQuestions.optionA,
+      optionB: quizQuestions.optionB,
+      optionC: quizQuestions.optionC,
+      optionD: quizQuestions.optionD,
+      difficulty: quizQuestions.difficulty,
+      points: quizQuestions.points,
+    })
+    .from(quizQuestions)
+    .where(conditions.length ? and(...conditions) : undefined);
+}
+
 export async function createQuizQuestion(data: { categoryId?: number; question: string; optionA: string; optionB: string; optionC: string; optionD: string; correctOption: "A" | "B" | "C" | "D"; explanation?: string; difficulty?: "easy" | "medium" | "hard"; points?: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -2249,6 +2272,25 @@ export async function getCareerExamQuestions(examId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
+}
+
+/** Versão para o jogador — sem correctOption e sem explicação. */
+export async function getCareerExamQuestionsForPlayer(examId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: careerExamQuestions.id,
+      examId: careerExamQuestions.examId,
+      question: careerExamQuestions.question,
+      optionA: careerExamQuestions.optionA,
+      optionB: careerExamQuestions.optionB,
+      optionC: careerExamQuestions.optionC,
+      optionD: careerExamQuestions.optionD,
+      points: careerExamQuestions.points,
+    })
+    .from(careerExamQuestions)
+    .where(eq(careerExamQuestions.examId, examId));
 }
 
 export async function createCareerExamQuestion(data: { examId: number; question: string; optionA: string; optionB: string; optionC: string; optionD: string; correctOption: "A" | "B" | "C" | "D"; explanation?: string; points?: number }) {
