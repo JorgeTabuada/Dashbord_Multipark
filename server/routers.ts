@@ -1239,10 +1239,21 @@ export const appRouter = router({
 
   // ── LOGSS ───────────────────────────────────────────────────────────────────────────────────
   logs: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "super_admin");
-      return getActivityLogs(200);
-    }),
+    list: protectedProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(2000).optional(),
+        entity: z.string().optional(),
+        action: z.string().optional(),
+        userId: z.number().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        return getActivityLogs(input?.limit ?? 500, {
+          entity: input?.entity,
+          action: input?.action,
+          userId: input?.userId,
+        });
+      }),
   }),
 
   // ── RH ───────────────────────────────────────────────────────────────────────────────────────

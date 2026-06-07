@@ -538,15 +538,20 @@ export async function logActivity(data: InsertActivityLog) {
   await db.insert(activityLogs).values(data);
 }
 
-export async function getActivityLogs(limit = 100) {
+export async function getActivityLogs(limit = 100, filters: { entity?: string; action?: string; userId?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
+  const conds: any[] = [];
+  if (filters.entity) conds.push(eq(activityLogs.entity, filters.entity));
+  if (filters.action) conds.push(eq(activityLogs.action, filters.action));
+  if (filters.userId) conds.push(eq(activityLogs.userId, filters.userId));
   return db
     .select({ log: activityLogs, user: users })
     .from(activityLogs)
     .leftJoin(users, eq(activityLogs.userId, users.id))
+    .where(conds.length > 0 ? and(...conds) : undefined)
     .orderBy(desc(activityLogs.createdAt))
-    .limit(limit);
+    .limit(Math.min(Math.max(limit, 1), 2000));
 }
 
 // ─── RH: EMPLOYEES ────────────────────────────────────────────────────────────
