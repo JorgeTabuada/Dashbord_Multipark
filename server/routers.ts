@@ -406,6 +406,55 @@ export const appRouter = router({
       });
       return report;
     }),
+
+    // Limpa duplicados em multipark_bookings e reaplica UNIQUE constraint.
+    // Devolve também stats antes/depois para feedback ao operador.
+    fixMultiparkDuplicates: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { getDb } = await import("./db");
+      const { MIGRATION_0045_STATEMENTS, IDEMPOTENT_ERROR_CODES_0045 } = await import("./migrations/migration_0045");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+      // Stats antes
+      const [beforeAll] = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
+      const [beforeUnique] = await db.execute(sql`SELECT COUNT(DISTINCT externalId) AS u FROM multipark_bookings`) as any;
+      const totalBefore = Number(beforeAll[0]?.total ?? beforeAll?.total ?? 0);
+      const uniqueBefore = Number(beforeUnique[0]?.u ?? beforeUnique?.u ?? 0);
+
+      let ok = 0;
+      let skipped = 0;
+      let failed = 0;
+      const errors: string[] = [];
+      for (const stmt of MIGRATION_0045_STATEMENTS) {
+        try {
+          await db.execute(sql.raw(stmt));
+          ok += 1;
+        } catch (err: any) {
+          if (err?.code && IDEMPOTENT_ERROR_CODES_0045.has(err.code)) {
+            skipped += 1;
+          } else {
+            failed += 1;
+            errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+          }
+        }
+      }
+
+      // Stats depois
+      const [afterAll] = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
+      const totalAfter = Number(afterAll[0]?.total ?? afterAll?.total ?? 0);
+      const deleted = totalBefore - totalAfter;
+
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0045_fix_dupes: deleted=${deleted} before=${totalBefore} after=${totalAfter} unique_before=${uniqueBefore} ok=${ok} skipped=${skipped} failed=${failed}`,
+      });
+
+      return { totalBefore, uniqueBefore, totalAfter, deleted, ok, skipped, failed, errors };
+    }),
   }),
 
   // ── AUTH ────────────────────────────────────────────────────────────────────
