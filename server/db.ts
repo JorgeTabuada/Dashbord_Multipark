@@ -798,6 +798,265 @@ export async function clearPenalty(id: number, clearedById: number) {
     .where(eq(employeePenalties.id, id));
 }
 
+/** Levanta bloqueio de login de um colaborador (apaga loginBlocked + flag) */
+export async function unblockEmployeeLogin(employeeId: number, clearedById: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(employees)
+    .set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null })
+    .where(eq(employees.id, employeeId));
+  await logActivity({
+    userId: clearedById,
+    action: "unblock",
+    entity: "employee",
+    entityId: employeeId,
+    details: "Login desbloqueado",
+  });
+}
+
+/** Verifica conformidade de documentos para um colaborador.
+ *
+ * Regras (apenas para position=extra):
+ *  - 14 dias após contractStart (ou createdAt) com docs obrigatórios em falta:
+ *    grava docsWarningAt (aviso na primeira vez)
+ *  - 21 dias após contractStart: bloqueia login (loginBlocked = 1)
+ *
+ * Retorna o estado actual: {blocked, warning, missingDocs, daysSinceStart}.
+ */
+export async function checkExtraDocsCompliance(employeeId: number): Promise<{
+  blocked: boolean;
+  warning: boolean;
+  missingDocs: string[];
+  daysSinceStart: number;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      position: employees.position,
+      contractStart: employees.contractStart,
+      createdAt: employees.createdAt,
+      loginBlocked: employees.loginBlocked,
+      docsWarningAt: employees.docsWarningAt,
+    })
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1);
+  if (!emp || emp.position !== "extra") return null;
+
+  const startDate = new Date(emp.contractStart ?? emp.createdAt ?? new Date());
+  const daysSinceStart = Math.floor((Date.now() - startDate.getTime()) / 86_400_000);
+
+  const checklist = await getDocumentChecklistForEmployee(employeeId);
+  const missingDocs = checklist.filter(c => !c.present).map(c => c.docType);
+
+  // Sem nada em falta? Levanta tudo (caso já estivesse marcado).
+  if (missingDocs.length === 0) {
+    if (emp.loginBlocked || emp.docsWarningAt) {
+      await db.update(employees)
+        .set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null })
+        .where(eq(employees.id, employeeId));
+    }
+    return { blocked: false, warning: false, missingDocs: [], daysSinceStart };
+  }
+
+  // +21 dias → bloqueia
+  if (daysSinceStart >= 21) {
+    if (!emp.loginBlocked) {
+      await db.update(employees)
+        .set({
+          loginBlocked: 1,
+          loginBlockedReason: `Documentos obrigatórios em falta há ${daysSinceStart} dias: ${missingDocs.join(", ")}`,
+        })
+        .where(eq(employees.id, employeeId));
+    }
+    return { blocked: true, warning: true, missingDocs, daysSinceStart };
+  }
+
+  // +14 dias → avisa (apenas se ainda não foi avisado)
+  if (daysSinceStart >= 14 && !emp.docsWarningAt) {
+    await db.update(employees)
+      .set({ docsWarningAt: toMysqlDateTime(new Date()) })
+      .where(eq(employees.id, employeeId));
+    return { blocked: false, warning: true, missingDocs, daysSinceStart };
+  }
+
+  return {
+    blocked: Boolean(emp.loginBlocked),
+    warning: Boolean(emp.docsWarningAt),
+    missingDocs,
+    daysSinceStart,
+  };
+}
+
+/** Resumo agregado por colaborador para o dashboard RH:
+ *  - A receber este mês (bruto + estimativa líquida)
+ *  - Pago nos últimos N meses
+ *  - Total de horas no período
+ *  - Penalizações abertas
+ *
+ *  Devolve uma linha por colaborador activo. Não filtra por projecto
+ *  (filtragem em client se necessário).
+ */
+export async function getRhDashboardSummary(year: number, month: number, monthsLookback: number = 3) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Payroll do mês actual
+  const currentPayroll = await getPayrollData(year, month);
+
+  // Payroll dos N meses anteriores em paralelo
+  const lookback: Array<{ year: number; month: number }> = [];
+  for (let i = 1; i <= monthsLookback; i++) {
+    let m = month - i;
+    let y = year;
+    while (m < 1) { m += 12; y -= 1; }
+    lookback.push({ year: y, month: m });
+  }
+  const previousMonths = await Promise.all(
+    lookback.map(({ year: y, month: m }) => getPayrollData(y, m).then(rows => ({ y, m, rows }))),
+  );
+
+  // Penalizações abertas por empId
+  const penaltiesByEmp = await getAllOpenPenaltiesByEmployee();
+
+  // Agrega
+  const out: any[] = [];
+  for (const row of currentPayroll) {
+    const empId = row.employeeId;
+    const history = previousMonths.map(({ y, m, rows }) => {
+      const r = rows.find((x: any) => x.employeeId === empId);
+      return {
+        year: y,
+        month: m,
+        totalHours: r?.totalHours ?? 0,
+        totalPayment: r?.totalPayment ?? 0,
+        netEstimate: r?.netEstimate ?? 0,
+      };
+    });
+    const totalReceived = history.reduce((s, h) => s + h.totalPayment, 0);
+    const totalHoursLookback = history.reduce((s, h) => s + h.totalHours, 0);
+    const avgPerHour = totalHoursLookback > 0 ? totalReceived / totalHoursLookback : 0;
+    const openPoints = penaltiesByEmp.get(empId) ?? 0;
+    out.push({
+      employeeId: empId,
+      fullName: row.fullName,
+      position: row.position,
+      isExtra: row.isExtra,
+      department: row.department,
+      projectName: row.projectName,
+      currentMonth: {
+        totalHours: row.totalHours,
+        daysWorked: row.daysWorked,
+        totalPayment: row.totalPayment,
+        netEstimate: row.netEstimate,
+      },
+      history,
+      totalReceivedLookback: Math.round(totalReceived * 100) / 100,
+      avgPerHourLookback: Math.round(avgPerHour * 100) / 100,
+      openPenaltyPoints: openPoints,
+      severity: openPoints >= 3 ? "red" : openPoints >= 1 ? "yellow" : "ok",
+    });
+  }
+  return out;
+}
+
+/** Cria penalizações para extras que estavam escalados num dia e não picaram
+ *  o ponto. Idempotente: usa relatedId = extras_dia_assignment.id e ignora
+ *  se já existe penalty para o mesmo assignment. Bloqueia ao 3º ponto aberto.
+ *
+ *  Devolve um report {scanned, created, blocked[]}.
+ */
+export async function processExtraDiaNoShows(dateStr: string): Promise<{
+  scanned: number;
+  created: number;
+  blocked: number[];
+}> {
+  const db = await getDb();
+  if (!db) return { scanned: 0, created: 0, blocked: [] };
+
+  const rows = await db
+    .select({
+      id: extrasDiaAssignments.id,
+      employeeId: extrasDiaAssignments.employeeId,
+      personName: extrasDiaAssignments.personName,
+    })
+    .from(extrasDiaAssignments)
+    .where(
+      and(
+        eq(extrasDiaAssignments.assignmentDate, dateStr),
+        eq(extrasDiaAssignments.isTeamLeader, 0),
+        isNotNull(extrasDiaAssignments.employeeId),
+      ),
+    );
+
+  let created = 0;
+  const affected = new Set<number>();
+  for (const r of rows) {
+    if (r.employeeId == null) continue;
+    // Já tem penalty para este assignment?
+    const [existing] = await db
+      .select({ id: employeePenalties.id })
+      .from(employeePenalties)
+      .where(and(
+        eq(employeePenalties.employeeId, r.employeeId),
+        eq(employeePenalties.reason, "no_show_extra_dia"),
+        eq(employeePenalties.relatedId, r.id),
+      ))
+      .limit(1);
+    if (existing) continue;
+
+    // Picou ponto algum momento desse dia?
+    const start = new Date(`${dateStr}T00:00:00`);
+    const end = new Date(`${dateStr}T23:59:59`);
+    const checkIns = await db
+      .select({ id: timeRecords.id })
+      .from(timeRecords)
+      .where(and(
+        eq(timeRecords.employeeId, r.employeeId),
+        eq(timeRecords.type, "check_in"),
+        gte(timeRecords.recordedAt, toMysqlDateTime(start)),
+        lte(timeRecords.recordedAt, toMysqlDateTime(end)),
+      ))
+      .limit(1);
+    if (checkIns.length > 0) continue;
+
+    await db.insert(employeePenalties).values({
+      employeeId: r.employeeId,
+      reason: "no_show_extra_dia",
+      severity: "penalty",
+      points: 1,
+      relatedId: r.id,
+      notes: `Faltou ao extras-dia em ${dateStr} (${r.personName})`,
+    });
+    created += 1;
+    affected.add(r.employeeId);
+  }
+
+  // Verifica quem chegou a 3+ pontos abertos e bloqueia
+  const blocked: number[] = [];
+  for (const empId of affected) {
+    const [agg] = await db
+      .select({ total: sql<number>`COALESCE(SUM(${employeePenalties.points}), 0)` })
+      .from(employeePenalties)
+      .where(and(eq(employeePenalties.employeeId, empId), isNull(employeePenalties.clearedAt)));
+    const points = Number(agg?.total ?? 0);
+    if (points >= 3) {
+      await db.update(employees)
+        .set({
+          loginBlocked: 1,
+          loginBlockedReason: `${points} faltas em extras-dia sem aviso. Contacta o supervisor.`,
+        })
+        .where(eq(employees.id, empId));
+      blocked.push(empId);
+    }
+  }
+
+  return { scanned: rows.length, created, blocked };
+}
+
 export async function deleteEmployee(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

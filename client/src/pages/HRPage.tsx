@@ -990,6 +990,179 @@ function SchedulesTab({ employeeId }: { employeeId: number }) {
   );
 }
 
+// ─── RESUMO DO MÊS — horas + valor a receber ─────────────────────────────────
+function MyMonthSummaryCard({ employeeId }: { employeeId: number }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { data, isLoading } = trpc.rh.myMonthSummary.useQuery({ employeeId, year, month });
+
+  const fmt = (v: number | null | undefined) =>
+    new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(Number(v ?? 0));
+
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Wallet className="w-4 h-4" /> Resumo do mês
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Select value={String(month)} onValueChange={v => setMonth(parseInt(v))}>
+              <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MONTH_NAMES.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={String(year)} onValueChange={v => setYear(parseInt(v))}>
+              <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">A calcular...</p>
+        ) : !data ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Sem dados para este mês</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">Horas</p>
+              <p className="text-lg font-bold">{fmt(0).replace("0,00 €", "")}{Number(data.totalHours).toFixed(1)}h</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">Dias</p>
+              <p className="text-lg font-bold">{data.daysWorked}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">€/hora</p>
+              <p className="text-lg font-bold">{fmt(data.hourlyRate)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">A receber (bruto)</p>
+              <p className="text-lg font-bold text-primary">{fmt(data.totalPayment)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-amber-700 uppercase">Líquido est.</p>
+              <p className="text-lg font-bold text-amber-700">{fmt(data.netEstimate)}</p>
+              <p className="text-[9px] text-amber-700">TSU 11% + IRS 15%</p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── ALERTAS: docs em falta, penalizações, bloqueio ──────────────────────────
+function EmployeeAlertsCard({ employeeId }: { employeeId: number }) {
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
+  const { data: docsStatus } = trpc.rh.checkDocs.useQuery({ employeeId });
+  const { data: penalties = [] } = trpc.rh.penalties.list.useQuery({ employeeId });
+  const { data: emp } = trpc.rh.byId.useQuery({ id: employeeId });
+
+  const unblock = trpc.rh.unblock.useMutation({
+    onSuccess: () => { utils.rh.byId.invalidate({ id: employeeId }); utils.auth.me.invalidate(); toast.success("Login desbloqueado"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const clearPenalty = trpc.rh.penalties.clear.useMutation({
+    onSuccess: () => { utils.rh.penalties.list.invalidate({ employeeId }); toast.success("Penalização levantada"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const isSupervisor = user?.role && ["supervisor", "admin", "super_admin"].includes(user.role);
+  const isBlocked = Boolean(emp?.employee?.loginBlocked);
+  const totalPoints = penalties.reduce((s, p) => s + Number(p.points ?? 0), 0);
+
+  if (!docsStatus?.warning && penalties.length === 0 && !isBlocked) return null;
+
+  return (
+    <div className="space-y-2">
+      {isBlocked && (
+        <Card className="border-red-300 bg-red-50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-red-900">Login bloqueado</p>
+              <p className="text-sm text-red-800">{emp?.employee?.loginBlockedReason ?? "—"}</p>
+            </div>
+            {isSupervisor && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={unblock.isPending}
+                onClick={() => unblock.mutate({ employeeId })}
+              >
+                Desbloquear
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {docsStatus?.warning && !isBlocked && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-amber-900">
+                Documentos em falta há {docsStatus.daysSinceStart} dias
+              </p>
+              <p className="text-sm text-amber-800">
+                Faltam: {docsStatus.missingDocs.map(d => DOC_LABELS[d as DocType] ?? d).join(", ")}.
+                {docsStatus.daysSinceStart >= 14 && docsStatus.daysSinceStart < 21 && " Bloqueio aos 21 dias."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {penalties.length > 0 && (
+        <Card className={`border ${totalPoints >= 3 ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              {totalPoints} ponto{totalPoints > 1 ? "s" : ""} de penalização aberto{totalPoints > 1 ? "s" : ""}
+              {totalPoints >= 3 && <Badge variant="destructive" className="text-xs">Bloqueia escalas</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              {penalties.slice(0, 5).map((p) => (
+                <div key={p.id} className="flex items-center justify-between text-sm border-b last:border-0 py-1.5">
+                  <div>
+                    <span className="font-medium">{p.reason.replace(/_/g, " ")}</span>
+                    {p.notes && <span className="text-xs text-muted-foreground ml-2">{p.notes}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">{p.points} pt</Badge>
+                    {isSupervisor && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-xs"
+                        disabled={clearPenalty.isPending}
+                        onClick={() => clearPenalty.mutate({ id: p.id })}
+                      >
+                        Levantar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── EMPLOYEE DETAIL ──────────────────────────────────────────────────────────
 function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: () => void }) {
   const utils = trpc.useUtils();
@@ -1101,6 +1274,12 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
           </div>
         )}
       </div>
+
+      {/* Resumo do mês actual: horas, dias, bruto e estimativa líquido */}
+      <MyMonthSummaryCard employeeId={employeeId} />
+
+      {/* Alertas (docs, penalizações, bloqueio) */}
+      <EmployeeAlertsCard employeeId={employeeId} />
 
       {/* Profile card — VIEW MODE */}
       {!editing ? (

@@ -27,6 +27,16 @@ import {
   updateUserRole,
   createManualUser,
   getUserByEmail,
+  checkExtraDocsCompliance,
+  processExtraDiaNoShows,
+  getOpenPenalties,
+  clearPenalty,
+  unblockEmployeeLogin,
+  getEmployeeLeaves,
+  createEmployeeLeave,
+  deleteEmployeeLeave,
+  getEmployeeSalaryHistory,
+  getRhDashboardSummary,
   updateUser,
   toggleUserActive,
   getUserById,
@@ -398,7 +408,33 @@ export const appRouter = router({
 
   // ── AUTH ────────────────────────────────────────────────────────────────────
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      const u = opts.ctx.user;
+      if (!u) return u;
+      // Se houver ficha de colaborador, devolve também o estado dos docs
+      // e bloqueio. Lazy check para extras: actualiza flags se passou tempo.
+      try {
+        const emp = await getEmployeeByUserId(u.id);
+        if (!emp) return { ...u, employee: null, docsStatus: null };
+        let docsStatus: { blocked: boolean; warning: boolean; missingDocs: string[]; daysSinceStart: number } | null = null;
+        if (emp.employee.position === "extra") {
+          docsStatus = await checkExtraDocsCompliance(emp.employee.id);
+        }
+        return {
+          ...u,
+          employee: {
+            id: emp.employee.id,
+            fullName: emp.employee.fullName,
+            position: emp.employee.position,
+            loginBlocked: Boolean(emp.employee.loginBlocked),
+            loginBlockedReason: emp.employee.loginBlockedReason,
+          },
+          docsStatus,
+        };
+      } catch {
+        return u;
+      }
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -1214,6 +1250,51 @@ export const appRouter = router({
       return getEmployeeByUserId(ctx.user.id);
     }),
 
+    // Resumo do mês actual para o próprio colaborador: horas + valor a receber.
+    // Admin pode ver de outros passando employeeId; o próprio só vê o seu.
+    myMonthSummary: protectedProcedure
+      .input(z.object({ employeeId: z.number().optional(), year: z.number().optional(), month: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        let employeeId = input?.employeeId;
+        if (!employeeId) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me) throw new TRPCError({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
+          employeeId = me.employee.id;
+        }
+        // Restringe: se não és admin, só te vês a ti próprio
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== employeeId) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+          }
+        }
+        const now = new Date();
+        const year = input?.year ?? now.getFullYear();
+        const month = input?.month ?? (now.getMonth() + 1);
+        const payroll = await getPayrollData(year, month);
+        const row = payroll.find((r: any) => r.employeeId === employeeId);
+        if (!row) return null;
+        return {
+          year,
+          month,
+          fullName: row.fullName,
+          isExtra: row.isExtra,
+          totalHours: row.totalHours,
+          daysWorked: row.daysWorked,
+          hourlyRate: row.hourlyRate,
+          baseSalary: row.baseSalary,
+          extraPayment: row.extraPayment,
+          overtimePayment: row.overtimePayment,
+          nightPayment: row.nightPayment,
+          weekendPayment: row.weekendPayment,
+          mealAllowance: row.mealAllowance,
+          totalPayment: row.totalPayment,
+          tsuEmployee: row.tsuEmployee,
+          irsEstimate: row.irsEstimate,
+          netEstimate: row.netEstimate,
+        };
+      }),
+
     // ── ROSTER MÍNIMO ──────────────────────────────────────────────────────────────────────────
     // Lista pública (id + fullName) para selectors em qualquer página
     // (atribuir responsáveis, condutores envolvidos, etc.). Sem requireRole
@@ -1739,6 +1820,116 @@ export const appRouter = router({
           content: `A folha de ordenados de ${monthName} ${input.year} foi gerada e est\u00e1 pronta para enviar ao contabilista (${input.email}).\n\nLink do PDF: ${url}`,
         });
         return { url, email: input.email, monthName, year: input.year };
+      }),
+
+    // ── FÉRIAS / BAIXAS ────────────────────────────────────────────────────
+    leaves: router({
+      list: protectedProcedure
+        .input(z.object({ employeeId: z.number(), year: z.number().optional() }))
+        .query(async ({ ctx, input }) => {
+          if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+            const me = await getEmployeeByUserId(ctx.user.id);
+            if (!me || me.employee.id !== input.employeeId) throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+          }
+          return getEmployeeLeaves(input.employeeId, input.year);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          employeeId: z.number(),
+          leaveType: z.enum(["vacation", "sick", "unpaid", "other"]),
+          fromDate: z.string(),
+          toDate: z.string(),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await createEmployeeLeave({ ...input, createdById: ctx.user.id });
+          await logActivity({ userId: ctx.user.id, action: "create", entity: "employee_leave", entityId: input.employeeId, details: `${input.leaveType} ${input.fromDate}→${input.toDate}` });
+          return { success: true };
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          await deleteEmployeeLeave(input.id);
+          return { success: true };
+        }),
+    }),
+
+    // ── HISTÓRICO SALARIAL ─────────────────────────────────────────────────
+    salaryHistory: protectedProcedure
+      .input(z.object({ employeeId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+        }
+        return getEmployeeSalaryHistory(input.employeeId);
+      }),
+
+    // ── PENALIZAÇÕES ───────────────────────────────────────────────────────
+    penalties: router({
+      list: protectedProcedure
+        .input(z.object({ employeeId: z.number() }))
+        .query(async ({ ctx, input }) => {
+          if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+            const me = await getEmployeeByUserId(ctx.user.id);
+            if (!me || me.employee.id !== input.employeeId) throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+          }
+          return getOpenPenalties(input.employeeId);
+        }),
+      clear: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "supervisor");
+          await clearPenalty(input.id, ctx.user.id);
+          await logActivity({ userId: ctx.user.id, action: "clear", entity: "employee_penalty", entityId: input.id });
+          return { success: true };
+        }),
+      processNoShows: protectedProcedure
+        .input(z.object({ date: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const report = await processExtraDiaNoShows(input.date);
+          await logActivity({ userId: ctx.user.id, action: "process_noshows", entity: "extras_dia", details: `${input.date}: ${report.created} penalties` });
+          return report;
+        }),
+    }),
+
+    // ── BLOQUEIO LOGIN ─────────────────────────────────────────────────────
+    unblock: protectedProcedure
+      .input(z.object({ employeeId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "supervisor");
+        await unblockEmployeeLogin(input.employeeId, ctx.user.id);
+        return { success: true };
+      }),
+
+    checkDocs: protectedProcedure
+      .input(z.object({ employeeId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+        }
+        return checkExtraDocsCompliance(input.employeeId);
+      }),
+
+    // ── DASHBOARD RH (super_admin) ─────────────────────────────────────────
+    dashboard: protectedProcedure
+      .input(z.object({
+        year: z.number().optional(),
+        month: z.number().min(1).max(12).optional(),
+        monthsLookback: z.number().min(1).max(12).optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const now = new Date();
+        return getRhDashboardSummary(
+          input?.year ?? now.getFullYear(),
+          input?.month ?? (now.getMonth() + 1),
+          input?.monthsLookback ?? 3,
+        );
       }),
 
     // ── EXTRA RATES ─────────────────────────────────────────────────────────────────────────────────

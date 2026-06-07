@@ -152,6 +152,7 @@ const menuGroups: MenuGroup[] = [
     label: "Pessoas",
     items: [
       { icon: UserCheck, label: "Recursos Humanos", path: "/rh" },
+      { icon: BarChart3, label: "Dashboard RH", path: "/rh/dashboard", minRole: "super_admin" },
       { icon: Users, label: "Utilizadores", path: "/rh/utilizadores", minRole: "admin" },
       { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "frontoffice" },
       { icon: GraduationCap, label: "Formação", path: "/formacao" },
@@ -241,6 +242,25 @@ export default function DashboardLayout({
           >
             Entrar com Google
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Bloqueio de login por docs em falta / penalizações
+  const employee = (user as any).employee;
+  if (employee?.loginBlocked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-6">
+        <div className="max-w-md w-full text-center space-y-4 bg-card border rounded-lg p-8">
+          <div className="text-5xl">🚫</div>
+          <h1 className="text-xl font-semibold">Acesso bloqueado</h1>
+          <p className="text-sm text-muted-foreground">
+            {employee.loginBlockedReason ?? "Contacta o teu supervisor."}
+          </p>
+          <p className="text-xs text-muted-foreground border-t pt-3">
+            Para libertar o acesso, fala com um supervisor ou administrador.
+          </p>
         </div>
       </div>
     );

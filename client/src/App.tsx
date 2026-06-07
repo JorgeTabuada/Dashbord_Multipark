@@ -39,6 +39,7 @@ import DashboardPage from "./pages/DashboardPage";
 import FinanceiroDashboard from "./pages/FinanceiroDashboard";
 import OperacoesDashboard from "./pages/OperacoesDashboard";
 import PessoasDashboard from "./pages/PessoasDashboard";
+import RhDashboardPage from "./pages/RhDashboardPage";
 import SuporteDashboard from "./pages/SuporteDashboard";
 import MarketingDashboard from "./pages/MarketingDashboard";
 import { GlobalFiltersProvider } from "./contexts/GlobalFiltersContext";
@@ -80,6 +81,13 @@ function Router() {
         {() => (
           <DashboardLayout>
             <UsersPage />
+          </DashboardLayout>
+        )}
+      </Route>
+      <Route path="/rh/dashboard">
+        {() => (
+          <DashboardLayout>
+            <RhDashboardPage />
           </DashboardLayout>
         )}
       </Route>
