@@ -3725,7 +3725,7 @@ export const appRouter = router({
       notes: z.string().optional(),
       serviceDate: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = { ...input, serviceDate: input.serviceDate ? new Date(input.serviceDate) : new Date() };
       const id = await createService(data);
       await logActivity({ userId: ctx.user.id, action: "create", entity: "service", entityId: id || 0, details: `Serviço: ${input.serviceType}` });
@@ -3739,14 +3739,14 @@ export const appRouter = router({
       commission: z.number().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateService(id, data);
       return { success: true };
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "super_admin");
       await deleteService(input.id);
       return { success: true };
     }),

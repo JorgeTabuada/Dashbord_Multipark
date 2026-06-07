@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
+import { Button } from "@/components/ui/button";
 import {
-  Sparkles, Euro, TrendingUp, CheckCircle2, Clock, Droplets, Zap, Car, Package
+  Sparkles, Euro, TrendingUp, CheckCircle2, Clock, Droplets, Zap, Car, Package, Download,
 } from "lucide-react";
 
 const SERVICE_ICONS: Record<string, any> = {
@@ -107,7 +108,7 @@ export default function ServicesPage() {
               </SelectContent>
             </Select>
           </div>
-          <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || 2026)} className="w-24" />
+          <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || now.getFullYear())} className="w-24" />
         </div>
       </div>
 
@@ -192,7 +193,7 @@ export default function ServicesPage() {
           )}
 
           {/* Filters */}
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-3 flex-wrap items-end">
             <div>
               <Label className="text-xs">Tipo</Label>
               <Select value={filterType} onValueChange={setFilterType}>
@@ -214,6 +215,30 @@ export default function ServicesPage() {
                 </SelectContent>
               </Select>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filtered.length === 0}
+              onClick={() => {
+                const headers = ["Serviço","Matrícula","Parque","Preço","Check-out","Estado"];
+                const rows = filtered.map((s: any) => [
+                  (s.serviceName || "").replace(/;/g, ","),
+                  s.licensePlate || "",
+                  (s.parkName || "").replace(/;/g, ","),
+                  (s.price || 0).toFixed(2),
+                  s.checkOut ? new Date(s.checkOut).toISOString().slice(0, 10) : "",
+                  s.done ? "Feito" : "Pendente",
+                ]);
+                const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+                const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `servicos_${year}_${String(month).padStart(2, "0")}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download className="w-4 h-4 mr-1" /> CSV
+            </Button>
           </div>
 
           {/* Table */}
