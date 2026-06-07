@@ -407,53 +407,86 @@ export const appRouter = router({
       return report;
     }),
 
-    // Limpa duplicados em multipark_bookings e reaplica UNIQUE constraint.
-    // Devolve também stats antes/depois para feedback ao operador.
-    fixMultiparkDuplicates: protectedProcedure.mutation(async ({ ctx }) => {
+    // Apaga um batch de duplicados em multipark_bookings. Cliente itera até
+    // deleted === 0. Evita timeout do Vercel.
+    fixMultiparkDuplicatesBatch: protectedProcedure
+      .input(z.object({ batchSize: z.number().int().min(100).max(5000).optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+        const batch = input?.batchSize ?? 1000;
+
+        // Stats antes
+        const beforeRes = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
+        const before = Array.isArray(beforeRes[0]) ? beforeRes[0] : beforeRes;
+        const totalBefore = Number(before[0]?.total ?? 0);
+
+        // Apaga até `batch` linhas duplicadas (mantém a do updatedAt mais recente)
+        const delRes = await db.execute(sql`
+          DELETE FROM multipark_bookings WHERE id IN (
+            SELECT id FROM (
+              SELECT b1.id FROM multipark_bookings b1
+              INNER JOIN multipark_bookings b2
+                ON b1.externalId = b2.externalId
+               AND (
+                     b1.updatedAt < b2.updatedAt
+                  OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id)
+               )
+              LIMIT ${sql.raw(String(batch))}
+            ) AS t
+          )
+        `) as any;
+        const meta = Array.isArray(delRes[0]) ? delRes[0] : delRes;
+        const affectedRows = Number((meta as any)?.affectedRows ?? 0);
+
+        const afterRes = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
+        const after = Array.isArray(afterRes[0]) ? afterRes[0] : afterRes;
+        const totalAfter = Number(after[0]?.total ?? 0);
+
+        return {
+          totalBefore,
+          totalAfter,
+          deleted: affectedRows || (totalBefore - totalAfter),
+          batchSize: batch,
+        };
+      }),
+
+    // Reforça o UNIQUE depois dos batches terminarem.
+    enforceMultiparkUnique: protectedProcedure.mutation(async ({ ctx }) => {
       requireRole(ctx.user.role, "super_admin");
       const { getDb } = await import("./db");
-      const { MIGRATION_0045_STATEMENTS, IDEMPOTENT_ERROR_CODES_0045 } = await import("./migrations/migration_0045");
       const { sql } = await import("drizzle-orm");
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
 
-      // Stats antes
-      const [beforeAll] = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
-      const [beforeUnique] = await db.execute(sql`SELECT COUNT(DISTINCT externalId) AS u FROM multipark_bookings`) as any;
-      const totalBefore = Number(beforeAll[0]?.total ?? beforeAll?.total ?? 0);
-      const uniqueBefore = Number(beforeUnique[0]?.u ?? beforeUnique?.u ?? 0);
-
-      let ok = 0;
-      let skipped = 0;
-      let failed = 0;
-      const errors: string[] = [];
-      for (const stmt of MIGRATION_0045_STATEMENTS) {
-        try {
-          await db.execute(sql.raw(stmt));
-          ok += 1;
-        } catch (err: any) {
-          if (err?.code && IDEMPOTENT_ERROR_CODES_0045.has(err.code)) {
-            skipped += 1;
-          } else {
-            failed += 1;
-            errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
-          }
-        }
+      const steps: { step: string; ok: boolean; error?: string }[] = [];
+      // DROP do índice (pode não existir)
+      try {
+        await db.execute(sql`ALTER TABLE multipark_bookings DROP INDEX multipark_bookings_externalId_unique`);
+        steps.push({ step: "drop_index", ok: true });
+      } catch (e: any) {
+        steps.push({ step: "drop_index", ok: false, error: e?.code ?? e?.message });
       }
-
-      // Stats depois
-      const [afterAll] = await db.execute(sql`SELECT COUNT(*) AS total FROM multipark_bookings`) as any;
-      const totalAfter = Number(afterAll[0]?.total ?? afterAll?.total ?? 0);
-      const deleted = totalBefore - totalAfter;
+      // CREATE UNIQUE
+      try {
+        await db.execute(sql`ALTER TABLE multipark_bookings ADD UNIQUE INDEX multipark_bookings_externalId_unique (externalId)`);
+        steps.push({ step: "create_unique", ok: true });
+      } catch (e: any) {
+        steps.push({ step: "create_unique", ok: false, error: e?.code ?? e?.message });
+      }
 
       await logActivity({
         userId: ctx.user.id,
         action: "migration",
         entity: "schema",
-        details: `0045_fix_dupes: deleted=${deleted} before=${totalBefore} after=${totalAfter} unique_before=${uniqueBefore} ok=${ok} skipped=${skipped} failed=${failed}`,
+        details: `enforceMultiparkUnique: ${JSON.stringify(steps)}`,
       });
 
-      return { totalBefore, uniqueBefore, totalAfter, deleted, ok, skipped, failed, errors };
+      return { steps };
     }),
   }),
 
