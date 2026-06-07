@@ -2048,7 +2048,7 @@ export const appRouter = router({
       all: protectedProcedure
         .input(z.object({ from: z.string().optional(), to: z.string().optional(), projectId: z.number().optional() }).optional())
         .query(async ({ ctx, input }) => {
-          requireRole(ctx.user.role, "super_admin");
+          requireRole(ctx.user.role, "admin");
           const from = input?.from ? new Date(input.from) : undefined;
           const to = input?.to ? new Date(input.to) : undefined;
           return getAllDailyStats({ from, to, projectId: input?.projectId });
@@ -2163,31 +2163,55 @@ export const appRouter = router({
 
             if (!campaign) { skipped++; continue; }
 
-            // Check for existing stats in this date range (dedup)
+            // Distribui o total do período por cada dia. Reduz a granularidade
+            // mas mantém os gráficos mensais corretos (em vez de carimbar tudo
+            // numa só data). Verificação de duplicados por (campaign, day):
+            // só insere os dias que ainda não existem.
+            const daysMs = 86_400_000;
+            const dayCount = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / daysMs) + 1);
+            const spendPerDay = c.cost / dayCount;
+            const impressionsPerDay = Math.floor(c.impressions / dayCount);
+            const clicksPerDay = Math.floor(c.clicks / dayCount);
+            const conversionsPerDay = c.conversions / dayCount;
+            // Valor da conversão = conversões × custo por conversão (proxy razoável
+            // quando o CSV não traz o valor explicitamente)
+            const valuePerDay = (c.conversions * c.costPerConversion) / dayCount;
+
             const existing = await getExistingStatsForCampaignAndDateRange(campaign.id, startDate, endDate);
-            if (existing.length > 0) {
-              // Already have data for this period — skip
-              details.push(`⚠️ Dados já existem para ${c.name} (${input.dateRange.start} a ${input.dateRange.end}) — ignorado`);
+            const existingDays = new Set(
+              existing.map((e: any) => new Date(e.date).toISOString().slice(0, 10)),
+            );
+
+            const newRows: any[] = [];
+            for (let i = 0; i < dayCount; i++) {
+              const d = new Date(startDate.getTime() + i * daysMs);
+              const dayKey = d.toISOString().slice(0, 10);
+              if (existingDays.has(dayKey)) continue;
+              newRows.push({
+                campaignId: campaign.id,
+                date: d.toISOString().slice(0, 19).replace("T", " "),
+                spend: spendPerDay.toFixed(2),
+                impressions: impressionsPerDay,
+                clicks: clicksPerDay,
+                conversions: Math.round(conversionsPerDay),
+                conversionValue: valuePerDay.toFixed(2),
+                cpc: c.cpc > 0 ? String(c.cpc) : null,
+                ctr: c.ctr > 0 ? String(c.ctr) : null,
+                costPerConversion: c.costPerConversion > 0 ? String(c.costPerConversion) : null,
+                importedById: ctx.user.id,
+              });
+            }
+
+            if (newRows.length === 0) {
+              details.push(`⚠️ ${c.name}: todos os dias do período já existiam — ignorado`);
               skipped++;
               continue;
             }
 
-            // Import aggregated stats as a single row for the period
-            await importDailyStats([{
-              campaignId: campaign.id,
-              date: endDate.toISOString().slice(0, 19).replace("T", " "), // use end date as reference
-              spend: String(c.cost),
-              impressions: c.impressions,
-              clicks: c.clicks,
-              conversions: Math.round(c.conversions),
-              conversionValue: String(c.conversions),
-              cpc: c.cpc > 0 ? String(c.cpc) : null,
-              ctr: c.ctr > 0 ? String(c.ctr) : null,
-              costPerConversion: c.costPerConversion > 0 ? String(c.costPerConversion) : null,
-              importedById: ctx.user.id,
-            }]);
+            await importDailyStats(newRows);
             created++;
-            details.push(`📊 Dados importados: ${c.name} — ${c.cost.toFixed(2)}€, ${c.clicks} cliques, ${c.impressions} impressões`);
+            const skippedDays = dayCount - newRows.length;
+            details.push(`📊 ${c.name}: ${newRows.length}/${dayCount} dias importados (${c.cost.toFixed(2)}€ total, ${c.clicks} cliques)${skippedDays > 0 ? ` — ${skippedDays} dias já existiam` : ""}`);
           }
 
           await logActivity({

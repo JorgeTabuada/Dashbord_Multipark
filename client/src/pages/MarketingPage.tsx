@@ -154,6 +154,8 @@ function DashboardTab() {
   const realRevenue = bookingRevenue?.revenue ?? 0;
   const totalAdSpend = (stats?.totalSpend ?? 0) + (stats?.totalMktExpenses ?? 0);
   const costPerRealBooking = realBookings > 0 ? totalAdSpend / realBookings : 0;
+  // ROAS = receita / gasto. > 1 = lucro, < 1 = sangrento.
+  const roas = totalAdSpend > 0 ? realRevenue / totalAdSpend : 0;
 
   return (
     <div className="space-y-6 mt-4">
@@ -197,7 +199,7 @@ function DashboardTab() {
           <CardTitle className="text-sm font-medium text-green-800">Reservas Reais (MultiPark)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Total Reservas</p>
               <p className="text-2xl font-bold text-green-700">{realBookings}</p>
@@ -209,10 +211,16 @@ function DashboardTab() {
             <div>
               <p className="text-xs text-muted-foreground">Custo Aquisição / Reserva</p>
               <p className="text-2xl font-bold text-amber-600">{costPerRealBooking.toFixed(2)} €</p>
+              <p className="text-[10px] text-muted-foreground">inclui reservas orgânicas</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Receita Média / Reserva</p>
               <p className="text-2xl font-bold text-green-700">{realBookings > 0 ? (realRevenue / realBookings).toFixed(2) : "0.00"} €</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">ROAS</p>
+              <p className={`text-2xl font-bold ${roas >= 1 ? "text-green-700" : "text-red-600"}`}>{roas.toFixed(2)}×</p>
+              <p className="text-[10px] text-muted-foreground">receita / gasto total</p>
             </div>
           </div>
           {bookingRevenue && bookingRevenue.byProject.length > 0 && (
@@ -752,7 +760,33 @@ function MktExpensesTab() {
           </Select>
           <Badge variant="secondary" className="text-base px-3 py-1">Total: {totalExpenses.toFixed(2)} €</Badge>
         </div>
-        <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" />Nova Despesa Mkt</Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={!expensesList || expensesList.length === 0}
+            onClick={() => {
+              if (!expensesList) return;
+              const headers = ["Data","Descrição","Categoria","Projeto","Fornecedor","Valor"];
+              const rows = expensesList.map((e: any) => [
+                new Date(e.expense.date).toISOString().slice(0, 10),
+                (e.expense.description || "").replace(/;/g, ","),
+                MKT_CAT_LABELS[e.expense.category] ?? e.expense.category,
+                e.project?.name ?? "",
+                (e.expense.supplier ?? "").replace(/;/g, ","),
+                parseFloat(e.expense.amount || "0").toFixed(2),
+              ]);
+              const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+              const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = `despesas_marketing_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-1" /> Export CSV
+          </Button>
+          <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" />Nova Despesa Mkt</Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -1137,7 +1171,7 @@ function GoogleAdsImportDialog({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
               <span className="text-sm text-amber-700 dark:text-amber-300">
-                Se já importaste dados para este período, serão automaticamente ignorados (sem duplicados).
+                O total da campanha será distribuído pelos dias do período (média/dia) e cada dia já presente é ignorado individualmente. Dias novos são criados sem duplicar os existentes.
               </span>
             </div>
           </div>
