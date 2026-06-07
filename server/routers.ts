@@ -3491,7 +3491,7 @@ export const appRouter = router({
       estimatedValue: z.number().optional(),
       priority: z.enum(["low", "medium", "high"]).optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const id = await createLostFoundItem({ ...input, createdBy: ctx.user.id, status: "new", priority: input.priority || "medium" } as any);
       await logActivity({ userId: ctx.user.id, action: "create", entity: "lost_found", entityId: id || 0, details: `Perdido/Achado: ${input.description}` });
       // Notify super admin
@@ -3517,7 +3517,7 @@ export const appRouter = router({
       description: z.string().optional(),
       estimatedValue: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       await updateLostFoundItem(id, data as any);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "lost_found", entityId: id, details: `Atualizado: ${JSON.stringify(data)}` });
@@ -3541,7 +3541,8 @@ export const appRouter = router({
       base64: z.string(),
       filename: z.string(),
       caption: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const buffer = Buffer.from(input.base64, "base64");
       const ext = input.filename.split(".").pop() || "jpg";
       const key = `lost-found/${input.itemId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -3558,7 +3559,7 @@ export const appRouter = router({
       message: z.string().min(1),
       isInternal: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal === false ? 0 : 1 });
       return { success: true };
     }),

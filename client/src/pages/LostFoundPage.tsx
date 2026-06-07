@@ -21,7 +21,7 @@ import {
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
   BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle,
   Package, DollarSign, Smartphone, Shirt, FileText, Glasses,
-  HelpCircle, TrendingUp, ShieldAlert, Flag, Mail
+  HelpCircle, TrendingUp, ShieldAlert, Flag, Mail, Download,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -158,6 +158,36 @@ function KanbanView({ user, filterType, setFilterType, searchTerm, setSearchTerm
           <p className="text-muted-foreground">Gestão de objetos perdidos e achados nos veículos</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            disabled={items.length === 0}
+            onClick={() => {
+              const headers = ["ID","Criado","Tipo","Estado","Prioridade","Cliente","Email","Telefone","Matrícula","Ref.Reserva","Valor est.","Descrição","Resolução"];
+              const rows = (items as any[]).map(i => [
+                i.id,
+                i.createdAt ? new Date(i.createdAt).toISOString().slice(0, 16) : "",
+                i.itemType ?? "",
+                i.status ?? "",
+                i.priority ?? "",
+                (i.clientName ?? "").replace(/;/g, ","),
+                (i.clientEmail ?? "").replace(/;/g, ","),
+                i.clientPhone ?? "",
+                i.vehiclePlate ?? "",
+                i.bookingRef ?? "",
+                i.estimatedValue ?? "",
+                (i.description ?? "").replace(/[;\n\r]/g, " "),
+                (i.resolution ?? "").replace(/[;\n\r]/g, " "),
+              ]);
+              const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+              const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = `perdidos_achados_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" /> CSV
+          </Button>
           <Button variant="outline" onClick={onShowHistory}>
             <Clock className="w-4 h-4 mr-2" /> Histórico Reservas
           </Button>
