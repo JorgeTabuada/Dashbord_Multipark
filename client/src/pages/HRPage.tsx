@@ -23,6 +23,7 @@ import {
   Download, Wallet, Banknote, ChevronRight, ArrowUpDown, MoreVertical, BarChart3
 } from "lucide-react";
 import RhDashboardPage from "./RhDashboardPage";
+import UsersPage from "./UsersPage";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 type Position =
@@ -2028,6 +2029,7 @@ export default function HRPage() {
   const [showPayroll, setShowPayroll] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
 
   const { data: employees = [], isLoading } = trpc.rh.list.useQuery({
     isActive: true,
@@ -2067,6 +2069,10 @@ export default function HRPage() {
 
   if (showDashboard) {
     return <RhDashboardPage onBack={() => setShowDashboard(false)} />;
+  }
+
+  if (showUsers) {
+    return <UsersPage onBack={() => setShowUsers(false)} />;
   }
 
   if (selectedId !== null) {
@@ -2190,6 +2196,9 @@ export default function HRPage() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowImport(true)}>
                 <Upload className="w-4 h-4 mr-2" /> Importar Extras (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowUsers(true)}>
+                <Shield className="w-4 h-4 mr-2" /> Utilizadores e Permissões
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

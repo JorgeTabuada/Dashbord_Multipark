@@ -152,7 +152,6 @@ const menuGroups: MenuGroup[] = [
     label: "Pessoas",
     items: [
       { icon: UserCheck, label: "Recursos Humanos", path: "/rh" },
-      { icon: Users, label: "Utilizadores", path: "/rh/utilizadores", minRole: "admin" },
       { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "frontoffice" },
       { icon: GraduationCap, label: "Formação", path: "/formacao" },
     ],

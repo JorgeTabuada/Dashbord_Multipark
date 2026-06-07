@@ -43,6 +43,7 @@ import {
   Mail,
   Building2,
   Send,
+  ChevronLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -88,7 +89,7 @@ type UserFormData = {
 
 const emptyForm: UserFormData = { name: "", email: "", role: "user", department: "" };
 
-export default function UsersPage() {
+export default function UsersPage({ onBack }: { onBack?: () => void } = {}) {
   const { user: currentUser } = useAuth();
   const utils = trpc.useUtils();
 
@@ -240,7 +241,12 @@ export default function UsersPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
+            </Button>
+          )}
           <p className="text-sm text-muted-foreground">
             Criar, editar e gerir utilizadores da plataforma
           </p>
