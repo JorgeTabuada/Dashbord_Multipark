@@ -18,7 +18,7 @@ import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Shield,
   BarChart3, AlertCircle, CheckCircle2, Hourglass, XCircle, Pencil,
-  Mail, UserPlus, LinkIcon, X as XIcon
+  Mail, UserPlus, LinkIcon, X as XIcon, Download,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -118,6 +118,37 @@ function KanbanView({ user, filterType, setFilterType, onSelect, onNew }: any) {
           <p className="text-muted-foreground">Gestão de tickets e reclamações de clientes</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            disabled={complaints.length === 0}
+            onClick={() => {
+              const headers = ["ID","Título","Tipo","Estado","Prioridade","Cliente","Email","Telefone","Matrícula","Ref.Reserva","Criado","Resolvido","SLA","Atribuída a"];
+              const rows = (complaints as any[]).map(c => [
+                c.id,
+                (c.title || "").replace(/;/g, ","),
+                TYPE_CONFIG[c.complaintType]?.label ?? c.complaintType,
+                STATUS_CONFIG[c.complaintStatus]?.label ?? c.complaintStatus,
+                PRIORITY_CONFIG[c.complaintPriority]?.label ?? c.complaintPriority,
+                (c.clientName ?? "").replace(/;/g, ","),
+                (c.clientEmail ?? "").replace(/;/g, ","),
+                c.clientPhone ?? "",
+                c.vehiclePlate ?? "",
+                c.reservationRef ?? "",
+                c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "",
+                c.resolvedAt ? new Date(c.resolvedAt).toISOString().slice(0, 10) : "",
+                c.slaDeadline ? new Date(c.slaDeadline).toISOString().slice(0, 10) : "",
+                c.assignedToName ?? "",
+              ]);
+              const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+              const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = `reclamacoes_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" /> CSV
+          </Button>
           <Button onClick={onNew}><Plus className="w-4 h-4 mr-2" /> Nova Reclamação</Button>
         </div>
       </div>

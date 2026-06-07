@@ -2908,7 +2908,8 @@ export const appRouter = router({
     // ── Drivers em serviço (cruza com extras-dia + history) ────────────────
     findDriversOnDuty: protectedProcedure
       .input(z.object({ complaintId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { findDriversOnDuty } = await import("./complaintsExtended");
         return findDriversOnDuty(input.complaintId);
       }),
@@ -2921,27 +2922,31 @@ export const appRouter = router({
         source: z.enum(["assignment", "history", "manual"]),
         notes: z.string().max(512).nullable().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { attachDriverToComplaint } = await import("./complaintsExtended");
         await attachDriverToComplaint(input);
         return { success: true };
       }),
     listAttachedDrivers: protectedProcedure
       .input(z.object({ complaintId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { listComplaintDrivers } = await import("./complaintsExtended");
         return listComplaintDrivers(input.complaintId);
       }),
     detachDriver: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { detachComplaintDriver } = await import("./complaintsExtended");
         await detachComplaintDriver(input.id);
         return { success: true };
       }),
 
     // ── Penalty config ──────────────────────────────────────────────────────
-    listPenaltyConfig: protectedProcedure.query(async () => {
+    listPenaltyConfig: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { listPenaltyConfig } = await import("./complaintsExtended");
       return listPenaltyConfig();
     }),
@@ -2962,6 +2967,8 @@ export const appRouter = router({
         body: z.string().min(1),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Envia email em nome da empresa — só frontoffice+ pode disparar
+        requireRole(ctx.user.role, "frontoffice");
         const { sendComplaintEmailToClient } = await import("./complaintsExtended");
         const r = await sendComplaintEmailToClient(input);
         if (r.ok) {
@@ -2996,7 +3003,12 @@ export const appRouter = router({
       if (status) updateData.complaintStatus = status;
       if (priority) updateData.complaintPriority = priority;
       if (penaltyPoints !== undefined) updateData.penaltyPoints = penaltyPoints;
-      if (slaHours) updateData.slaDeadline = new Date(Date.now() + slaHours * 3600000);
+      // slaHours: 0 limpa o prazo, > 0 redefine. Antes 0 era ignorado.
+      if (slaHours !== undefined) {
+        updateData.slaDeadline = slaHours > 0
+          ? new Date(Date.now() + slaHours * 3600000)
+          : null;
+      }
       if (status === "resolved") updateData.resolvedAt = new Date();
       await updateComplaint(id, updateData);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "complaint", entityId: id, details: `Reclamação atualizada` });
@@ -3013,6 +3025,7 @@ export const appRouter = router({
       message: z.string().min(1),
       isInternal: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const id = await addComplaintMessage({
         complaintId: input.complaintId,
         message: input.message,
