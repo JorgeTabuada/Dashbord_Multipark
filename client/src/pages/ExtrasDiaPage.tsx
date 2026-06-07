@@ -28,13 +28,33 @@ import {
   ChevronDown,
 } from "lucide-react";
 
+// Defaults para o preview do UI — devem coincidir com a tabela `extra_rates`
+// na BD (migration 0044). O custo real é sempre calculado no backend a partir
+// de `extra_rates`; estes valores só servem para mostrar previsões enquanto
+// o admin compõe a escala.
 const LEVELS = [
-  { id: "junior", label: "Júnior", hourlyRate: 4 },
+  { id: "junior", label: "Júnior", hourlyRate: 4.5 },
   { id: "senior", label: "Sénior", hourlyRate: 5 },
   { id: "terminal", label: "Terminal", hourlyRate: 5.5 },
   { id: "master", label: "Master", hourlyRate: 6 },
 ] as const;
 type LevelId = (typeof LEVELS)[number]["id"];
+
+/** Devolve os 4 níveis de extras-dia com taxas vivas da BD (fallback aos
+ *  defaults se o endpoint ainda não respondeu). */
+function useLiveLevels() {
+  const { data: rates = [] } = trpc.rh.extraRates.list.useQuery();
+  return useMemo(() => {
+    const byName = new Map<string, number>();
+    for (const r of rates as any[]) {
+      if (r.levelName) byName.set(String(r.levelName), parseFloat(String(r.hourlyRate)));
+    }
+    return LEVELS.map(l => ({
+      ...l,
+      hourlyRate: byName.get(l.id) ?? l.hourlyRate,
+    }));
+  }, [rates]);
+}
 
 // 0-26 cobre 00:00 do dia alvo até 02:00 do dia seguinte (último slot da noite).
 const HOURS_24 = Array.from({ length: 27 }, (_, i) => i);
@@ -611,6 +631,7 @@ function AssignmentForm({
   onCancel: () => void;
   submitting: boolean;
 }) {
+  const levels = useLiveLevels();
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [personName, setPersonName] = useState("");
   const [level, setLevel] = useState<LevelId>("junior");
@@ -618,7 +639,7 @@ function AssignmentForm({
   const [endHour, setEndHour] = useState(defaultEnd);
 
   const span = endHour - startHour;
-  const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
+  const rate = levels.find(l => l.id === level)?.hourlyRate ?? 0;
   const previewCost = Math.max(0, span) * rate;
   // TL must be linked to an employee (we need monthlySalary). Otherwise need a name.
   const valid = asTeamLeader
@@ -675,7 +696,7 @@ function AssignmentForm({
             <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {LEVELS.map(l => (
+                {levels.map(l => (
                   <SelectItem key={l.id} value={l.id}>
                     {l.label} ({fmtEur(l.hourlyRate)}/h)
                   </SelectItem>
@@ -780,6 +801,7 @@ function AssignmentRow({
   busy: boolean;
 }) {
   const a = assignment;
+  const levels = useLiveLevels();
   const [editing, setEditing] = useState(false);
   const [level, setLevel] = useState<LevelId>((a.level ?? "junior") as LevelId);
   const [startHour, setStartHour] = useState(a.startHour);
@@ -787,7 +809,7 @@ function AssignmentRow({
   const [sentHomeHour, setSentHomeHour] = useState<number | null>(a.sentHomeHour);
 
   const span = (sentHomeHour ?? endHour) - startHour;
-  const rate = LEVELS.find(l => l.id === level)?.hourlyRate ?? 0;
+  const rate = levels.find(l => l.id === level)?.hourlyRate ?? 0;
   const computedCost = Math.max(0, span) * rate;
 
   if (!editing) {
@@ -795,7 +817,7 @@ function AssignmentRow({
       <tr className="border-b hover:bg-muted/30">
         <td className="py-2 px-2">{a.personName}</td>
         <td className="py-2 px-2">
-          <Badge variant="secondary">{LEVELS.find(l => l.id === a.level)?.label}</Badge>
+          <Badge variant="secondary">{levels.find(l => l.id === a.level)?.label}</Badge>
         </td>
         <td className="py-2 px-2 text-right font-mono">{fmtHour(a.startHour)}</td>
         <td className="py-2 px-2 text-right font-mono">{fmtHour(a.endHour)}</td>
@@ -823,7 +845,7 @@ function AssignmentRow({
         <Select value={level} onValueChange={v => setLevel(v as LevelId)}>
           <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {LEVELS.map(l => (
+            {levels.map(l => (
               <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>
             ))}
           </SelectContent>
