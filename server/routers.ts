@@ -3123,6 +3123,9 @@ export const appRouter = router({
       projectId: z.number().optional(),
       vehiclePlate: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+      // create dispara OpenAI (resposta IA) e/ou cria reclamação automaticamente.
+      // Custo real + acções com efeito — restringir a frontoffice+.
+      requireRole(ctx.user.role, "frontoffice");
       const reviewDate = (input.reviewDate ? new Date(input.reviewDate) : new Date()).toISOString().slice(0, 19).replace("T", " ");
       const id = await createGoogleReview({
         ...input,
@@ -3184,6 +3187,7 @@ export const appRouter = router({
       aiResponse: z.string().optional(),
       status: z.enum(["pending_response", "ai_responded", "manually_responded", "converted_complaint", "dismissed"]).optional(),
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       if (data.status === "manually_responded" || data.aiResponse) {
         (data as any).respondedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -3196,6 +3200,8 @@ export const appRouter = router({
     generateResponse: protectedProcedure.input(z.object({
       id: z.number(),
     })).mutation(async ({ ctx, input }) => {
+      // Chama OpenAI por review — restringir a frontoffice+
+      requireRole(ctx.user.role, "frontoffice");
       const review = await getGoogleReviewById(input.id);
       if (!review) throw new TRPCError({ code: "NOT_FOUND" });
       const response = await invokeLLM({
@@ -3218,10 +3224,13 @@ export const appRouter = router({
       name: z.string().optional(),
       email: z.string().optional(),
       plate: z.string().optional(),
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      // PII de clientes — restringir
+      requireRole(ctx.user.role, "frontoffice");
       return searchClientHistory(input.name, input.email, input.plate);
     }),
     approveResponse: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await updateGoogleReview(input.id, { aiResponseApproved: 1, respondedAt: new Date().toISOString().slice(0, 19).replace("T", " "), respondedBy: ctx.user.id, status: "manually_responded" });
       await logActivity({ userId: ctx.user.id, action: "approve", entity: "google_review", entityId: input.id, details: "Resposta aprovada" });
       return { success: true };

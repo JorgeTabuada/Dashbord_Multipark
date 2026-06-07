@@ -17,7 +17,7 @@ import {
   Star, Plus, MessageSquare, Bot, CheckCircle2, AlertTriangle,
   Search, ExternalLink, Sparkles, ThumbsUp, ThumbsDown, Eye,
   BarChart3, TrendingUp, Clock, XCircle, Edit, Mail, RefreshCw, Loader2,
-  Car, Users, Calendar
+  Car, Users, Calendar, Download,
 } from "lucide-react";
 import BookingSearchField from "@/components/BookingSearchField";
 
@@ -237,6 +237,34 @@ function ReviewsList({ onSelect }: { onSelect: (id: number) => void }) {
             </SelectContent>
           </Select>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={reviews.length === 0}
+          onClick={() => {
+            const headers = ["ID","Data","Nome","Email","Estrelas","Estado","Texto","Resposta IA","Matrícula","Reclamação"];
+            const rows = (reviews as any[]).map(r => [
+              r.id,
+              r.reviewDate ? new Date(r.reviewDate).toISOString().slice(0, 10) : "",
+              (r.reviewerName || "").replace(/[;\n\r]/g, " "),
+              (r.reviewerEmail || "").replace(/;/g, ","),
+              r.rating,
+              STATUS_LABELS[r.status]?.label ?? r.status,
+              (r.reviewText || "").replace(/[;\n\r]/g, " "),
+              (r.aiResponse || "").replace(/[;\n\r]/g, " "),
+              r.vehiclePlate || "",
+              r.complaintId || "",
+            ]);
+            const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+            const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `reviews_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <Download className="w-4 h-4 mr-1" /> CSV
+        </Button>
       </div>
 
       {isLoading ? (
