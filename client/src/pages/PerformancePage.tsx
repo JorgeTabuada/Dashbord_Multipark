@@ -5,13 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import {
-  Trophy, RefreshCw, TrendingUp, TrendingDown, Clock,
-  Zap, AlertTriangle, Award, ChevronUp, ChevronDown, Minus
+  Trophy, RefreshCw, TrendingUp, TrendingDown, Minus, Clock,
+  Zap, AlertTriangle, Award, Download, Pencil,
 } from "lucide-react";
 
 function getWeekNumber(d: Date): number {
@@ -27,27 +28,63 @@ export default function PerformancePage() {
   const now = new Date();
   const [week, setWeek] = useState(getWeekNumber(now));
   const [year, setYear] = useState(now.getFullYear());
+  const [editing, setEditing] = useState<any>(null);
 
-  const queryInput = useMemo(() => ({ weekNumber: week, yearNumber: year }), [week, year]);
-  const { data: evaluations = [], isLoading } = trpc.performance.list.useQuery(queryInput);
+  const prevWeek = week > 1 ? week - 1 : 53;
+  const prevYear = week > 1 ? year : year - 1;
+
+  const { data: evaluations = [], isLoading } = trpc.performance.list.useQuery({ weekNumber: week, yearNumber: year });
+  const { data: prevEvaluations = [] } = trpc.performance.list.useQuery({ weekNumber: prevWeek, yearNumber: prevYear });
   const generateMut = trpc.performance.generate.useMutation();
+  const updateMut = trpc.performance.update.useMutation();
   const utils = trpc.useUtils();
   const { data: employees = [] } = trpc.rh.list.useQuery();
 
   const employeeMap = useMemo(() => {
     const map = new Map<number, string>();
-    employees.forEach((e: any) => map.set(e.id, e.fullName));
+    employees.forEach((e: any) => map.set(e.employee.id, e.employee.fullName));
     return map;
   }, [employees]);
 
+  // Mapeia posição anterior por employeeId para tendência
+  const prevPositionMap = useMemo(() => {
+    const sorted = [...prevEvaluations].sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0));
+    const map = new Map<number, number>();
+    sorted.forEach((ev, i) => map.set(ev.employeeId, i + 1));
+    return map;
+  }, [prevEvaluations]);
+
+  const isSupervisor = user?.role && ["supervisor", "admin", "super_admin"].includes(user.role);
+
   const handleGenerate = async () => {
+    if (evaluations.length > 0 && !confirm(`Já existem ${evaluations.length} avaliações para esta semana. Recalcular vai actualizar os valores automáticos (mantém notas guardadas). Continuar?`)) {
+      return;
+    }
     try {
       await generateMut.mutateAsync({ weekNumber: week, yearNumber: year });
       utils.performance.list.invalidate();
-      toast.success(`Avaliação da semana ${week} gerada com sucesso!`);
+      toast.success(`Avaliação da semana ${week} gerada!`);
     } catch (e: any) {
       toast.error(e.message || "Erro ao gerar avaliação");
     }
+  };
+
+  const exportCSV = () => {
+    const headers = ["Pos","Condutor","Horas","Movs","Mov/h","Alertas","Inc+","Inc-","Pts+","Pts-","Total","Notas"];
+    const rows = evaluations.map((ev: any, idx: number) => [
+      idx + 1,
+      employeeMap.get(ev.employeeId) ?? `#${ev.employeeId}`,
+      ev.hoursWorked, ev.movementsCount, ev.movementsPerHour,
+      ev.speedAlerts, ev.incidentsPositive, ev.incidentsNegative,
+      ev.positivePoints, ev.negativePoints, ev.totalPoints,
+      (ev.notes ?? "").replace(/;/g, ","),
+    ]);
+    const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `avaliacao_S${week}_${year}.csv`; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const topPerformer = evaluations.length > 0 ? evaluations[0] : null;
@@ -56,145 +93,251 @@ export default function PerformancePage() {
   const totalAlerts = evaluations.reduce((s: number, e: any) => s + (e.speedAlerts || 0), 0);
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="text-muted-foreground">Ranking semanal dos condutores</p>
+    <div className="space-y-6 max-w-7xl mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-muted-foreground">Ranking semanal dos condutores</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Semana</Label>
+            <Input type="number" value={week} onChange={e => setWeek(parseInt(e.target.value) || 1)} min={1} max={53} className="w-20 h-9" />
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Label>Semana:</Label>
-              <Input type="number" value={week} onChange={e => setWeek(parseInt(e.target.value) || 1)} min={1} max={53} className="w-20" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Label>Ano:</Label>
-              <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || 2026)} className="w-24" />
-            </div>
-            <Button onClick={handleGenerate} disabled={generateMut.isPending}>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Ano</Label>
+            <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || now.getFullYear())} className="w-24 h-9" />
+          </div>
+          <Button variant="outline" size="sm" onClick={exportCSV} disabled={evaluations.length === 0}>
+            <Download className="w-4 h-4 mr-2" /> CSV
+          </Button>
+          {isSupervisor && (
+            <Button onClick={handleGenerate} disabled={generateMut.isPending} size="sm">
               <RefreshCw className={`w-4 h-4 mr-2 ${generateMut.isPending ? "animate-spin" : ""}`} />
-              {generateMut.isPending ? "A gerar..." : "Gerar Avaliação"}
+              {generateMut.isPending ? "A gerar..." : evaluations.length > 0 ? "Recalcular" : "Gerar Avaliação"}
             </Button>
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="p-3">
-            <div className="flex items-center gap-2"><Clock className="w-4 h-4" /><span className="text-xs text-muted-foreground">Total Horas</span></div>
-            <p className="text-xl font-bold mt-1">{totalHours}h</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2"><Zap className="w-4 h-4 text-blue-500" /><span className="text-xs text-muted-foreground">Total Movimentações</span></div>
-            <p className="text-xl font-bold mt-1">{totalMovements}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500" /><span className="text-xs text-muted-foreground">Alertas Velocidade</span></div>
-            <p className="text-xl font-bold mt-1 text-red-600">{totalAlerts}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-2"><Award className="w-4 h-4 text-yellow-500" /><span className="text-xs text-muted-foreground">Melhor Condutor</span></div>
-            <p className="text-sm font-bold mt-1 truncate">{topPerformer ? (employeeMap.get(topPerformer.employeeId) || `#${topPerformer.employeeId}`) : "—"}</p>
-          </Card>
-        </div>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2"><Clock className="w-4 h-4" /><span className="text-xs text-muted-foreground">Total Horas</span></div>
+          <p className="text-xl font-bold mt-1">{Number(totalHours).toFixed(1)}h</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2"><Zap className="w-4 h-4 text-blue-500" /><span className="text-xs text-muted-foreground">Total Movimentações</span></div>
+          <p className="text-xl font-bold mt-1">{totalMovements}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500" /><span className="text-xs text-muted-foreground">Alertas Velocidade</span></div>
+          <p className="text-xl font-bold mt-1 text-red-600">{totalAlerts}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2"><Award className="w-4 h-4 text-yellow-500" /><span className="text-xs text-muted-foreground">Melhor Condutor</span></div>
+          <p className="text-sm font-bold mt-1 truncate">{topPerformer ? (employeeMap.get(topPerformer.employeeId) ?? `#${topPerformer.employeeId}`) : "—"}</p>
+        </Card>
+      </div>
 
-        {/* Ranking Table */}
-        {isLoading ? (
-          <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>
-        ) : evaluations.length === 0 ? (
-          <Card className="p-10 text-center">
-            <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">Sem avaliações para esta semana</p>
-            <p className="text-xs text-muted-foreground mt-1">Clica em "Gerar Avaliação" para calcular o ranking</p>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader><CardTitle className="text-base">Ranking — Semana {week}/{year}</CardTitle></CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left">
-                      <th className="p-2 w-12">#</th>
-                      <th className="p-2">Condutor</th>
-                      <th className="p-2 text-center">Horas</th>
-                      <th className="p-2 text-center">Movimentações</th>
-                      <th className="p-2 text-center">Mov/Hora</th>
-                      <th className="p-2 text-center">Alertas Vel.</th>
-                      <th className="p-2 text-center">Ocorrências +</th>
-                      <th className="p-2 text-center">Ocorrências -</th>
-                      <th className="p-2 text-center">Pts +</th>
-                      <th className="p-2 text-center">Pts -</th>
-                      <th className="p-2 text-center font-bold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {evaluations.map((ev: any, idx: number) => {
-                      const name = employeeMap.get(ev.employeeId) || ev.employeeName || `#${ev.employeeId}`;
-                      const isTop3 = idx < 3;
-                      return (
-                        <tr key={ev.id} className={`border-b hover:bg-muted/50 ${isTop3 ? "bg-yellow-50/30" : ""}`}>
-                          <td className="p-2 font-bold text-center">
-                            {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
-                          </td>
-                          <td className="p-2 font-medium">{name}</td>
-                          <td className="p-2 text-center">{ev.hoursWorked || 0}h</td>
-                          <td className="p-2 text-center">{ev.movementsCount || 0}</td>
-                          <td className="p-2 text-center">{ev.movementsPerHour || 0}</td>
-                          <td className="p-2 text-center">
-                            {ev.speedAlerts > 0 ? (
-                              <Badge className="bg-red-100 text-red-700">{ev.speedAlerts}</Badge>
-                            ) : (
-                              <span className="text-green-600">0</span>
-                            )}
-                          </td>
-                          <td className="p-2 text-center text-green-600">{ev.incidentsPositive || 0}</td>
-                          <td className="p-2 text-center text-red-600">{ev.incidentsNegative || 0}</td>
-                          <td className="p-2 text-center">
-                            <span className="text-green-600 font-medium">+{ev.positivePoints || 0}</span>
-                          </td>
-                          <td className="p-2 text-center">
-                            <span className="text-red-600 font-medium">-{ev.negativePoints || 0}</span>
-                          </td>
-                          <td className="p-2 text-center">
-                            <span className={`font-bold text-lg ${(ev.totalPoints || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                              {ev.totalPoints || 0}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Points Legend */}
+      {/* Ranking Table */}
+      {isLoading ? (
+        <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>
+      ) : evaluations.length === 0 ? (
+        <Card className="p-10 text-center">
+          <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">Sem avaliações para esta semana</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {isSupervisor ? "Clica em \"Gerar Avaliação\" para calcular o ranking" : "Aguarda que um supervisor gere o ranking."}
+          </p>
+        </Card>
+      ) : (
         <Card>
-          <CardHeader><CardTitle className="text-base">Sistema de Pontos</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Ranking — Semana {week}/{year}</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-medium text-green-600 flex items-center gap-1 mb-2"><ChevronUp className="w-4 h-4" /> Pontos Positivos</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>+2 pts por cada movimentação</li>
-                  <li>+5 pts por cada ocorrência reportada</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-medium text-red-600 flex items-center gap-1 mb-2"><ChevronDown className="w-4 h-4" /> Pontos Negativos</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>-10 pts por cada alerta de velocidade</li>
-                  <li>-5 pts por cada ocorrência atribuída</li>
-                </ul>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="p-2 w-12">#</th>
+                    <th className="p-2 w-12 text-center">Δ</th>
+                    <th className="p-2">Condutor</th>
+                    <th className="p-2 text-center">Horas</th>
+                    <th className="p-2 text-center">Movs</th>
+                    <th className="p-2 text-center">Mov/h</th>
+                    <th className="p-2 text-center">Alertas</th>
+                    <th className="p-2 text-center">Inc+</th>
+                    <th className="p-2 text-center">Inc−</th>
+                    <th className="p-2 text-center">Pts+</th>
+                    <th className="p-2 text-center">Pts−</th>
+                    <th className="p-2 text-center font-bold">Total</th>
+                    <th className="p-2">Notas</th>
+                    {isSupervisor && <th className="p-2 w-10"></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {evaluations.map((ev: any, idx: number) => {
+                    const name = employeeMap.get(ev.employeeId) ?? ev.employeeName ?? `#${ev.employeeId}`;
+                    const isTop3 = idx < 3;
+                    const currentPos = idx + 1;
+                    const prevPos = prevPositionMap.get(ev.employeeId);
+                    const delta = prevPos != null ? prevPos - currentPos : null; // +ve = subiu
+                    return (
+                      <tr key={ev.id} className={`border-b hover:bg-muted/50 ${isTop3 ? "bg-yellow-50/30" : ""}`}>
+                        <td className="p-2 font-bold text-center">
+                          {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : currentPos}
+                        </td>
+                        <td className="p-2 text-center">
+                          {delta == null ? (
+                            <Badge variant="outline" className="text-[10px]">novo</Badge>
+                          ) : delta > 0 ? (
+                            <span className="text-green-700 text-xs inline-flex items-center gap-0.5">
+                              <TrendingUp className="w-3 h-3" /> {delta}
+                            </span>
+                          ) : delta < 0 ? (
+                            <span className="text-red-700 text-xs inline-flex items-center gap-0.5">
+                              <TrendingDown className="w-3 h-3" /> {Math.abs(delta)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs inline-flex items-center"><Minus className="w-3 h-3" /></span>
+                          )}
+                        </td>
+                        <td className="p-2 font-medium">{name}</td>
+                        <td className="p-2 text-center tabular-nums">{Number(ev.hoursWorked || 0).toFixed(1)}h</td>
+                        <td className="p-2 text-center tabular-nums">{ev.movementsCount || 0}</td>
+                        <td className="p-2 text-center tabular-nums">{Number(ev.movementsPerHour || 0).toFixed(1)}</td>
+                        <td className="p-2 text-center">
+                          {ev.speedAlerts > 0 ? (
+                            <Badge className="bg-red-100 text-red-700 text-xs">{ev.speedAlerts}</Badge>
+                          ) : (
+                            <span className="text-green-600 text-xs">0</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-center text-green-600">{ev.incidentsPositive || 0}</td>
+                        <td className="p-2 text-center text-red-600">{ev.incidentsNegative || 0}</td>
+                        <td className="p-2 text-center"><span className="text-green-600 font-medium">+{ev.positivePoints || 0}</span></td>
+                        <td className="p-2 text-center"><span className="text-red-600 font-medium">−{ev.negativePoints || 0}</span></td>
+                        <td className="p-2 text-center">
+                          <span className={`font-bold text-base ${(ev.totalPoints || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {ev.totalPoints || 0}
+                          </span>
+                        </td>
+                        <td className="p-2 text-xs text-muted-foreground max-w-[150px] truncate" title={ev.notes ?? ""}>
+                          {ev.notes ?? <span className="text-muted-foreground/50">—</span>}
+                        </td>
+                        {isSupervisor && (
+                          <td className="p-2">
+                            <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setEditing(ev)}>
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
-      </div>
-    </>
+      )}
+
+      {/* Points Legend */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Sistema de Pontos</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h4 className="font-medium text-green-600 mb-2">Pontos Positivos</h4>
+              <ul className="space-y-1 text-muted-foreground">
+                <li>+2 pts por movimentação realizada</li>
+                <li>+5 pts por ocorrência reportada</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-medium text-red-600 mb-2">Pontos Negativos</h4>
+              <ul className="space-y-1 text-muted-foreground">
+                <li>Alertas de velocidade (ignora reconhecidos):
+                  <ul className="ml-4 text-xs">
+                    <li>+10% acima do limite: −2</li>
+                    <li>+10–25%: −5</li>
+                    <li>+25–50%: −10</li>
+                    <li>+50%: −15</li>
+                  </ul>
+                </li>
+                <li>Ocorrências atribuídas (por severidade): low −2, medium −5, high −10, critical −20</li>
+                <li>Penalizações abertas (no-show extras-dia, etc): −5 pts por ponto aberto</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit Dialog */}
+      {editing && (
+        <Dialog open onOpenChange={(v) => !v && setEditing(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ajustar pontuação — {employeeMap.get(editing.employeeId) ?? "—"}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Pts positivos</Label>
+                  <Input
+                    type="number"
+                    value={editing.positivePoints}
+                    onChange={e => setEditing({ ...editing, positivePoints: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Pts negativos</Label>
+                  <Input
+                    type="number"
+                    value={editing.negativePoints}
+                    onChange={e => setEditing({ ...editing, negativePoints: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Notas do supervisor</Label>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm min-h-[80px] bg-card"
+                  value={editing.notes ?? ""}
+                  onChange={e => setEditing({ ...editing, notes: e.target.value })}
+                  placeholder="Justifica o ajuste, se aplicável..."
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Total resultante: <strong>{(editing.positivePoints || 0) - (editing.negativePoints || 0)}</strong>
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
+              <Button
+                disabled={updateMut.isPending}
+                onClick={async () => {
+                  try {
+                    await updateMut.mutateAsync({
+                      id: editing.id,
+                      positivePoints: editing.positivePoints,
+                      negativePoints: editing.negativePoints,
+                      notes: editing.notes ?? null,
+                    });
+                    utils.performance.list.invalidate();
+                    toast.success("Avaliação actualizada");
+                    setEditing(null);
+                  } catch (e: any) {
+                    toast.error(e.message || "Erro ao guardar");
+                  }
+                }}
+              >
+                {updateMut.isPending ? "A guardar..." : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
   );
 }

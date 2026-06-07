@@ -2464,6 +2464,38 @@ function getWeekNumber(d: Date): number {
   return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+/** Devolve [Mon 00:00:00, Sun 23:59:59] da semana ISO indicada. */
+function isoWeekRange(year: number, week: number): { start: Date; end: Date } {
+  // ISO: semana 1 contém 4 de Janeiro
+  const simple = new Date(Date.UTC(year, 0, 4));
+  const dow = simple.getUTCDay() || 7;
+  const monday = new Date(simple);
+  monday.setUTCDate(simple.getUTCDate() - (dow - 1) + (week - 1) * 7);
+  monday.setUTCHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  sunday.setUTCHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+
+/** Peso de um alerta de velocidade pelo % de excesso sobre o limite. */
+function speedAlertPoints(speed: number, limit: number): number {
+  if (limit <= 0) return 5;
+  const excess = (speed - limit) / limit;
+  if (excess <= 0.1) return 2;   // até +10%
+  if (excess <= 0.25) return 5;  // +10-25%
+  if (excess <= 0.5) return 10;  // +25-50%
+  return 15;                     // > +50%
+}
+
+/** Peso de uma ocorrência pela severidade. */
+const INCIDENT_SEVERITY_POINTS: Record<string, number> = {
+  low: 2,
+  medium: 5,
+  high: 10,
+  critical: 20,
+};
+
 // ─── AVALIAÇÃO DE DESEMPENHO ─────────────────────────────────────────────────
 export async function createPerformanceEvaluation(data: any) {
   const db = await getDb(); if (!db) return null;
@@ -2493,86 +2525,182 @@ export async function deletePerformanceEvaluation(id: number) {
 
 export async function generateWeeklyEvaluation(weekNumber: number, yearNumber: number) {
   const db = await getDb(); if (!db) return [];
-  // Get all employees
-  const { employees: empTable } = await import("../drizzle/schema");
-  const allEmployees = await db.select().from(empTable);
-  
-  const results: any[] = [];
-  for (const emp of allEmployees) {
-    // Hours worked from time records
-    const timeRecs = await db.select().from(timeRecords).where(eq(timeRecords.employeeId, emp.id));
-    const weekRecs = timeRecs.filter(r => {
-      const d = new Date(r.recordedAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    // Calculate hours from check_in/check_out pairs
-    let hoursWorked = 0;
-    const checkIns = weekRecs.filter(r => r.type === "check_in").sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-    const checkOuts = weekRecs.filter(r => r.type === "check_out").sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-    for (let i = 0; i < Math.min(checkIns.length, checkOuts.length); i++) {
-      hoursWorked += Math.round((new Date(checkOuts[i].recordedAt).getTime() - new Date(checkIns[i].recordedAt).getTime()) / 3600000);
+
+  const { start, end } = isoWeekRange(yearNumber, weekNumber);
+  const startStr = toMysqlDateTime(start);
+  const endStr = toMysqlDateTime(end);
+
+  // Só posições que conduzem (driver, senior_driver, extra)
+  const drivers = await db
+    .select({ id: employees.id, fullName: employees.fullName, position: employees.position })
+    .from(employees)
+    .where(and(
+      eq(employees.isActive, 1),
+      inArray(employees.position, ["driver", "senior_driver", "extra"]),
+    ));
+  if (drivers.length === 0) return [];
+  const driverIds = drivers.map(d => d.id);
+
+  // ── 1. Horas trabalhadas: soma de time_records.hoursWorked (decimal)
+  const hoursRows = await db
+    .select({
+      employeeId: timeRecords.employeeId,
+      hours: sql<string>`COALESCE(SUM(${timeRecords.hoursWorked}), 0)`,
+    })
+    .from(timeRecords)
+    .where(and(
+      inArray(timeRecords.employeeId, driverIds),
+      eq(timeRecords.type, "check_out"),
+      gte(timeRecords.recordedAt, startStr),
+      lte(timeRecords.recordedAt, endStr),
+    ))
+    .groupBy(timeRecords.employeeId);
+  const hoursMap = new Map(hoursRows.map(r => [r.employeeId, Number(r.hours)]));
+
+  // ── 2. Movimentações: count por employee
+  const movRows = await db
+    .select({
+      employeeId: vehicleMovements.employeeId,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(vehicleMovements)
+    .where(and(
+      inArray(vehicleMovements.employeeId, driverIds),
+      gte(vehicleMovements.createdAt, startStr),
+      lte(vehicleMovements.createdAt, endStr),
+    ))
+    .groupBy(vehicleMovements.employeeId);
+  const movMap = new Map(movRows.map(r => [Number(r.employeeId ?? 0), Number(r.count)]));
+
+  // ── 3. Speed alerts não reconhecidos com excesso (single query)
+  const alertRows = await db
+    .select({
+      employeeId: speedAlerts.employeeId,
+      speed: speedAlerts.speed,
+      speedLimit: speedAlerts.speedLimit,
+    })
+    .from(speedAlerts)
+    .where(and(
+      inArray(speedAlerts.employeeId, driverIds),
+      eq(speedAlerts.acknowledged, 0),
+      gte(speedAlerts.createdAt, startStr),
+      lte(speedAlerts.createdAt, endStr),
+    ));
+  const alertStats = new Map<number, { count: number; points: number }>();
+  for (const a of alertRows) {
+    const empId = Number(a.employeeId ?? 0);
+    if (!empId) continue;
+    const stats = alertStats.get(empId) ?? { count: 0, points: 0 };
+    stats.count += 1;
+    stats.points += speedAlertPoints(Number(a.speed), Number(a.speedLimit));
+    alertStats.set(empId, stats);
+  }
+
+  // ── 4. Incidents (positivos = reportedBy, negativos = employeeId)
+  const incidentRows = await db
+    .select({
+      reportedBy: incidents.reportedBy,
+      employeeId: incidents.employeeId,
+      severity: incidents.severity,
+    })
+    .from(incidents)
+    .where(and(
+      gte(incidents.createdAt, startStr),
+      lte(incidents.createdAt, endStr),
+    ));
+  const posIncidents = new Map<number, number>();
+  const negIncidents = new Map<number, { count: number; points: number }>();
+  for (const i of incidentRows) {
+    const reporterId = Number(i.reportedBy ?? 0);
+    const targetId = Number(i.employeeId ?? 0);
+    if (reporterId && driverIds.includes(reporterId)) {
+      posIncidents.set(reporterId, (posIncidents.get(reporterId) ?? 0) + 1);
     }
-    
-    // Movements count
-    const allMovements = await db.select().from(vehicleMovements).where(eq(vehicleMovements.employeeId, emp.id));
-    const weekMovements = allMovements.filter(m => {
-      const d = new Date(m.createdAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    
-    // Speed alerts
-    const allAlerts = await db.select().from(speedAlerts).where(eq(speedAlerts.employeeId, emp.id));
-    const weekAlerts = allAlerts.filter(a => {
-      const d = new Date(a.createdAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    
-    // Incidents
-    const empIncidents = await db.select().from(incidents).where(
-      and(eq(incidents.weekNumber, weekNumber), eq(incidents.yearNumber, yearNumber))
-    );
-    const positiveIncidents = empIncidents.filter(i => i.reportedBy === emp.id).length;
-    const negativeIncidents = empIncidents.filter(i => i.employeeId === emp.id).length;
-    
-    // Calculate points
-    const movPerHour = hoursWorked > 0 ? Math.round(weekMovements.length / hoursWorked) : 0;
-    const positivePoints = (weekMovements.length * 2) + (positiveIncidents * 5);
-    const negativePoints = (weekAlerts.length * 10) + (negativeIncidents * 5);
+    if (targetId && driverIds.includes(targetId)) {
+      const sev = String(i.severity ?? "medium");
+      const pts = INCIDENT_SEVERITY_POINTS[sev] ?? 5;
+      const cur = negIncidents.get(targetId) ?? { count: 0, points: 0 };
+      cur.count += 1;
+      cur.points += pts;
+      negIncidents.set(targetId, cur);
+    }
+  }
+
+  // ── 5. Penalizações abertas criadas na semana (employee_penalties)
+  const penaltyRows = await db
+    .select({
+      employeeId: employeePenalties.employeeId,
+      totalPoints: sql<number>`COALESCE(SUM(${employeePenalties.points}), 0)`,
+    })
+    .from(employeePenalties)
+    .where(and(
+      inArray(employeePenalties.employeeId, driverIds),
+      gte(employeePenalties.createdAt, startStr),
+      lte(employeePenalties.createdAt, endStr),
+    ))
+    .groupBy(employeePenalties.employeeId);
+  // Cada ponto de penalty = −5 pts no ranking
+  const PENALTY_WEIGHT = 5;
+  const penaltyMap = new Map(penaltyRows.map(r => [r.employeeId, Number(r.totalPoints) * PENALTY_WEIGHT]));
+
+  // ── 6. Avaliações existentes para esta semana (decidir UPDATE vs INSERT)
+  const existingEvals = await db
+    .select()
+    .from(performanceEvaluations)
+    .where(and(
+      eq(performanceEvaluations.weekNumber, weekNumber),
+      eq(performanceEvaluations.yearNumber, yearNumber),
+      inArray(performanceEvaluations.employeeId, driverIds),
+    ));
+  const existingMap = new Map(existingEvals.map(e => [e.employeeId, e]));
+
+  // ── 7. Construir e gravar
+  const MOV_POINTS = 2;
+  const INCIDENT_REPORT_POINTS = 5;
+  const results: any[] = [];
+
+  for (const emp of drivers) {
+    const hoursWorked = Math.round((hoursMap.get(emp.id) ?? 0) * 100) / 100;
+    const movementsCount = movMap.get(emp.id) ?? 0;
+    const movementsPerHour = hoursWorked > 0
+      ? Math.round((movementsCount / hoursWorked) * 100) / 100
+      : 0;
+    const alertCount = alertStats.get(emp.id)?.count ?? 0;
+    const alertPoints = alertStats.get(emp.id)?.points ?? 0;
+    const positiveIncidentsCount = posIncidents.get(emp.id) ?? 0;
+    const negStats = negIncidents.get(emp.id) ?? { count: 0, points: 0 };
+    const penaltyPts = penaltyMap.get(emp.id) ?? 0;
+
+    const positivePoints = (movementsCount * MOV_POINTS) + (positiveIncidentsCount * INCIDENT_REPORT_POINTS);
+    const negativePoints = alertPoints + negStats.points + penaltyPts;
     const totalPoints = positivePoints - negativePoints;
-    
-    // Check if evaluation already exists
-    const existing = await db.select().from(performanceEvaluations).where(
-      and(
-        eq(performanceEvaluations.employeeId, emp.id),
-        eq(performanceEvaluations.weekNumber, weekNumber),
-        eq(performanceEvaluations.yearNumber, yearNumber)
-      )
-    );
-    
+
     const evalData = {
       employeeId: emp.id,
       weekNumber,
       yearNumber,
-      hoursWorked,
-      movementsCount: weekMovements.length,
-      movementsPerHour: movPerHour,
-      speedAlerts: weekAlerts.length,
-      incidentsPositive: positiveIncidents,
-      incidentsNegative: negativeIncidents,
+      hoursWorked: Math.round(hoursWorked),
+      movementsCount,
+      movementsPerHour: Math.round(movementsPerHour),
+      speedAlerts: alertCount,
+      incidentsPositive: positiveIncidentsCount,
+      incidentsNegative: negStats.count,
       positivePoints,
       negativePoints,
       totalPoints,
     };
-    
-    if (existing.length > 0) {
-      await db.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing[0].id));
-      results.push({ ...evalData, id: existing[0].id, employeeName: emp.fullName });
+
+    const existing = existingMap.get(emp.id);
+    if (existing) {
+      // Preserva ajustes manuais (notes) feitos pelo supervisor
+      await db.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing.id));
+      results.push({ ...evalData, id: existing.id, employeeName: emp.fullName, notes: existing.notes });
     } else {
       const [result] = await db.insert(performanceEvaluations).values(evalData as any).$returningId();
-      results.push({ ...evalData, id: result?.id, employeeName: emp.fullName });
+      results.push({ ...evalData, id: result?.id, employeeName: emp.fullName, notes: null });
     }
   }
-  
+
   return results.sort((a, b) => b.totalPoints - a.totalPoints);
 }
 

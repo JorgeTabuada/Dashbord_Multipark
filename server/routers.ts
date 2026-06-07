@@ -3617,9 +3617,9 @@ export const appRouter = router({
       weekNumber: z.number(),
       yearNumber: z.number(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       const results = await generateWeeklyEvaluation(input.weekNumber, input.yearNumber);
-      await logActivity({ userId: ctx.user.id, action: "generate", entity: "performance_evaluation", details: `Semana ${input.weekNumber}/${input.yearNumber}` });
+      await logActivity({ userId: ctx.user.id, action: "generate", entity: "performance_evaluation", details: `Semana ${input.weekNumber}/${input.yearNumber}: ${results.length} linhas` });
       return results;
     }),
 
@@ -3627,14 +3627,18 @@ export const appRouter = router({
       id: z.number(),
       positivePoints: z.number().optional(),
       negativePoints: z.number().optional(),
-      notes: z.string().optional(),
+      notes: z.string().nullable().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       const { id, ...data } = input;
-      if (data.positivePoints !== undefined || data.negativePoints !== undefined) {
-        (data as any).totalPoints = (data.positivePoints || 0) - (data.negativePoints || 0);
-      }
+      // Lê o valor actual para preservar campos não enviados ao calcular totalPoints
+      const current = await getPerformanceEvaluations({});
+      const row = current.find((r: any) => r.id === id);
+      const pos = data.positivePoints ?? row?.positivePoints ?? 0;
+      const neg = data.negativePoints ?? row?.negativePoints ?? 0;
+      (data as any).totalPoints = pos - neg;
       await updatePerformanceEvaluation(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "performance_evaluation", entityId: id });
       return { success: true };
     }),
 
