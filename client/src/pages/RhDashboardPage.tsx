@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
-  Users, Clock, Euro, AlertTriangle, BarChart3, ShieldAlert,
+  Users, Clock, AlertTriangle, BarChart3, ShieldAlert, ChevronLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 const fmt = (v: number) =>
   new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(Number.isFinite(v) ? v : 0);
 
-export default function RhDashboardPage() {
+export default function RhDashboardPage({ onBack }: { onBack?: () => void } = {}) {
   const { user } = useAuth();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -69,11 +69,18 @@ export default function RhDashboardPage() {
     <div className="space-y-6 max-w-7xl mx-auto w-full">
       <Card className="p-3">
         <div className="flex items-end gap-3 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" /> Dashboard RH
-            </h1>
-            <p className="text-sm text-muted-foreground">Custo de pessoal, horas e penalizações por colaborador</p>
+          <div className="flex-1 min-w-[200px] flex items-center gap-3">
+            {onBack && (
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
+              </Button>
+            )}
+            <div>
+              <h1 className="text-xl font-semibold flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" /> Dashboard RH
+              </h1>
+              <p className="text-sm text-muted-foreground">Custo de pessoal, horas e penalizações por colaborador</p>
+            </div>
           </div>
           <div>
             <Label className="text-xs mb-1 block">Mês</Label>

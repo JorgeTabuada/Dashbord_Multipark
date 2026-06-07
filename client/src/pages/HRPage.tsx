@@ -20,8 +20,9 @@ import {
   Upload, Trash2, Eye, ChevronLeft, Camera, MapPin,
   Euro, Building2, Phone, Mail, CreditCard, Shield,
   CheckCircle2, XCircle, AlertTriangle, Image, FolderOpen, Plus, Pencil, Save, X,
-  Download, Wallet, Banknote, ChevronRight, ArrowUpDown, MoreVertical
+  Download, Wallet, Banknote, ChevronRight, ArrowUpDown, MoreVertical, BarChart3
 } from "lucide-react";
+import RhDashboardPage from "./RhDashboardPage";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 type Position =
@@ -2026,6 +2027,7 @@ export default function HRPage() {
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [showPayroll, setShowPayroll] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
 
   const { data: employees = [], isLoading } = trpc.rh.list.useQuery({
     isActive: true,
@@ -2061,6 +2063,10 @@ export default function HRPage() {
 
   if (showPayroll) {
     return <PayrollPage onBack={() => setShowPayroll(false)} />;
+  }
+
+  if (showDashboard) {
+    return <RhDashboardPage onBack={() => setShowDashboard(false)} />;
   }
 
   if (selectedId !== null) {
@@ -2158,7 +2164,11 @@ export default function HRPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
         <div className="flex items-center gap-2">
-          {userRole === "super_admin" && <RunMigration0044Button />}
+          {userRole === "super_admin" && (
+            <Button variant="outline" size="sm" onClick={() => setShowDashboard(true)}>
+              <BarChart3 className="w-4 h-4 mr-2" /> Dashboard
+            </Button>
+          )}
           <Button onClick={() => setShowCreate(true)} size="sm">
             <UserPlus className="w-4 h-4 mr-2" /> Novo Colaborador
           </Button>
