@@ -48,15 +48,67 @@ export default function AvaliacaoOperacionalPage() {
             Cruza extras escalados em /extras-dia com actividade real registada na API Multipark.
           </p>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="date" className="text-xs">Dia</Label>
-          <Input
-            id="date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-44"
-          />
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="date" className="text-xs">Dia</Label>
+            <Input
+              id="date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-44"
+            />
+          </div>
+          {evaluation && evaluation.totals.people > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const headers = ["Turno","Nome","TL","Nível","Horas pagas","Custo","Ações","€/Acção","Por tipo"];
+                const rows: string[][] = [];
+                for (const s of evaluation.shifts) {
+                  const shiftLabel = s.shift === "morning" ? "Manhã" : "Noite";
+                  if (s.tl) {
+                    const tlA = assignments.find(a => a.id === s.tl!.assignmentId);
+                    rows.push([
+                      shiftLabel,
+                      tlA?.personName ?? "",
+                      "TL",
+                      "—",
+                      String(tlA?.hoursBilled ?? 0),
+                      (tlA?.cost ?? 0).toFixed(2),
+                      String(s.tl.totalActions),
+                      s.tl.totalActions > 0 ? s.tl.costPerAction.toFixed(2) : "—",
+                      Object.entries(s.tl.byType).map(([k, v]) => `${k}:${v}`).join("|"),
+                    ]);
+                  }
+                  for (const m of s.members) {
+                    const a = assignments.find(x => x.id === m.assignmentId);
+                    if (!a) continue;
+                    rows.push([
+                      shiftLabel,
+                      a.personName,
+                      "",
+                      a.level ?? "",
+                      String(a.hoursBilled),
+                      a.cost.toFixed(2),
+                      String(m.totalActions),
+                      m.totalActions > 0 ? m.costPerAction.toFixed(2) : "—",
+                      Object.entries(m.byType).map(([k, v]) => `${k}:${v}`).join("|"),
+                    ]);
+                  }
+                }
+                const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+                const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `avaliacao_operacional_${date}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download className="w-4 h-4 mr-1" /> CSV
+            </Button>
+          )}
         </div>
       </div>
 
@@ -193,6 +245,9 @@ function BulkActions({ date, agents }: { date: string; agents: string[] }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
 
   const runAll = async () => {
+    if (agents.length > 10 && !confirm(`Vai chamar a API Multipark ${agents.length} vezes (uma por agente, em todos os parques). Pode demorar vários minutos. Continuar?`)) {
+      return;
+    }
     setRunning(true);
     setProgress({ done: 0, total: agents.length });
     let total = 0;
