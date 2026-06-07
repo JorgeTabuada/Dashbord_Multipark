@@ -72,6 +72,40 @@ const MANDATORY_DOC_TYPES: DocType[] = [
   "address_proof", "contract", "responsibility_term",
 ];
 
+const LEVEL_LABEL: Record<string, string> = {
+  group: "Grupo", city: "Cidade", brand: "Marca", project: "Projeto",
+};
+const LEVEL_COLOR: Record<string, string> = {
+  group: "bg-violet-100 text-violet-700 border-violet-200",
+  city: "bg-blue-100 text-blue-700 border-blue-200",
+  brand: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  project: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
+function sortProjectsHierarchical<T extends { id: number; name: string; parentId?: number | null; level?: string | null }>(
+  list: T[],
+): Array<T & { __depth: number }> {
+  const byParent = new Map<number | null, T[]>();
+  for (const p of list) {
+    const key = p.parentId ?? null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(p);
+  }
+  for (const arr of byParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  const out: Array<T & { __depth: number }> = [];
+  function walk(parentId: number | null, depth: number) {
+    const children = byParent.get(parentId) ?? [];
+    for (const c of children) {
+      out.push({ ...c, __depth: depth });
+      walk(c.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  const seen = new Set(out.map((p) => p.id));
+  for (const p of list) if (!seen.has(p.id)) out.push({ ...p, __depth: 0 });
+  return out;
+}
+
 const POSITION_COLORS: Record<Position, string> = {
   director: "bg-purple-100 text-purple-800",
   supervisor: "bg-blue-100 text-blue-800",
@@ -110,21 +144,33 @@ function HRStatsBar() {
 }
 
 // ─── CREATE EMPLOYEE DIALOG ───────────────────────────────────────────────────
+// Normaliza para "Primeiro Último" — útil para casar com a API Multipark
+function multiparkNameOf(full: string): string {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
 function CreateEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const utils = trpc.useUtils();
   const { data: allUsers = [] } = trpc.users.list.useQuery();
+  const { data: projectsList = [] } = trpc.projects.list.useQuery();
   const [form, setForm] = useState({
-    fullName: "", email: "", phone: "", nif: "", nib: "",
+    fullName: "", email: "", multiparkAgentName: "",
+    phone: "", nif: "", nib: "",
     address: "", birthDate: "", nationality: "Portuguesa",
     position: "driver" as Position,
     extraLevel: 1,
     department: "",
+    projectId: null as number | null,
     contractType: "permanent" as ContractType,
     contractStart: "", contractEnd: "",
     monthlySalary: "",
     mealAllowancePerDay: "",
     userId: null as number | null,
   });
+  const [confirmStep, setConfirmStep] = useState(false);
 
   const create = trpc.rh.create.useMutation({
     onSuccess: () => {
@@ -132,10 +178,13 @@ function CreateEmployeeDialog({ open, onClose }: { open: boolean; onClose: () =>
       utils.rh.stats.invalidate();
       toast.success("Colaborador criado com sucesso!");
       onClose();
+      setConfirmStep(false);
       setForm({
-        fullName: "", email: "", phone: "", nif: "", nib: "",
+        fullName: "", email: "", multiparkAgentName: "",
+        phone: "", nif: "", nib: "",
         address: "", birthDate: "", nationality: "Portuguesa",
         position: "driver", extraLevel: 1, department: "",
+        projectId: null,
         contractType: "permanent", contractStart: "", contractEnd: "",
         monthlySalary: "", mealAllowancePerDay: "", userId: null,
       });
@@ -143,21 +192,82 @@ function CreateEmployeeDialog({ open, onClose }: { open: boolean; onClose: () =>
     onError: (e) => toast.error(e.message),
   });
 
-  const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string, v: string | number | null) => setForm(f => {
+    const next = { ...f, [k]: v };
+    // Auto-preenche o nome Multipark com a normalização sempre que o nome muda
+    if (k === "fullName" && typeof v === "string") {
+      next.multiparkAgentName = multiparkNameOf(v);
+    }
+    return next;
+  });
+
+  const canSubmit = !!form.fullName && !!form.email && !!form.multiparkAgentName && form.projectId != null;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) setConfirmStep(false); onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Colaborador</DialogTitle>
+          <DialogTitle>
+            {confirmStep ? "Confirmar nome Multipark" : "Novo Colaborador"}
+          </DialogTitle>
         </DialogHeader>
+
+        {confirmStep ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Confirma que este é o nome exacto que o colaborador tem na <strong>aplicação Multipark</strong>.
+              É por aqui que as reservas operadas por ele serão atribuídas.
+            </p>
+            <div className="rounded border bg-muted/30 p-4">
+              <p className="text-xs text-muted-foreground">Nome Multipark</p>
+              <Input
+                value={form.multiparkAgentName}
+                onChange={e => setForm(f => ({ ...f, multiparkAgentName: e.target.value }))}
+                className="mt-1 font-medium"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Sugerido a partir do nome completo: <strong>{multiparkNameOf(form.fullName)}</strong>
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmStep(false)}>Voltar</Button>
+              <Button
+                disabled={!form.multiparkAgentName.trim() || create.isPending}
+                onClick={() => create.mutate({
+                  fullName: form.fullName,
+                  email: form.email,
+                  multiparkAgentName: form.multiparkAgentName,
+                  phone: form.phone || undefined,
+                  nif: form.nif || undefined,
+                  nib: form.nib || undefined,
+                  address: form.address || undefined,
+                  birthDate: form.birthDate || undefined,
+                  nationality: form.nationality || undefined,
+                  position: form.position,
+                  extraLevel: form.position === "extra" ? form.extraLevel : undefined,
+                  department: form.department || undefined,
+                  projectId: form.projectId!,
+                  contractType: form.contractType,
+                  contractStart: form.contractStart || undefined,
+                  contractEnd: form.contractType === "fixed_term" ? form.contractEnd || undefined : undefined,
+                  monthlySalary: form.monthlySalary || undefined,
+                  mealAllowancePerDay: form.mealAllowancePerDay || undefined,
+                  userId: form.userId ?? undefined,
+                })}
+              >
+                {create.isPending ? "A criar..." : "Confirmar e criar"}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2">
             <Label>Nome Completo *</Label>
             <Input value={form.fullName} onChange={e => set("fullName", e.target.value)} placeholder="Nome completo" />
           </div>
           <div>
-            <Label>Email</Label>
+            <Label>Email * <span className="text-xs text-muted-foreground">(login Google)</span></Label>
             <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@empresa.pt" />
           </div>
           <div>
@@ -197,15 +307,41 @@ function CreateEmployeeDialog({ open, onClose }: { open: boolean; onClose: () =>
           </div>
           {form.position === "extra" && (
             <div>
-              <Label>Nível Extra (1-5)</Label>
+              <Label>Nível Extra</Label>
               <Select value={String(form.extraLevel)} onValueChange={v => set("extraLevel", parseInt(v))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={String(n)}>Nível {n}</SelectItem>)}
+                  <SelectItem value="1">Júnior (€4,50/h)</SelectItem>
+                  <SelectItem value="2">Sénior (€5,00/h)</SelectItem>
+                  <SelectItem value="3">Terminal (€5,50/h)</SelectItem>
+                  <SelectItem value="4">Master (€6,00/h)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
+          <div className="col-span-2">
+            <Label>Centro de Custos *</Label>
+            <Select
+              value={form.projectId ? String(form.projectId) : ""}
+              onValueChange={v => setForm(f => ({ ...f, projectId: parseInt(v) }))}
+            >
+              <SelectTrigger className={!form.projectId ? "border-amber-400" : undefined}>
+                <SelectValue placeholder="Escolher centro de custos..." />
+              </SelectTrigger>
+              <SelectContent>
+                {sortProjectsHierarchical(projectsList as any[]).map((p: any) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                      <Badge variant="outline" className={`text-[10px] ${LEVEL_COLOR[p.level ?? "project"] ?? ""}`}>
+                        {LEVEL_LABEL[p.level ?? "project"] ?? p.level}
+                      </Badge>
+                      {p.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label>Departamento</Label>
             <Input value={form.department} onChange={e => set("department", e.target.value)} placeholder="Ex: Lisboa" />
@@ -260,21 +396,13 @@ function CreateEmployeeDialog({ open, onClose }: { open: boolean; onClose: () =>
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button
-            onClick={() => create.mutate({
-              ...form,
-              extraLevel: form.position === "extra" ? form.extraLevel : undefined,
-              contractEnd: form.contractType === "fixed_term" ? form.contractEnd : undefined,
-              monthlySalary: form.monthlySalary || undefined,
-              mealAllowancePerDay: form.mealAllowancePerDay || undefined,
-              birthDate: form.birthDate || undefined,
-              contractStart: form.contractStart || undefined,
-              userId: form.userId ?? undefined,
-            })}
-            disabled={!form.fullName || create.isPending}
+            onClick={() => setConfirmStep(true)}
+            disabled={!canSubmit || create.isPending}
           >
-            {create.isPending ? "A criar..." : "Criar Colaborador"}
+            Continuar
           </Button>
         </DialogFooter>
+        </>)}
       </DialogContent>
     </Dialog>
   );

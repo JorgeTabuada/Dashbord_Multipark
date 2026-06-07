@@ -168,6 +168,13 @@ export async function updateUserRole(userId: number, role: string) {
   await db.update(users).set({ role: role as any }).where(eq(users.id, userId));
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
+}
+
 export async function createManualUser(data: { name: string; email: string; role: string; department?: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

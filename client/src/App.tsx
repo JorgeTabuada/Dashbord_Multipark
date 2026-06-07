@@ -76,6 +76,13 @@ function Router() {
           </DashboardLayout>
         )}
       </Route>
+      <Route path="/rh/utilizadores">
+        {() => (
+          <DashboardLayout>
+            <UsersPage />
+          </DashboardLayout>
+        )}
+      </Route>
       <Route path="/logs">
         {() => (
           <DashboardLayout>

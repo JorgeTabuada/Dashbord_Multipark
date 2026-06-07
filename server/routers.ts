@@ -26,6 +26,7 @@ import {
   getAllUsers,
   updateUserRole,
   createManualUser,
+  getUserByEmail,
   updateUser,
   toggleUserActive,
   getUserById,
@@ -1258,7 +1259,8 @@ export const appRouter = router({
     create: protectedProcedure
       .input(z.object({
         fullName: z.string().min(1),
-        email: z.string().email().optional(),
+        email: z.string().email(),
+        multiparkAgentName: z.string().min(1, "Nome Multipark é obrigatório"),
         phone: z.string().optional(),
         nif: z.string().optional(),
         nib: z.string().optional(),
@@ -1266,9 +1268,9 @@ export const appRouter = router({
         birthDate: z.string().optional(),
         nationality: z.string().optional(),
         position: z.enum(["director","supervisor","team_leader","backoffice","frontoffice","senior_driver","driver","extra"]),
-        extraLevel: z.number().min(1).max(5).optional(),
+        extraLevel: z.number().min(1).max(4).optional(),
         department: z.string().optional(),
-        projectId: z.number().optional(),
+        projectId: z.number({ message: "Centro de custos obrigatório" }),
         contractType: z.enum(["permanent","fixed_term","extra"]).optional(),
         contractStart: z.string().optional(),
         contractEnd: z.string().optional(),
@@ -1278,9 +1280,31 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
+
+        // Se não foi indicado userId, cria um utilizador com o email do colaborador.
+        // Role por defeito: extra para position=extra, user para os restantes.
+        // Permissões superiores só podem ser dadas por super_admin via página Utilizadores.
+        let userId = input.userId ?? null;
+        if (!userId) {
+          // Procura primeiro se já existe um user com este email
+          const existing = await getUserByEmail(input.email);
+          if (existing) {
+            userId = existing.id;
+          } else {
+            const role = input.position === "extra" ? "extra" : "user";
+            const created = await createManualUser({
+              name: input.fullName,
+              email: input.email,
+              role,
+            });
+            userId = created?.id ?? null;
+          }
+        }
+
         await createEmployee({
           fullName: input.fullName,
-          email: input.email ?? null,
+          email: input.email,
+          multiparkAgentName: input.multiparkAgentName,
           phone: input.phone ?? null,
           nif: input.nif ?? null,
           nib: input.nib ?? null,
@@ -1290,17 +1314,17 @@ export const appRouter = router({
           position: input.position,
           extraLevel: input.extraLevel ?? null,
           department: input.department ?? null,
-          projectId: input.projectId ?? null,
+          projectId: input.projectId,
           contractType: input.contractType ?? "permanent",
           contractStart: input.contractStart ? new Date(input.contractStart).toISOString().slice(0, 19).replace("T", " ") : null,
           contractEnd: input.contractEnd ? new Date(input.contractEnd).toISOString().slice(0, 19).replace("T", " ") : null,
           monthlySalary: input.monthlySalary ?? null,
           mealAllowancePerDay: input.mealAllowancePerDay ?? null,
-          userId: input.userId ?? null,
+          userId,
           isActive: 1,
         });
         await logActivity({ userId: ctx.user.id, action: "create", entity: "employee", details: `Colaborador criado: ${input.fullName}` });
-        return { success: true };
+        return { success: true, userId };
       }),
 
     importExtras: protectedProcedure
