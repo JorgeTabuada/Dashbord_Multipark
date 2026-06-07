@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -304,14 +304,86 @@ function DashboardTab() {
 
 // ─── ZELLO GPS TAB ──────────────────────────────────────────────────────────
 
+function ZelloLiveMap({ onlineUsers, speedThreshold }: { onlineUsers: any[]; speedThreshold: number }) {
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+
+  // Centra inicialmente em Lisboa-Aeroporto (epicentro do parque); ajusta com bounds depois.
+  const initialCenter = { lat: 38.7813, lng: -9.1359 };
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    // Limpar markers antigos
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+    if (onlineUsers.length === 0) return;
+
+    const bounds = new window.google.maps.LatLngBounds();
+    for (const u of onlineUsers) {
+      const pos = { lat: Number(u.latitude), lng: Number(u.longitude) };
+      const speeding = u.speed > speedThreshold;
+      const marker = new window.google.maps.Marker({
+        position: pos,
+        map: mapRef.current,
+        title: `${u.displayName || u.username} — ${u.speed.toFixed(0)} km/h`,
+        label: {
+          text: String(Math.round(u.speed)),
+          color: "white",
+          fontSize: "11px",
+          fontWeight: "bold",
+        },
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 14,
+          fillColor: speeding ? "#dc2626" : "#10b981",
+          fillOpacity: 0.9,
+          strokeColor: "white",
+          strokeWeight: 2,
+        },
+      });
+      markersRef.current.push(marker);
+      bounds.extend(pos);
+    }
+    if (onlineUsers.length === 1) {
+      mapRef.current.setCenter(bounds.getCenter());
+      mapRef.current.setZoom(14);
+    } else {
+      mapRef.current.fitBounds(bounds, 40);
+    }
+  }, [onlineUsers, speedThreshold]);
+
+  return (
+    <MapView
+      initialCenter={initialCenter}
+      initialZoom={11}
+      onMapReady={(m) => { mapRef.current = m; }}
+      className="h-[400px] rounded-lg overflow-hidden"
+    />
+  );
+}
+
 function ZelloGPSTab() {
-  const { data: locations, isLoading: loadingLocs, refetch: refetchLocs } = trpc.operational.zello.locations.useQuery(undefined, { refetchInterval: 30000 });
+  // Pausa o refetch automático se a tab do browser não está em foco — evita
+  // queimar a API enquanto o utilizador tem a página em background.
+  const { data: locations, isLoading: loadingLocs, refetch: refetchLocs } = trpc.operational.zello.locations.useQuery(undefined, {
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+  });
   const { data: users } = trpc.operational.zello.users.useQuery();
   const { data: channels } = trpc.operational.zello.channels.useQuery();
+  const { data: speedLimits = [] } = trpc.operational.speedMonitoring.limits.list.useQuery();
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
 
+  // Limite padrão (com fallback a 50). Aplicar tolerância também.
+  const defaultLimit = useMemo(() => {
+    const d = (speedLimits as any[]).find(l => l.isDefault) ?? (speedLimits as any[])[0];
+    if (!d) return { maxSpeed: 50, tolerancePercent: 0 };
+    return { maxSpeed: Number(d.maxSpeed), tolerancePercent: Number(d.tolerancePercent ?? 0) };
+  }, [speedLimits]);
+  const speedThreshold = defaultLimit.maxSpeed * (1 + defaultLimit.tolerancePercent / 100);
+
   const onlineUsers = useMemo(() => (locations || []).filter((l: any) => l.latitude !== 0 && l.longitude !== 0), [locations]);
-  const speedingUsers = useMemo(() => onlineUsers.filter((l: any) => l.speed > 50), [onlineUsers]); // default 50km/h threshold for display
+  const speedingUsers = useMemo(() => onlineUsers.filter((l: any) => l.speed > speedThreshold), [onlineUsers, speedThreshold]);
 
   return (
     <div className="space-y-4 mt-4">
@@ -333,6 +405,7 @@ function ZelloGPSTab() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Gauge className="w-4 h-4" />Em Excesso</div>
             <p className="text-2xl font-bold mt-1 text-red-600">{speedingUsers.length}</p>
+            <p className="text-[10px] text-muted-foreground">limite {speedThreshold.toFixed(0)} km/h</p>
           </CardContent>
         </Card>
         <Card>
@@ -345,11 +418,21 @@ function ZelloGPSTab() {
 
       {/* Auto-refresh indicator */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Atualização automática a cada 30s</p>
+        <p className="text-sm text-muted-foreground">Atualização automática a cada 30s (pausada quando a página está em background)</p>
         <Button variant="outline" size="sm" onClick={() => refetchLocs()}>
           <Satellite className="w-4 h-4 mr-1" />Atualizar Agora
         </Button>
       </div>
+
+      {/* Mapa em tempo real com os condutores online */}
+      {onlineUsers.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="w-5 h-5" /> Mapa em Tempo Real</CardTitle></CardHeader>
+          <CardContent>
+            <ZelloLiveMap onlineUsers={onlineUsers} speedThreshold={speedThreshold} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Locations table */}
       <Card>
@@ -378,7 +461,7 @@ function ZelloGPSTab() {
                 </thead>
                 <tbody>
                   {onlineUsers.map((loc: any) => {
-                    const isSpeeding = loc.speed > 50;
+                    const isSpeeding = loc.speed > speedThreshold;
                     const lastUpdate = loc.lastReport ? new Date(loc.lastReport * 1000).toLocaleString("pt-PT") : "-";
                     return (
                       <tr key={loc.username} className={`border-b ${isSpeeding ? "bg-red-50 dark:bg-red-950/20" : ""}`}>
@@ -550,7 +633,14 @@ function SpeedMonitoringTab() {
 
       {/* Check Now button */}
       <div className="flex items-center gap-3">
-        <Button onClick={() => checkMut.mutate()} disabled={checkMut.isPending} className="bg-red-600 hover:bg-red-700">
+        <Button
+          onClick={() => {
+            if (!confirm("Verificar todos os condutores com GPS ativo e registar infrações automaticamente?")) return;
+            checkMut.mutate();
+          }}
+          disabled={checkMut.isPending}
+          className="bg-red-600 hover:bg-red-700"
+        >
           <Gauge className="w-4 h-4 mr-1" />{checkMut.isPending ? "A verificar..." : "Verificar Velocidades Agora"}
         </Button>
         <p className="text-sm text-muted-foreground">Verifica todos os condutores com GPS ativo e regista infrações automaticamente.</p>
@@ -745,6 +835,13 @@ function DriverHistoryTab() {
 
   const { data: history, isLoading } = trpc.operational.driverHistory.byDate.useQuery({ date: selectedDate });
   const { data: stats } = trpc.operational.driverHistory.stats.useQuery({ date: selectedDate });
+  const { data: speedLimits = [] } = trpc.operational.speedMonitoring.limits.list.useQuery();
+  const defaultLimit = useMemo(() => {
+    const d = (speedLimits as any[]).find(l => l.isDefault) ?? (speedLimits as any[])[0];
+    const max = d ? Number(d.maxSpeed) : 50;
+    const tol = d ? Number(d.tolerancePercent ?? 0) : 0;
+    return max * (1 + tol / 100);
+  }, [speedLimits]);
   const collectMut = trpc.operational.driverHistory.collectDay.useMutation({
     onSuccess: (data) => {
       utils.operational.driverHistory.byDate.invalidate();
@@ -778,10 +875,40 @@ function DriverHistoryTab() {
         </div>
         <Button
           variant="outline"
-          onClick={() => collectMut.mutate({ date: selectedDate })}
+          onClick={() => {
+            if (!confirm(`Recolher dados de ${selectedDate} a partir do Zello?`)) return;
+            collectMut.mutate({ date: selectedDate });
+          }}
           disabled={collectMut.isPending}
         >
           {collectMut.isPending ? "A recolher..." : "Recolher Dados"}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!history || history.length === 0}
+          onClick={() => {
+            if (!history) return;
+            const headers = ["Motorista","Km","Horas Trab.","Horas Parado","Vel. Méd.","Vel. Máx.","Infrações","Bateria","Pontos GPS"];
+            const rows = history.map((h: any) => [
+              (h.displayName || h.zelloUsername).replace(/;/g, ","),
+              parseFloat(h.totalKm || "0").toFixed(1),
+              parseFloat(h.hoursWorked || "0").toFixed(1),
+              parseFloat(h.hoursStopped || "0").toFixed(1),
+              parseFloat(h.avgSpeed || "0").toFixed(1),
+              parseFloat(h.maxSpeed || "0").toFixed(1),
+              h.speedViolations || 0,
+              h.avgBattery || 0,
+              h.gpsPointsCount || 0,
+            ]);
+            const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+            const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `historico_${selectedDate}.csv`; a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <ArrowUpDown className="w-4 h-4 mr-1" /> Export CSV
         </Button>
         <p className="text-sm text-muted-foreground">
           Recolha automática: todos os dias às 2:00 (dados do dia anterior)
@@ -882,7 +1009,7 @@ function DriverHistoryTab() {
                         <td className="p-2 text-right font-mono">{parseFloat(h.hoursStopped || "0").toFixed(1)}h</td>
                         <td className="p-2 text-right font-mono">{parseFloat(h.avgSpeed || "0").toFixed(1)}</td>
                         <td className="p-2 text-right font-mono">
-                          <span className={parseFloat(h.maxSpeed || "0") > 50 ? "text-red-600 font-bold" : ""}>
+                          <span className={parseFloat(h.maxSpeed || "0") > defaultLimit ? "text-red-600 font-bold" : ""}>
                             {parseFloat(h.maxSpeed || "0").toFixed(1)}
                           </span>
                         </td>
@@ -1426,7 +1553,10 @@ function GpsAlertsTab() {
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           variant="default"
-          onClick={() => checkMut.mutate()}
+          onClick={() => {
+            if (!confirm("Verificar estado do GPS/Zello de todos os condutores e criar alertas se necessário?")) return;
+            checkMut.mutate();
+          }}
           disabled={checkMut.isPending}
         >
           <Satellite className="w-4 h-4 mr-1" />

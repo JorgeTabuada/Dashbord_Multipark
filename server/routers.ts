@@ -2390,6 +2390,8 @@ export const appRouter = router({
         vehicleId: z.number().optional(),
         duration: z.number().optional(),
       })).mutation(async ({ ctx, input }) => {
+        // Transcrição chama OpenAI (custo real). Restringir a team_leader+.
+        requireRole(ctx.user.role, "team_leader");
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: "pt" });
         if ("error" in result) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transcrição falhou: ${result.error}` });
