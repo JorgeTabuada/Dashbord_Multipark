@@ -159,7 +159,7 @@ const menuGroups: MenuGroup[] = [
     label: "Operações",
     minRole: "frontoffice",
     items: [
-      { icon: Truck, label: "Operacional", path: "/operacional" },
+      { icon: Truck, label: "Actividade", path: "/operacional" },
       { icon: Megaphone, label: "Marketing", path: "/marketing" },
       { icon: CalendarCheck, label: "Reservas", path: "/multipark/reservas" },
       { icon: ArrowDownToLine, label: "Recolhas", path: "/multipark/entradas" },
