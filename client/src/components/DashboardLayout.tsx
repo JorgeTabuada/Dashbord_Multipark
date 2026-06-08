@@ -141,7 +141,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { icon: Receipt, label: "Despesas", path: "/despesas" },
       { icon: FolderTree, label: "Projetos", path: "/projetos" },
-      { icon: LayoutDashboard, label: "Custos Projetos", path: "/projetos/custos" },
       { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
       { icon: FileText, label: "Faturação", path: "/faturacao" },
       { icon: Handshake, label: "Parcerias", path: "/parcerias" },

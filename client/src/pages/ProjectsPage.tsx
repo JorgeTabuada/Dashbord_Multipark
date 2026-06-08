@@ -16,6 +16,7 @@ import {
   Search, ChevronsUpDown, ChevronsDownUp
 } from "lucide-react";
 import { useLocation } from "wouter";
+import ProjectCostsDashboard from "./ProjectCostsDashboard";
 
 const LEVEL_LABELS: Record<string, string> = {
   group: "Grupo", city: "Cidade", brand: "Marca", project: "Projeto",
@@ -58,6 +59,7 @@ export default function ProjectsPage() {
   const [showAssign, setShowAssign] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", description: "", color: "#6366f1", managerId: "", budget: "", partnerName: "", partnerPercent: "" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [showCosts, setShowCosts] = useState(false);
   const { data: usersList = [] } = trpc.users.list.useQuery();
 
   const createMut = trpc.projects.create.useMutation({
@@ -251,6 +253,10 @@ export default function ProjectsPage() {
     };
   }, [allProjects]);
 
+  if (showCosts) {
+    return <ProjectCostsDashboard onBack={() => setShowCosts(false)} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -258,7 +264,7 @@ export default function ProjectsPage() {
           <p className="text-muted-foreground text-sm">Estrutura organizacional em árvore</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setLocation("/projetos/custos")}>
+          <Button variant="outline" onClick={() => setShowCosts(true)}>
             <Euro className="h-4 w-4 mr-2" /> Custos
           </Button>
           {isAdmin && (

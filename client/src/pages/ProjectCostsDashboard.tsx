@@ -86,8 +86,9 @@ type ProjectCost = {
   percentUsed: number;
 };
 
-export default function ProjectCostsDashboard() {
+export default function ProjectCostsDashboard({ onBack }: { onBack?: () => void } = {}) {
   const [, setLocation] = useLocation();
+  const goBack = onBack ?? (() => setLocation("/projetos"));
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState<number | undefined>(undefined);
@@ -436,7 +437,7 @@ export default function ProjectCostsDashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setLocation("/projetos")}>
+          <Button variant="ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
