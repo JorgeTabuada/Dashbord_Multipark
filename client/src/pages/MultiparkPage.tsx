@@ -86,10 +86,10 @@ const SECTION_CONFIG: Record<string, {
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-export default function MultiparkPage() {
+export default function MultiparkPage({ sectionProp }: { sectionProp?: string } = {}) {
   const { user } = useAuth();
   const params = useParams<{ section?: string }>();
-  const section = params.section || "reservas";
+  const section = sectionProp || params.section || "reservas";
   const config = SECTION_CONFIG[section] || SECTION_CONFIG.reservas;
   const Icon = config.icon;
 

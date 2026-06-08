@@ -30,6 +30,7 @@ import PartnerTypePage from "./pages/PartnerTypePage";
 import BillingDiagnosePage from "./pages/BillingDiagnosePage";
 import AnnualPage from "./pages/AnnualPage";
 import MultiparkPage from "./pages/MultiparkPage";
+import OperacoesPage from "./pages/OperacoesPage";
 import ExtrasDiaPage from "./pages/ExtrasDiaPage";
 import AvaliacaoOperacionalPage from "./pages/AvaliacaoOperacionalPage";
 import MultiparkInspectPage from "./pages/MultiparkInspectPage";
@@ -170,6 +171,9 @@ function Router() {
       </Route>
       <Route path="/anual">
         {() => (<DashboardLayout><AnnualPage /></DashboardLayout>)}
+      </Route>
+      <Route path="/operacoes">
+        {() => (<DashboardLayout><OperacoesPage /></DashboardLayout>)}
       </Route>
       <Route path="/multipark/:section?">
         {() => (<DashboardLayout><MultiparkPage /></DashboardLayout>)}
