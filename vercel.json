@@ -5,11 +5,27 @@
   "installCommand": "pnpm install",
   "framework": null,
   "functions": {
-    "api/index.js": {
-      "maxDuration": 60
-    }
+    "api/index.js": { "maxDuration": 60 },
+    "api/cron/multipark-sync.ts": { "maxDuration": 60 },
+    "api/cron/multipark-future.ts": { "maxDuration": 60 },
+    "api/cron/multipark-cleanup.ts": { "maxDuration": 60 }
   },
+  "crons": [
+    {
+      "path": "/api/cron/multipark-sync",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/multipark-future",
+      "schedule": "17 */2 * * *"
+    },
+    {
+      "path": "/api/cron/multipark-cleanup",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "rewrites": [
+    { "source": "/api/cron/(.*)", "destination": "/api/cron/$1" },
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

@@ -839,3 +839,67 @@ export function startBookingSyncScheduler() {
   setInterval(runSync, SYNC_INTERVAL);
   console.log("[BookingSync] Scheduler started — runs every 15 minutes");
 }
+
+// ─── Cron wrappers (Vercel Cron Jobs chama os endpoints HTTP) ─────────────────
+
+/** Sync recente: report dos últimos N minutos + enrich em paralelo + history.
+ *  Chamado pelo Vercel Cron cada 15 minutos. Toda a função tem que caber no
+ *  maxDuration da função (60s configurado em vercel.json).
+ *
+ *  windowMinutes deve cobrir o intervalo entre runs + margem (default: 30 para
+ *  cobrir o cron de 15 min com 100% de margem se um falhar). */
+export async function runRecentCronSync(windowMinutes = 30): Promise<{
+  report: { processed: number; created: number; updated: number; errors: string[] };
+  enriched: number;
+  historyFetched: number;
+  durationMs: number;
+}> {
+  const t0 = Date.now();
+
+  // Janela: agora - N min → agora. As datas YYYY-MM-DD são granularidade
+  // de dia para o /bookings/report (a API filtra internamente por tempo).
+  const now = new Date();
+  const since = new Date(now.getTime() - windowMinutes * 60_000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  // Fase 1: report (puxa o que estiver novo/alterado)
+  const report = await syncBookings({
+    startDate: fmt(since),
+    endDate: fmt(now),
+  });
+
+  // Fase 2 e 3 em paralelo (não competem por recursos — uma puxa /bookings/:id
+  // a outra /bookings/:id/history). Cada batch é limitado para caber no tempo.
+  const [enrichResult, historyResult] = await Promise.allSettled([
+    enrichBookingsBatch(50),
+    syncBookingHistoryBatch(30),
+  ]);
+
+  const enriched = enrichResult.status === "fulfilled" ? enrichResult.value.enriched : 0;
+  const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+
+  return {
+    report,
+    enriched,
+    historyFetched,
+    durationMs: Date.now() - t0,
+  };
+}
+
+/** Sync de janela futura (próximas 4 semanas) para Extras Dia planear.
+ *  Mais leve — só checkin/checkout, sem enrich/history. */
+export async function runFutureCronSync(weeksAhead = 4): Promise<{
+  report: { processed: number; created: number; updated: number; errors: string[] };
+  durationMs: number;
+}> {
+  const t0 = Date.now();
+  const now = new Date();
+  const end = new Date(now.getTime() + weeksAhead * 7 * 86_400_000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const report = await syncBookings({
+    startDate: fmt(now),
+    endDate: fmt(end),
+    actionTypes: ["checkin", "checkout"],
+  });
+  return { report, durationMs: Date.now() - t0 };
+}
