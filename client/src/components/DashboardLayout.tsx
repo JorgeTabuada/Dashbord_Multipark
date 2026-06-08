@@ -144,6 +144,7 @@ const menuGroups: MenuGroup[] = [
       { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
       { icon: FileText, label: "Faturação", path: "/faturacao" },
       { icon: Handshake, label: "Parcerias", path: "/parcerias" },
+      { icon: Megaphone, label: "Marketing", path: "/marketing" },
       { icon: CalendarDays, label: "Anual", path: "/anual" },
     ],
   },
@@ -161,8 +162,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { icon: Truck, label: "Actividade", path: "/operacional" },
       { icon: LayoutDashboard, label: "Operações", path: "/operacoes" },
-      { icon: Megaphone, label: "Marketing", path: "/marketing" },
-      { icon: RefreshCw, label: "Sincronização", path: "/multipark/sync" },
       { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia" },
       { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional" },
     ],
@@ -181,6 +180,7 @@ const menuGroups: MenuGroup[] = [
     label: "Sistema",
     minRole: "admin",
     items: [
+      { icon: RefreshCw, label: "Sincronização", path: "/multipark/sync" },
       { icon: Key, label: "API Keys", path: "/api-keys" },
       { icon: ScrollText, label: "Logs", path: "/logs" },
     ],
