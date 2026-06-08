@@ -459,7 +459,7 @@ export const appRouter = router({
     // senão o primeiro grupo top-level) a todos os colaboradores activos sem
     // projectId. Devolve quantos foram afectados e qual o projeto usado.
     backfillEmployeeProject: protectedProcedure
-      .input(z.object({ projectId: z.number().optional() }).optional())
+      .input(z.object({ projectId: z.number().optional(), onlyExtras: z.boolean().optional() }).optional())
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "super_admin");
         const { getDb } = await import("./db");
@@ -498,24 +498,30 @@ export const appRouter = router({
           });
         }
 
+        // Alvo: colaboradores activos sem centro de custos. Se onlyExtras,
+        // restringe a position='extra' (não arrasta outros sem projeto).
+        const conds = [eq(employees.isActive, 1), isNull(employees.projectId)];
+        if (input?.onlyExtras) conds.push(eq(employees.position, "extra"));
+        const targetWhere = andOp(...conds);
+
         // Conta antes
         const beforeRes = await db
           .select({ c: sql<number>`COUNT(*)` })
           .from(employees)
-          .where(andOp(eq(employees.isActive, 1), isNull(employees.projectId)));
+          .where(targetWhere);
         const before = Number(beforeRes[0]?.c ?? 0);
 
         // Update
         await db
           .update(employees)
           .set({ projectId: fallbackId })
-          .where(andOp(eq(employees.isActive, 1), isNull(employees.projectId)));
+          .where(targetWhere);
 
         await logActivity({
           userId: ctx.user.id,
           action: "backfill",
           entity: "employee",
-          details: `Backfill projectId=${fallbackId} (${fallbackName}) em ${before} colaboradores`,
+          details: `Backfill projectId=${fallbackId} (${fallbackName})${input?.onlyExtras ? " [só extras]" : ""} em ${before} colaboradores`,
         });
 
         return { affected: before, projectId: fallbackId, projectName: fallbackName };

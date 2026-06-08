@@ -1605,6 +1605,9 @@ function RunMigration0044Button() {
 
 function BackfillEmployeeProjectButton() {
   const utils = trpc.useUtils();
+  const { data: projectsList = [] } = trpc.projects.list.useQuery();
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [onlyExtras, setOnlyExtras] = useState(true);
   const run = trpc.admin.backfillEmployeeProject.useMutation({
     onSuccess: (r) => {
       toast.success(`${r.affected} colaboradores atribuídos a ${r.projectName}`);
@@ -1612,18 +1615,44 @@ function BackfillEmployeeProjectButton() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const projName = (projectsList as any[]).find(p => p.id === projectId)?.name ?? "";
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={run.isPending}
-      onClick={() => {
-        if (!confirm("Atribuir o centro de custos 'Multipark' a todos os colaboradores activos que não têm centro? Vais poder editar individualmente depois.")) return;
-        run.mutate();
-      }}
-    >
-      {run.isPending ? "A atribuir..." : "Atribuir Multipark aos sem centro"}
-    </Button>
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={projectId ? String(projectId) : ""} onValueChange={v => setProjectId(parseInt(v))}>
+        <SelectTrigger className="w-56" size="sm">
+          <SelectValue placeholder="Centro de custos (ex: Lisboa)..." />
+        </SelectTrigger>
+        <SelectContent>
+          {sortProjectsHierarchical(projectsList as any[]).map((p: any) => (
+            <SelectItem key={p.id} value={String(p.id)}>
+              <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                <Badge variant="outline" className={`text-[10px] ${LEVEL_COLOR[p.level ?? "project"] ?? ""}`}>
+                  {LEVEL_LABEL[p.level ?? "project"] ?? p.level}
+                </Badge>
+                {p.name}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer select-none">
+        <input type="checkbox" checked={onlyExtras} onChange={e => setOnlyExtras(e.target.checked)} className="h-4 w-4" />
+        só extras
+      </label>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={run.isPending || !projectId}
+        onClick={() => {
+          if (!projectId) return;
+          const alvo = onlyExtras ? "os extras sem centro" : "todos os colaboradores activos sem centro";
+          if (!confirm(`Atribuir o centro de custos "${projName}" a ${alvo}? Vais poder editar individualmente depois.`)) return;
+          run.mutate({ projectId, onlyExtras });
+        }}
+      >
+        {run.isPending ? "A atribuir..." : "Atribuir aos sem centro"}
+      </Button>
+    </div>
   );
 }
 
