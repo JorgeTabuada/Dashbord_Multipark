@@ -1370,6 +1370,8 @@ function SyncTab() {
         </CardContent>
       </Card>
 
+      <HistoricalBackfillCard />
+
       {/* Last sync result */}
       {lastSyncResult && (
         <Card className={lastSyncResult.success ? "border-green-200 bg-green-50/50" : "border-yellow-200 bg-yellow-50/50"}>
@@ -1572,5 +1574,130 @@ function ImportTab() {
         </Card>
       )}
     </div>
+  );
+}
+
+// ─── Backfill histórico: itera dia-a-dia chamando admin.runHistoricalDaySync ─
+
+function HistoricalBackfillCard() {
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const today = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(yearStart);
+  const [to, setTo] = useState(today);
+  const [running, setRunning] = useState(false);
+  const [stop, setStop] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number; lastDate: string; totalProcessed: number; totalCreated: number; totalUpdated: number; totalEnriched: number; totalHistory: number; errors: string[] }>({
+    done: 0, total: 0, lastDate: "", totalProcessed: 0, totalCreated: 0, totalUpdated: 0, totalEnriched: 0, totalHistory: 0, errors: [],
+  });
+  const daySyncMut = trpc.admin.runHistoricalDaySync.useMutation();
+  const utils = trpc.useUtils();
+
+  const dayList = (a: string, b: string): string[] => {
+    const out: string[] = [];
+    const start = new Date(a + "T00:00:00");
+    const end = new Date(b + "T00:00:00");
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return out;
+    const d = new Date(start);
+    while (d <= end) {
+      out.push(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  };
+
+  const run = async () => {
+    const days = dayList(from, to);
+    if (days.length === 0) { toast.error("Range inválido"); return; }
+    setRunning(true);
+    setStop(false);
+    setProgress({ done: 0, total: days.length, lastDate: "", totalProcessed: 0, totalCreated: 0, totalUpdated: 0, totalEnriched: 0, totalHistory: 0, errors: [] });
+    let totalProcessed = 0, totalCreated = 0, totalUpdated = 0, totalEnriched = 0, totalHistory = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < days.length; i++) {
+      if (stop) break;
+      const date = days[i];
+      try {
+        const r = await daySyncMut.mutateAsync({ date });
+        totalProcessed += r.report.processed;
+        totalCreated += r.report.created;
+        totalUpdated += r.report.updated;
+        totalEnriched += r.enriched;
+        totalHistory += r.historyFetched;
+        if (r.report.errors.length > 0) errors.push(`${date}: ${r.report.errors.slice(0, 2).join(" | ")}`);
+      } catch (e: any) {
+        errors.push(`${date}: ${e?.message ?? "erro"}`);
+      }
+      setProgress({ done: i + 1, total: days.length, lastDate: date, totalProcessed, totalCreated, totalUpdated, totalEnriched, totalHistory, errors });
+    }
+    setRunning(false);
+    utils.multipark.bookings.invalidate();
+    utils.multipark.bookingStats.invalidate();
+    utils.multipark.kpis.invalidate();
+    utils.multipark.syncLogs.invalidate();
+    toast.success(`Histórico concluído: ${totalProcessed} reservas processadas (${totalCreated} novas) em ${days.length} dias`);
+  };
+
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <Card className="border-blue-200 bg-blue-50/30">
+      <CardHeader>
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Download className="w-4 h-4 text-blue-600" /> Importar Histórico (1× para puxar tudo desde o início do ano)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Itera dia-a-dia o range escolhido. Cada dia faz <strong>report + enrich + history</strong> em paralelo
+          (cabe nos 60s do Vercel). Podes parar a qualquer altura e retomar depois mudando "De".
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label className="text-xs mb-1 block">De</Label>
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" disabled={running} />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Até</Label>
+            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" disabled={running} />
+          </div>
+          {!running ? (
+            <Button onClick={run} className="gap-2">
+              <Download className="w-4 h-4" /> Importar {dayList(from, to).length} dias
+            </Button>
+          ) : (
+            <Button variant="destructive" onClick={() => setStop(true)}>
+              <XCircle className="w-4 h-4 mr-1" /> Parar
+            </Button>
+          )}
+        </div>
+
+        {(running || progress.done > 0) && (
+          <div className="space-y-2 text-sm">
+            <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all duration-300"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {progress.done}/{progress.total} dias ({pct}%){progress.lastDate ? ` · último: ${progress.lastDate}` : ""}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+              <div><strong>{progress.totalProcessed}</strong> processadas</div>
+              <div className="text-green-700"><strong>{progress.totalCreated}</strong> novas</div>
+              <div className="text-blue-700"><strong>{progress.totalUpdated}</strong> actualizadas</div>
+              <div><strong>{progress.totalEnriched}</strong> enriquecidas</div>
+              <div><strong>{progress.totalHistory}</strong> history</div>
+            </div>
+            {progress.errors.length > 0 && (
+              <div className="text-xs text-red-600 mt-2">
+                <p className="font-medium">{progress.errors.length} dias com avisos:</p>
+                {progress.errors.slice(0, 5).map((e, i) => <p key={i}>• {e}</p>)}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

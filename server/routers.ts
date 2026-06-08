@@ -521,6 +521,36 @@ export const appRouter = router({
         return { affected: before, projectId: fallbackId, projectName: fallbackName };
       }),
 
+    // Backfill histórico: sincroniza UM dia (todas as actionTypes) +
+    // enrich + history. Frontend itera dia-a-dia para o range pedido.
+    // Cada chamada cabe nos 60s do Vercel para um dia tipico.
+    runHistoricalDaySync: protectedProcedure
+      .input(z.object({ date: z.string() })) // YYYY-MM-DD
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const { syncBookings, enrichBookingsBatch, syncBookingHistoryBatch } = await import("./jobs/multiparkBookingSync");
+        const t0 = Date.now();
+        // Fase 1: report do dia (todas as actionTypes)
+        const report = await syncBookings({
+          startDate: input.date,
+          endDate: input.date,
+          triggeredById: ctx.user.id,
+        });
+        // Fase 2 e 3 em paralelo para reservas novas/sem enrich
+        const [enrichRes, historyRes] = await Promise.allSettled([
+          enrichBookingsBatch(100),
+          syncBookingHistoryBatch(50),
+        ]);
+        return {
+          date: input.date,
+          report,
+          enriched: enrichRes.status === "fulfilled" ? enrichRes.value.enriched : 0,
+          enrichScanned: enrichRes.status === "fulfilled" ? enrichRes.value.scanned : 0,
+          historyFetched: historyRes.status === "fulfilled" ? historyRes.value.fetched : 0,
+          durationMs: Date.now() - t0,
+        };
+      }),
+
     // Reforça o UNIQUE depois dos batches terminarem.
     enforceMultiparkUnique: protectedProcedure.mutation(async ({ ctx }) => {
       requireRole(ctx.user.role, "super_admin");

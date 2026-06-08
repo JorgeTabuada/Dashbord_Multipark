@@ -1,0 +1,61 @@
+name: Multipark Sync Cron
+
+# Substituto gratuito dos Vercel Cron Jobs (Hobby limita a 1/dia).
+# Chama os endpoints HTTP /api/cron/* com Authorization: Bearer ${CRON_SECRET}.
+#
+# Pré-requisitos:
+#   1. Definir secret CRON_SECRET no GitHub: Settings → Secrets → Actions
+#      (mesma string que no Vercel env var)
+#   2. Definir secret APP_URL com o URL base (ex: https://dashbord-multipark.vercel.app)
+#
+# Granularidade mínima do GitHub cron: 5 min, e pode atrasar até alguns minutos.
+
+on:
+  schedule:
+    # Sync recente: a cada 15 minutos
+    - cron: "*/15 * * * *"
+    # Janela futura: minuto 17 a cada 2 horas
+    - cron: "17 */2 * * *"
+    # Cleanup: 03:00 UTC (=04:00 PT verão)
+    - cron: "0 3 * * *"
+  workflow_dispatch: {} # também permite trigger manual da UI
+
+jobs:
+  sync-recent:
+    if: github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/cron/multipark-sync
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
+            --max-time 90 \
+            "$APP_URL/api/cron/multipark-sync" | head -c 500 || echo "Sync failed"
+
+  sync-future:
+    if: github.event.schedule == '17 */2 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/cron/multipark-future
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
+            --max-time 90 \
+            "$APP_URL/api/cron/multipark-future" | head -c 500 || echo "Future sync failed"
+
+  cleanup:
+    if: github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/cron/multipark-cleanup
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
+            --max-time 90 \
+            "$APP_URL/api/cron/multipark-cleanup" | head -c 500 || echo "Cleanup failed"
