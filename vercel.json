@@ -7,11 +7,6 @@
   "functions": {
     "api/index.js": { "maxDuration": 60 }
   },
-  "crons": [
-    { "path": "/api/cron/multipark-sync", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/multipark-future", "schedule": "17 */2 * * *" },
-    { "path": "/api/cron/multipark-cleanup", "schedule": "0 3 * * *" }
-  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
