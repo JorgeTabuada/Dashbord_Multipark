@@ -1170,6 +1170,7 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.rh.byId.useQuery({ id: employeeId });
   const { data: allUsers = [] } = trpc.users.list.useQuery();
+  const { data: projectsList = [] } = trpc.projects.list.useQuery();
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
@@ -1214,6 +1215,7 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
       position: emp.position ?? "driver",
       extraLevel: emp.extraLevel ?? 1,
       department: emp.department ?? "",
+      projectId: emp.projectId ?? null,
       contractType: emp.contractType ?? "permanent",
       contractStart: emp.contractStart ? new Date(emp.contractStart).toISOString().split("T")[0] : "",
       contractEnd: emp.contractEnd ? new Date(emp.contractEnd).toISOString().split("T")[0] : "",
@@ -1238,6 +1240,7 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
       position: editForm.position || undefined,
       extraLevel: editForm.position === "extra" ? editForm.extraLevel : undefined,
       department: editForm.department || undefined,
+      projectId: editForm.projectId != null ? Number(editForm.projectId) : undefined,
       contractType: editForm.contractType || undefined,
       contractStart: editForm.contractStart || undefined,
       contractEnd: editForm.contractType === "fixed_term" ? editForm.contractEnd || undefined : undefined,
@@ -1354,6 +1357,14 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
                     <span>{emp.department}</span>
                   </div>
                 )}
+                <div className="flex items-center gap-2 text-sm">
+                  <Building2 className={`w-4 h-4 ${emp.projectId ? "text-muted-foreground" : "text-amber-600"}`} />
+                  {(() => {
+                    const proj = (projectsList as any[]).find(p => p.id === emp.projectId);
+                    if (!proj) return <span className="text-amber-600 font-medium">Sem centro de custos — editar para atribuir</span>;
+                    return <span>Centro: <span className="font-medium">{proj.name}</span></span>;
+                  })()}
+                </div>
                 {emp.monthlySalary && (
                   <div className="flex items-center gap-2 text-sm font-medium text-green-700">
                     <Euro className="w-4 h-4" />
@@ -1475,6 +1486,34 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
                 <Label>Departamento</Label>
                 <Input value={editForm.department} onChange={e => ef("department", e.target.value)} placeholder="Ex: Lisboa" />
               </div>
+              <div className="col-span-2">
+                <Label>Centro de Custos *</Label>
+                <Select
+                  value={editForm.projectId ? String(editForm.projectId) : ""}
+                  onValueChange={v => ef("projectId", parseInt(v))}
+                >
+                  <SelectTrigger className={!editForm.projectId ? "border-amber-400" : undefined}>
+                    <SelectValue placeholder="Escolher centro de custos..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortProjectsHierarchical(projectsList as any[]).map((p: any) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        <span style={{ paddingLeft: `${p.__depth * 12}px` }} className="inline-flex items-center gap-2">
+                          <Badge variant="outline" className={`text-[10px] ${LEVEL_COLOR[p.level ?? "project"] ?? ""}`}>
+                            {LEVEL_LABEL[p.level ?? "project"] ?? p.level}
+                          </Badge>
+                          {p.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!editForm.projectId && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Atribui um centro de custos para o colaborador entrar nas contas de RH/Anual.
+                  </p>
+                )}
+              </div>
               <div>
                 <Label>Tipo de Contrato</Label>
                 <Select value={editForm.contractType} onValueChange={v => ef("contractType", v)}>
@@ -1560,6 +1599,30 @@ function RunMigration0044Button() {
       }}
     >
       {run.isPending ? "A aplicar..." : "DB: 0044"}
+    </Button>
+  );
+}
+
+function BackfillEmployeeProjectButton() {
+  const utils = trpc.useUtils();
+  const run = trpc.admin.backfillEmployeeProject.useMutation({
+    onSuccess: (r) => {
+      toast.success(`${r.affected} colaboradores atribuídos a ${r.projectName}`);
+      utils.rh.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Atribuir o centro de custos 'Multipark' a todos os colaboradores activos que não têm centro? Vais poder editar individualmente depois.")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A atribuir..." : "Atribuir Multipark aos sem centro"}
     </Button>
   );
 }
@@ -2169,7 +2232,8 @@ export default function HRPage() {
       {/* Header com novo colaborador destacado + dropdown de ações */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {userRole === "super_admin" && <BackfillEmployeeProjectButton />}
           {userRole === "super_admin" && (
             <Button variant="outline" size="sm" onClick={() => setShowDashboard(true)}>
               <BarChart3 className="w-4 h-4 mr-2" /> Dashboard

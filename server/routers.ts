@@ -455,6 +455,72 @@ export const appRouter = router({
         };
       }),
 
+    // Backfill: atribui um projeto fallback (default = "Multipark" se existir,
+    // senão o primeiro grupo top-level) a todos os colaboradores activos sem
+    // projectId. Devolve quantos foram afectados e qual o projeto usado.
+    backfillEmployeeProject: protectedProcedure
+      .input(z.object({ projectId: z.number().optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "super_admin");
+        const { getDb } = await import("./db");
+        const { sql, isNull, and: andOp, eq } = await import("drizzle-orm");
+        const { employees, projects } = await import("../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+        // Resolve o projeto fallback
+        let fallbackId = input?.projectId;
+        let fallbackName = "";
+        if (!fallbackId) {
+          const allProjects = await db.select().from(projects);
+          // Procura projeto "Multipark" (qualquer level)
+          const mp = allProjects.find(p => /^multipark$/i.test(p.name.trim()));
+          if (mp) {
+            fallbackId = mp.id;
+            fallbackName = mp.name;
+          } else {
+            // Sem "Multipark" → primeiro grupo (top-level)
+            const top = allProjects.find(p => p.level === "group");
+            if (top) {
+              fallbackId = top.id;
+              fallbackName = top.name;
+            }
+          }
+        } else {
+          const [p] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, fallbackId)).limit(1);
+          fallbackName = p?.name ?? "";
+        }
+
+        if (!fallbackId) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Não há projeto fallback. Cria um projeto top-level 'Multipark' ou indica projectId no input.",
+          });
+        }
+
+        // Conta antes
+        const beforeRes = await db
+          .select({ c: sql<number>`COUNT(*)` })
+          .from(employees)
+          .where(andOp(eq(employees.isActive, 1), isNull(employees.projectId)));
+        const before = Number(beforeRes[0]?.c ?? 0);
+
+        // Update
+        await db
+          .update(employees)
+          .set({ projectId: fallbackId })
+          .where(andOp(eq(employees.isActive, 1), isNull(employees.projectId)));
+
+        await logActivity({
+          userId: ctx.user.id,
+          action: "backfill",
+          entity: "employee",
+          details: `Backfill projectId=${fallbackId} (${fallbackName}) em ${before} colaboradores`,
+        });
+
+        return { affected: before, projectId: fallbackId, projectName: fallbackName };
+      }),
+
     // Reforça o UNIQUE depois dos batches terminarem.
     enforceMultiparkUnique: protectedProcedure.mutation(async ({ ctx }) => {
       requireRole(ctx.user.role, "super_admin");
