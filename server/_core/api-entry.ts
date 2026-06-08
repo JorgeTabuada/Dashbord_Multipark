@@ -132,6 +132,66 @@ app.get("/api/debug/probe-partner", async (req, res) => {
   }
 });
 
+// ─── Vercel Cron Jobs ────────────────────────────────────────────────────────
+// Vercel chama estes endpoints com Authorization: Bearer <CRON_SECRET>. Em
+// ausência da env var, qualquer chamada é permitida (útil em dev).
+function cronAuthOk(req: any): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+  return req.headers["authorization"] === `Bearer ${secret}`;
+}
+
+app.get("/api/cron/multipark-sync", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { runRecentCronSync } = await import("../jobs/multiparkBookingSync");
+    const result = await runRecentCronSync(30);
+    res.json({ ok: true, ranAt: new Date().toISOString(), ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+
+app.get("/api/cron/multipark-future", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { runFutureCronSync } = await import("../jobs/multiparkBookingSync");
+    const result = await runFutureCronSync(4);
+    res.json({ ok: true, ranAt: new Date().toISOString(), ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+
+app.get("/api/cron/multipark-cleanup", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { getDb } = await import("../db");
+    const { sql } = await import("drizzle-orm");
+    const db = await getDb();
+    if (!db) return res.status(500).json({ ok: false, error: "DB not available" });
+    const result = await db.execute(sql`
+      DELETE FROM multipark_bookings WHERE id IN (
+        SELECT id FROM (
+          SELECT b1.id FROM multipark_bookings b1
+          INNER JOIN multipark_bookings b2
+            ON b1.externalId = b2.externalId
+           AND (
+                 b1.updatedAt < b2.updatedAt
+              OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id)
+           )
+          LIMIT 5000
+        ) AS t
+      )
+    `) as any;
+    const meta = Array.isArray(result[0]) ? result[0] : result;
+    const deleted = Number((meta as any)?.affectedRows ?? 0);
+    res.json({ ok: true, ranAt: new Date().toISOString(), deleted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+
 // Health check com diagnóstico de env vars críticas (sem expor valores)
 app.get("/api/health", (_req, res) => {
   res.json({

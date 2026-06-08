@@ -14,21 +14,28 @@ __export(schema_exports, {
   activityLogs: () => activityLogs,
   annualReports: () => annualReports,
   apiKeys: () => apiKeys,
+  appNotifications: () => appNotifications,
   bookingHistory: () => bookingHistory,
   campaignDailyStats: () => campaignDailyStats,
   campaigns: () => campaigns,
   careerExamAttempts: () => careerExamAttempts,
   careerExamQuestions: () => careerExamQuestions,
   careerExams: () => careerExams,
+  complaintDriversOnDuty: () => complaintDriversOnDuty,
   complaintMessages: () => complaintMessages,
+  complaintPenaltyConfig: () => complaintPenaltyConfig,
   complaintPhotos: () => complaintPhotos,
   complaints: () => complaints,
   dailyDriverHistory: () => dailyDriverHistory,
   employeeDocuments: () => employeeDocuments,
+  employeeLeaves: () => employeeLeaves,
+  employeePenalties: () => employeePenalties,
+  employeeSalaryHistory: () => employeeSalaryHistory,
   employees: () => employees,
   expenseCategories: () => expenseCategories,
   expenses: () => expenses,
   extraRates: () => extraRates,
+  extrasDiaAssignments: () => extrasDiaAssignments,
   faqs: () => faqs,
   googleReviews: () => googleReviews,
   gpsAlerts: () => gpsAlerts,
@@ -39,9 +46,11 @@ __export(schema_exports, {
   lostFoundMessages: () => lostFoundMessages,
   lostFoundPhotos: () => lostFoundPhotos,
   marketingExpenses: () => marketingExpenses,
+  multiparkBookingHistory: () => multiparkBookingHistory,
   multiparkBookings: () => multiparkBookings,
   multiparkDailySnapshots: () => multiparkDailySnapshots,
   multiparkSyncLogs: () => multiparkSyncLogs,
+  partnerAliases: () => partnerAliases,
   partnershipInvoices: () => partnershipInvoices,
   partnershipTransactions: () => partnershipTransactions,
   partnerships: () => partnerships,
@@ -70,7 +79,7 @@ __export(schema_exports, {
   vehicles: () => vehicles
 });
 import { mysqlTable, bigint, int, varchar, text, timestamp, index, uniqueIndex, decimal, mysqlEnum, tinyint } from "drizzle-orm/mysql-core";
-var activityLogs, annualReports, apiKeys, campaignDailyStats, campaigns, careerExamAttempts, careerExamQuestions, careerExams, complaintMessages, complaintPhotos, complaints, dailyDriverHistory, employeeDocuments, employees, expenseCategories, expenses, extraRates, faqs, googleReviews, gpsAlerts, incidents, inviteTokens, invoices, lostFoundItems, lostFoundMessages, lostFoundPhotos, bookingHistory, marketingExpenses, multiparkBookings, multiparkDailySnapshots, multiparkSyncLogs, partnershipInvoices, partnershipTransactions, partnerships, payslipHistory, pdaCheckins, pdas, performanceEvaluations, projectEmployees, projects, quizAttempts, quizQuestions, radioTranscriptions, schedules, services, speedAlerts, speedLimits, speedViolations, taskAssignees, tasks, timeRecords, trainingCategories, trainingManuals, trainingVideos, users, vehicleMovements, vehicles;
+var activityLogs, annualReports, apiKeys, campaignDailyStats, campaigns, careerExamAttempts, careerExamQuestions, careerExams, appNotifications, complaintDriversOnDuty, complaintPenaltyConfig, complaintMessages, complaintPhotos, complaints, dailyDriverHistory, employeeDocuments, employees, employeeLeaves, employeeSalaryHistory, employeePenalties, expenseCategories, expenses, extraRates, extrasDiaAssignments, faqs, googleReviews, gpsAlerts, incidents, inviteTokens, invoices, lostFoundItems, lostFoundMessages, lostFoundPhotos, bookingHistory, marketingExpenses, multiparkBookings, multiparkDailySnapshots, multiparkSyncLogs, partnershipInvoices, partnershipTransactions, partnerships, multiparkBookingHistory, partnerAliases, payslipHistory, pdaCheckins, pdas, performanceEvaluations, projectEmployees, projects, quizAttempts, quizQuestions, radioTranscriptions, schedules, services, speedAlerts, speedLimits, speedViolations, taskAssignees, tasks, timeRecords, trainingCategories, trainingManuals, trainingVideos, users, vehicleMovements, vehicles;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -174,6 +183,54 @@ var init_schema = __esm({
       timeLimitMinutes: int().default(30),
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
     });
+    appNotifications = mysqlTable(
+      "app_notifications",
+      {
+        id: int().autoincrement().primaryKey(),
+        userId: int().notNull(),
+        title: varchar({ length: 255 }).notNull(),
+        body: text(),
+        kind: varchar({ length: 32 }).default("info"),
+        link: varchar({ length: 512 }),
+        isRead: tinyint().default(0).notNull(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_app_notifications_user_unread").on(table.userId, table.isRead, table.createdAt),
+        index("idx_app_notifications_kind").on(table.kind)
+      ]
+    );
+    complaintDriversOnDuty = mysqlTable(
+      "complaint_drivers_on_duty",
+      {
+        id: int().autoincrement().primaryKey(),
+        complaintId: int().notNull(),
+        employeeId: int(),
+        employeeName: varchar({ length: 256 }).notNull(),
+        roleAtTime: varchar({ length: 64 }),
+        source: varchar({ length: 32 }).notNull(),
+        penaltyPointsApplied: int().default(0).notNull(),
+        notes: varchar({ length: 512 }),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_cdod_complaint").on(table.complaintId),
+        index("idx_cdod_employee").on(table.employeeId)
+      ]
+    );
+    complaintPenaltyConfig = mysqlTable(
+      "complaint_penalty_config",
+      {
+        id: int().autoincrement().primaryKey(),
+        complaintType: varchar({ length: 32 }).notNull(),
+        basePoints: int().default(0).notNull(),
+        description: varchar({ length: 255 }),
+        updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
+      },
+      (table) => [
+        uniqueIndex("uq_complaint_type").on(table.complaintType)
+      ]
+    );
     complaintMessages = mysqlTable("complaint_messages", {
       id: int().autoincrement().primaryKey(),
       complaintId: int().notNull(),
@@ -214,7 +271,11 @@ var init_schema = __esm({
       assignedToId: int(),
       createdById: int(),
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
-      updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
+      updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull(),
+      penaltyPoints: int().default(0).notNull(),
+      clientEmailSentAt: timestamp({ mode: "string" }),
+      clientEmailSubject: varchar({ length: 255 }),
+      clientEmailBody: text()
     });
     dailyDriverHistory = mysqlTable("daily_driver_history", {
       id: int().autoincrement().primaryKey(),
@@ -272,8 +333,67 @@ var init_schema = __esm({
       userId: int(),
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
       updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull(),
-      mealAllowancePerDay: decimal({ precision: 6, scale: 2 })
+      mealAllowancePerDay: decimal({ precision: 6, scale: 2 }),
+      multiparkAgentName: varchar({ length: 256 }),
+      multiparkAgentUserId: varchar({ length: 128 }),
+      docsWarningAt: timestamp({ mode: "string" }),
+      loginBlocked: tinyint().default(0).notNull(),
+      loginBlockedReason: varchar({ length: 255 })
     });
+    employeeLeaves = mysqlTable(
+      "employee_leaves",
+      {
+        id: int().autoincrement().primaryKey(),
+        employeeId: int().notNull(),
+        leaveType: mysqlEnum(["vacation", "sick", "unpaid", "other"]).default("vacation").notNull(),
+        fromDate: varchar({ length: 10 }).notNull(),
+        toDate: varchar({ length: 10 }).notNull(),
+        notes: varchar({ length: 255 }),
+        createdById: int(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_employee_leaves_emp").on(table.employeeId),
+        index("idx_employee_leaves_dates").on(table.fromDate, table.toDate)
+      ]
+    );
+    employeeSalaryHistory = mysqlTable(
+      "employee_salary_history",
+      {
+        id: int().autoincrement().primaryKey(),
+        employeeId: int().notNull(),
+        monthlySalary: decimal({ precision: 10, scale: 2 }),
+        mealAllowancePerDay: decimal({ precision: 6, scale: 2 }),
+        effectiveFrom: varchar({ length: 10 }).notNull(),
+        effectiveUntil: varchar({ length: 10 }),
+        changedById: int(),
+        notes: varchar({ length: 255 }),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_salary_history_emp").on(table.employeeId),
+        index("idx_salary_history_from").on(table.effectiveFrom)
+      ]
+    );
+    employeePenalties = mysqlTable(
+      "employee_penalties",
+      {
+        id: int().autoincrement().primaryKey(),
+        employeeId: int().notNull(),
+        reason: mysqlEnum(["no_show_extra_dia", "speeding", "lost_found_investigation", "complaint_investigation", "other"]).notNull(),
+        severity: mysqlEnum(["warning", "penalty", "serious"]).default("penalty").notNull(),
+        points: int().default(1).notNull(),
+        relatedId: int(),
+        notes: varchar({ length: 512 }),
+        clearedAt: timestamp({ mode: "string" }),
+        clearedById: int(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_employee_penalties_emp").on(table.employeeId),
+        index("idx_employee_penalties_open").on(table.employeeId, table.clearedAt)
+      ]
+    );
     expenseCategories = mysqlTable("expense_categories", {
       id: int().autoincrement().primaryKey(),
       name: varchar({ length: 128 }).notNull(),
@@ -308,12 +428,36 @@ var init_schema = __esm({
       {
         id: int().autoincrement().primaryKey(),
         level: int().notNull(),
+        levelName: varchar({ length: 32 }),
         hourlyRate: decimal({ precision: 6, scale: 2 }).notNull(),
         label: varchar({ length: 64 }),
         updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
       },
       (table) => [
-        index("extra_rates_level_unique").on(table.level)
+        index("extra_rates_level_unique").on(table.level),
+        index("idx_extra_rates_levelname").on(table.levelName)
+      ]
+    );
+    extrasDiaAssignments = mysqlTable(
+      "extras_dia_assignments",
+      {
+        id: int().autoincrement().primaryKey(),
+        assignmentDate: varchar({ length: 10 }).notNull(),
+        employeeId: int(),
+        personName: varchar({ length: 128 }).notNull(),
+        level: mysqlEnum(["junior", "senior", "terminal", "master"]),
+        isTeamLeader: tinyint().default(0).notNull(),
+        shift: mysqlEnum(["morning", "night"]).default("morning").notNull(),
+        startHour: int().notNull(),
+        endHour: int().notNull(),
+        sentHomeHour: int(),
+        notes: varchar({ length: 255 }),
+        createdById: int(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
+        updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
+      },
+      (table) => [
+        index("idx_extras_dia_date").on(table.assignmentDate)
       ]
     );
     faqs = mysqlTable("faqs", {
@@ -536,6 +680,24 @@ var init_schema = __esm({
         remainingToPay: decimal({ precision: 10, scale: 2 }),
         arrivalFlight: varchar({ length: 32 }),
         departureFlight: varchar({ length: 32 }),
+        deliveryType: varchar({ length: 64 }),
+        returnFlight: varchar({ length: 32 }),
+        departingFlight: varchar({ length: 32 }),
+        remarks: varchar({ length: 512 }),
+        enrichedAt: timestamp({ mode: "string" }),
+        origin: varchar({ length: 64 }),
+        originUrl: varchar({ length: 512 }),
+        currentGarage: varchar({ length: 64 }),
+        currentSpot: varchar({ length: 64 }),
+        lastKnownMileage: int(),
+        checkinAgentName: varchar({ length: 256 }),
+        checkinAgentUserId: varchar({ length: 128 }),
+        checkoutAgentName: varchar({ length: 256 }),
+        checkoutAgentUserId: varchar({ length: 128 }),
+        historyFetchedAt: timestamp({ mode: "string" }),
+        spotType: mysqlEnum(["covered", "uncovered", "indoor", "unknown"]),
+        parkBrand: varchar({ length: 16 }),
+        paymentMethod: varchar({ length: 128 }),
         cancelledAt: timestamp({ mode: "string" }),
         cancelReason: text(),
         notes: text(),
@@ -545,7 +707,7 @@ var init_schema = __esm({
         updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
       },
       (table) => [
-        index("multipark_bookings_externalId_unique").on(table.externalId)
+        uniqueIndex("multipark_bookings_externalId_unique").on(table.externalId)
       ]
     );
     multiparkDailySnapshots = mysqlTable("multipark_daily_snapshots", {
@@ -611,7 +773,7 @@ var init_schema = __esm({
       id: int().autoincrement().primaryKey(),
       name: varchar({ length: 255 }).notNull(),
       campaignKey: varchar({ length: 128 }),
-      partnerType: mysqlEnum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]).default("other").notNull(),
+      partnerType: varchar({ length: 64 }).default("other").notNull(),
       contactName: varchar({ length: 255 }),
       contactEmail: varchar({ length: 320 }),
       contactPhone: varchar({ length: 50 }),
@@ -622,8 +784,47 @@ var init_schema = __esm({
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
       updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull(),
       partnerNif: varchar("partner_nif", { length: 20 }),
-      monthlyFee: int().default(0)
+      monthlyFee: int().default(0),
+      multiparkPartnerId: varchar({ length: 128 })
     });
+    multiparkBookingHistory = mysqlTable(
+      "multipark_booking_history",
+      {
+        id: int().autoincrement().primaryKey(),
+        bookingExternalId: varchar({ length: 128 }).notNull(),
+        historyId: varchar({ length: 128 }).notNull(),
+        changeType: varchar({ length: 32 }),
+        actionTime: timestamp({ mode: "string" }),
+        remarks: text(),
+        agentName: varchar({ length: 256 }),
+        agentUserId: varchar({ length: 128 }),
+        agentEmail: varchar({ length: 320 }),
+        modifiedFields: text(),
+        platform: varchar({ length: 32 }),
+        fetchedAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        uniqueIndex("uq_booking_history").on(table.bookingExternalId, table.historyId),
+        index("idx_bh_booking").on(table.bookingExternalId),
+        index("idx_bh_agent").on(table.agentUserId),
+        index("idx_bh_actionTime").on(table.actionTime),
+        index("idx_bh_changeType").on(table.changeType)
+      ]
+    );
+    partnerAliases = mysqlTable(
+      "partner_aliases",
+      {
+        id: int().autoincrement().primaryKey(),
+        partnershipId: int().notNull(),
+        aliasType: mysqlEnum(["multipark_partner_id", "payment_method"]).notNull(),
+        aliasValue: varchar({ length: 128 }).notNull(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        uniqueIndex("uq_alias").on(table.aliasType, table.aliasValue),
+        index("idx_partner_aliases_partnership").on(table.partnershipId)
+      ]
+    );
     payslipHistory = mysqlTable("payslip_history", {
       id: int().autoincrement().primaryKey(),
       employeeId: int(),
@@ -952,385 +1153,446 @@ var init_env = __esm({
   }
 });
 
-// server/_core/notification.ts
-var notification_exports = {};
-__export(notification_exports, {
-  notifyOwner: () => notifyOwner,
-  sendEmail: () => sendEmail
+// shared/partnerTypes.ts
+var partnerTypes_exports = {};
+__export(partnerTypes_exports, {
+  PARTNER_TYPES: () => PARTNER_TYPES,
+  PARTNER_TYPE_BY_ID: () => PARTNER_TYPE_BY_ID,
+  getPartnerType: () => getPartnerType,
+  parsePartnerConfig: () => parsePartnerConfig,
+  serializePartnerConfig: () => serializePartnerConfig
 });
-import { TRPCError } from "@trpc/server";
-import { createTransport } from "nodemailer";
-function getTransporter() {
-  if (_transporter) return _transporter;
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) {
-    console.warn("[Notification] SMTP not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)");
-    return null;
-  }
-  _transporter = createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass }
-  });
-  return _transporter;
+function getPartnerType(id) {
+  if (!id) return PARTNER_TYPE_BY_ID["outro"];
+  return PARTNER_TYPE_BY_ID[id] ?? PARTNER_TYPE_BY_ID["outro"];
 }
-async function notifyOwner(payload) {
-  const { title, content } = validatePayload(payload);
-  const transporter = getTransporter();
-  const ownerEmail = process.env.OWNER_EMAIL;
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
-  if (!transporter || !ownerEmail) {
-    console.log(`[Notification] ${title}: ${content}`);
-    return true;
-  }
+function parsePartnerConfig(notes) {
+  if (!notes) return {};
+  const trimmed = notes.trim();
+  if (!trimmed.startsWith("{")) return {};
   try {
-    await transporter.sendMail({
-      from: `"Dashboard Multipark" <${fromEmail}>`,
-      to: ownerEmail,
-      subject: `[Dashboard Multipark] ${title}`,
-      text: content,
-      html: `<h2>${title}</h2><p>${content.replace(/\n/g, "<br>")}</p>`
-    });
-    return true;
-  } catch (error) {
-    console.warn("[Notification] Failed to send email:", error);
-    return false;
-  }
-}
-async function sendEmail(options) {
-  const transporter = getTransporter();
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
-  if (!transporter) {
-    console.warn("[Email] SMTP not configured, cannot send email");
-    return false;
-  }
-  try {
-    await transporter.sendMail({
-      from: `"Dashboard Multipark" <${fromEmail}>`,
-      ...options
-    });
-    return true;
-  } catch (error) {
-    console.warn("[Email] Failed to send:", error);
-    return false;
-  }
-}
-var TITLE_MAX_LENGTH, CONTENT_MAX_LENGTH, trimValue, isNonEmptyString2, _transporter, validatePayload;
-var init_notification = __esm({
-  "server/_core/notification.ts"() {
-    "use strict";
-    TITLE_MAX_LENGTH = 1200;
-    CONTENT_MAX_LENGTH = 2e4;
-    trimValue = (value) => value.trim();
-    isNonEmptyString2 = (value) => typeof value === "string" && value.trim().length > 0;
-    _transporter = null;
-    validatePayload = (input) => {
-      if (!isNonEmptyString2(input.title)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Notification title is required."
-        });
-      }
-      if (!isNonEmptyString2(input.content)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Notification content is required."
-        });
-      }
-      const title = trimValue(input.title);
-      const content = trimValue(input.content);
-      if (title.length > TITLE_MAX_LENGTH) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
-        });
-      }
-      if (content.length > CONTENT_MAX_LENGTH) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
-        });
-      }
-      return { title, content };
-    };
-  }
-});
-
-// server/storage.ts
-var storage_exports = {};
-__export(storage_exports, {
-  storageGet: () => storageGet,
-  storagePut: () => storagePut
-});
-import { put, head } from "@vercel/blob";
-import fs from "fs";
-import path from "path";
-function isBlobConfigured() {
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
-}
-function ensureUploadsDir() {
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  }
-}
-async function storagePut(relKey, data, contentType = "application/octet-stream") {
-  const key = relKey.replace(/^\/+/, "");
-  const body = typeof data === "string" ? Buffer.from(data) : data;
-  if (!isBlobConfigured()) {
-    ensureUploadsDir();
-    const filePath = path.join(UPLOADS_DIR, key.replace(/\//g, path.sep));
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(filePath, body);
-    const url = `/uploads/${key}`;
-    return { key, url };
-  }
-  const blob = await put(key, body, {
-    access: "public",
-    contentType,
-    addRandomSuffix: false
-  });
-  return { key, url: blob.url };
-}
-async function storageGet(relKey) {
-  const key = relKey.replace(/^\/+/, "");
-  if (!isBlobConfigured()) {
-    const url = `/uploads/${key}`;
-    return { key, url };
-  }
-  try {
-    const blob = await head(key);
-    return { key, url: blob.url };
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed;
   } catch {
-    return { key, url: "" };
+    return {};
   }
 }
-var UPLOADS_DIR;
-var init_storage = __esm({
-  "server/storage.ts"() {
+function serializePartnerConfig(cfg, plainNotes = "") {
+  const clean = {};
+  if (Array.isArray(cfg.operatesProjects) && cfg.operatesProjects.length > 0) {
+    clean.operatesProjects = cfg.operatesProjects.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+  }
+  if (typeof cfg.cashbackPercent === "number" && Number.isFinite(cfg.cashbackPercent)) {
+    clean.cashbackPercent = cfg.cashbackPercent;
+  }
+  if (typeof cfg.prizeBudget === "number" && Number.isFinite(cfg.prizeBudget)) {
+    clean.prizeBudget = cfg.prizeBudget;
+  }
+  if (Object.keys(clean).length === 0) return plainNotes;
+  return JSON.stringify(clean);
+}
+var PARTNER_TYPES, PARTNER_TYPE_BY_ID;
+var init_partnerTypes = __esm({
+  "shared/partnerTypes.ts"() {
     "use strict";
-    UPLOADS_DIR = path.join(process.cwd(), "uploads");
-  }
-});
-
-// server/multipark.ts
-var multipark_exports = {};
-__export(multipark_exports, {
-  PARK_CONFIGS: () => PARK_CONFIGS,
-  calculatePricing: () => calculatePricing,
-  cancelBooking: () => cancelBooking,
-  checkAvailability: () => checkAvailability,
-  createBooking: () => createBooking,
-  getAgentHistory: () => getAgentHistory,
-  getBooking: () => getBooking,
-  getBookingHistory: () => getBookingHistory,
-  getBookingsReport: () => getBookingsReport,
-  getBookingsReportAllParks: () => getBookingsReportAllParks,
-  getBookingsReportForPark: () => getBookingsReportForPark,
-  getCheckoutDrivers: () => getCheckoutDrivers,
-  getConfiguredParks: () => getConfiguredParks,
-  getParkApiKey: () => getParkApiKey,
-  healthCheck: () => healthCheck,
-  isMultiparkConfigured: () => isMultiparkConfigured,
-  listParks: () => listParks,
-  testConnection: () => testConnection,
-  updateBooking: () => updateBooking
-});
-function getParkApiKey(parkConfig) {
-  return process.env[parkConfig.envKey];
-}
-function getConfiguredParks() {
-  return PARK_CONFIGS.filter((p) => !!process.env[p.envKey]);
-}
-async function multiparkRequest(opts) {
-  const { method = "GET", path: path2, body, params, baseUrl } = opts;
-  const base = baseUrl || ENV.multiparkApiUrl;
-  const apiKey = opts.apiKey || ENV.multiparkApiKey;
-  if (!apiKey) throw new Error("MULTIPARK_API_KEY n\xE3o configurada");
-  let url = `${base}${path2}`;
-  if (params) {
-    const qs = new URLSearchParams(params).toString();
-    url += `?${qs}`;
-  }
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "X-Api-Key": apiKey,
-          "Content-Type": "application/json"
-        },
-        body: body ? JSON.stringify(body) : void 0
-      });
-      if (res.status === 429 && attempt < MAX_RETRIES - 1) {
-        const delay = Math.pow(2, attempt) * 1e3;
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
+    PARTNER_TYPES = [
+      {
+        id: "agregador",
+        label: "Agregador",
+        description: "Sites de venda (ex: Looking4Parking, Parkos). Recebem comiss\xE3o sobre a reserva.",
+        chargeModel: "commission_on_revenue",
+        appliesTo: "sale"
+      },
+      {
+        id: "agencia_viagem",
+        label: "Ag\xEAncia de viagem",
+        description: "Ag\xEAncias que vendem o estacionamento como parte de um pacote.",
+        chargeModel: "commission_on_revenue",
+        appliesTo: "sale"
+      },
+      {
+        id: "avenca_mensal",
+        label: "Aven\xE7a mensal",
+        description: "Valor fixo cobrado todos os meses. Definir em `monthlyFee` da parceria.",
+        chargeModel: "monthly_fee",
+        appliesTo: "sale"
+      },
+      {
+        id: "avenca_anual",
+        label: "Aven\xE7a anual",
+        description: "Valor fixo cobrado uma vez por ano.",
+        chargeModel: "yearly_fee",
+        appliesTo: "sale"
+      },
+      {
+        id: "cliente_pro",
+        label: "Cliente Pro (Airpark)",
+        description: "Empresas Pro \u2014 actualmente s\xF3 na marca Airpark. Faturam no fim do m\xEAs com desconto.",
+        chargeModel: "monthly_invoice_discount",
+        appliesTo: "sale"
+      },
+      {
+        id: "hotel",
+        label: "Hotel",
+        description: "Parceria com hot\xE9is. Comiss\xE3o sobre a reserva trazida.",
+        chargeModel: "commission_on_revenue",
+        appliesTo: "sale"
+      },
+      {
+        id: "companhia_aerea",
+        label: "Companhia a\xE9rea",
+        description: "Parceria com companhias a\xE9reas. Comiss\xE3o sobre a reserva.",
+        chargeModel: "commission_on_revenue",
+        appliesTo: "sale"
+      },
+      {
+        id: "afiliado",
+        label: "Afiliado",
+        description: "Comiss\xE3o pequena. Cliente do afiliado tem desconto j\xE1 reflectido na fatura.",
+        chargeModel: "small_commission",
+        appliesTo: "sale"
+      },
+      {
+        id: "enterprise",
+        label: "Enterprise / Corporate",
+        description: "Cliente corporate. Paga logo no acto. Desconto j\xE1 vem na reserva.",
+        chargeModel: "prepaid_with_discount",
+        appliesTo: "sale"
+      },
+      {
+        id: "campanha_propria",
+        label: "Campanha pr\xF3pria",
+        description: "Promo\xE7\xF5es nossas com descontos, cashback ou pr\xE9mios \u2014 v\xE3o para o centro de custos.",
+        chargeModel: "own_campaign",
+        appliesTo: "sale"
+      },
+      {
+        id: "operacional",
+        label: "Operacional",
+        description: "Parceiro que gere opera\xE7\xF5es (ex: Top Parking para marcas do Porto). Pagamos comiss\xE3o operacional.",
+        chargeModel: "operational",
+        appliesTo: "operational"
+      },
+      {
+        id: "outro",
+        label: "Outro",
+        description: "Casos n\xE3o cobertos pelos tipos acima.",
+        chargeModel: "manual",
+        appliesTo: "both",
+        isExtensible: true
       }
-      if (!res.ok) {
-        let errorBody = null;
-        try {
-          errorBody = await res.json();
-        } catch {
-        }
-        const msg = errorBody?.error?.message || errorBody?.message || `HTTP ${res.status}`;
-        const err = new Error(`MultiPark API: ${Array.isArray(msg) ? msg.join(", ") : msg}`);
-        err.status = res.status;
-        err.details = errorBody?.error?.details || errorBody?.details;
-        throw err;
-      }
-      if (res.status === 204) return {};
-      return await res.json();
-    } catch (error) {
-      if (error.status) throw error;
-      if (attempt === MAX_RETRIES - 1) throw error;
-    }
-  }
-  throw new Error("MultiPark API: max retries exceeded");
-}
-async function healthCheck() {
-  return multiparkRequest({ path: "/health" });
-}
-async function checkAvailability(checkIn, checkOut, vehicleType = "CAR", parkingType = "COVERED") {
-  return multiparkRequest({
-    path: "/availability",
-    params: { checkIn, checkOut, vehicleType, parkingType }
-  });
-}
-async function createBooking(data) {
-  return multiparkRequest({ method: "POST", path: "/bookings", body: data });
-}
-async function updateBooking(id, data) {
-  return multiparkRequest({ method: "PUT", path: `/bookings/${id}`, body: data });
-}
-async function getBooking(id) {
-  return multiparkRequest({ path: `/bookings/${id}` });
-}
-function isMultiparkConfigured() {
-  return !!ENV.multiparkApiKey;
-}
-async function listParks() {
-  if (!isMultiparkConfigured()) return { parks: [] };
-  return multiparkRequest({
-    path: "/parks",
-    baseUrl: "https://api.multipark.pt/api/v1"
-  });
-}
-async function getBookingsReport(startDate, endDate, actionType, apiKey) {
-  return multiparkRequest({
-    path: "/bookings/report",
-    params: { startDate, endDate, actionType },
-    apiKey
-  });
-}
-async function getBookingsReportForPark(parkConfig, startDate, endDate, actionType) {
-  const apiKey = getParkApiKey(parkConfig);
-  if (!apiKey) throw new Error(`API key not configured for ${parkConfig.name} - ${parkConfig.city}`);
-  const report = await getBookingsReport(startDate, endDate, actionType, apiKey);
-  return { ...report, parkConfig };
-}
-async function getBookingsReportAllParks(startDate, endDate, actionType) {
-  const parks = getConfiguredParks();
-  const results = [];
-  for (const park of parks) {
-    try {
-      const report = await getBookingsReport(startDate, endDate, actionType, getParkApiKey(park));
-      results.push({ park, report });
-    } catch (err) {
-      console.error(`[MultiPark] Report failed for ${park.name} ${park.city}: ${err.message}`);
-    }
-  }
-  return results;
-}
-async function cancelBooking(id, reason) {
-  return multiparkRequest({
-    method: "PUT",
-    path: `/bookings/${id}/status`,
-    body: { status: "CANCELLED", reason }
-  });
-}
-async function calculatePricing(data) {
-  return multiparkRequest({ method: "POST", path: "/pricing", body: data });
-}
-async function testConnection() {
-  try {
-    const health = await healthCheck();
-    return { ok: true, message: `API OK (v${health.version})`, version: health.version };
-  } catch (error) {
-    return { ok: false, message: `Erro: ${error.message}` };
-  }
-}
-async function getBookingHistory(bookingId, apiKey) {
-  return multiparkRequest({
-    path: `/bookings/${bookingId}/history`,
-    apiKey
-  });
-}
-async function getAgentHistory(opts) {
-  const params = {
-    startDate: opts.startDate,
-    endDate: opts.endDate
-  };
-  if (opts.userId) params.userId = opts.userId;
-  else if (opts.agentName) params.agentName = opts.agentName;
-  else throw new Error("Either userId or agentName must be provided");
-  return multiparkRequest({
-    path: "/agent/history",
-    params,
-    apiKey: opts.apiKey
-  });
-}
-async function getCheckoutDrivers(startDate, endDate, apiKey) {
-  return multiparkRequest({
-    path: "/bookings/checkoutDrivers",
-    params: { startDate, endDate },
-    apiKey
-  });
-}
-var MAX_RETRIES, PARK_CONFIGS;
-var init_multipark = __esm({
-  "server/multipark.ts"() {
-    "use strict";
-    init_env();
-    MAX_RETRIES = 3;
-    PARK_CONFIGS = [
-      { id: "LISBON_AIRPARK", name: "Airpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_AIRPARK" },
-      { id: "LISBON_REDPARK", name: "Redpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_REDPARK" },
-      { id: "LISBON_SKYPARK", name: "Skypark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_SKYPARK" },
-      { id: "LISBON_TOP_PARKING", name: "Top-Parking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TOP_PARKING" },
-      { id: "FARO_AIRPARK", name: "Airpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_AIRPARK" },
-      { id: "FARO_REDPARK", name: "Redpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_REDPARK" },
-      { id: "FARO_SKYPARK", name: "Skypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_SKYPARK" },
-      { id: "PORTO_AIRPARK", name: "Airpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_AIRPARK" },
-      { id: "PORTO_REDPARK", name: "Redpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_REDPARK" },
-      { id: "PORTO_SKYPARK", name: "Skypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_SKYPARK" }
     ];
+    PARTNER_TYPE_BY_ID = Object.fromEntries(
+      PARTNER_TYPES.map((t2) => [t2.id, t2])
+    );
   }
 });
-
-// server/_core/api-entry.ts
-import express from "express";
-
-// shared/const.ts
-var COOKIE_NAME = "app_session_id";
-var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-var UNAUTHED_ERR_MSG = "Please login (10001)";
-var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
 
 // server/db.ts
-init_schema();
-init_env();
-init_schema();
+var db_exports = {};
+__export(db_exports, {
+  acceptInviteToken: () => acceptInviteToken,
+  acknowledgeGpsAlert: () => acknowledgeGpsAlert,
+  acknowledgeSpeedAlert: () => acknowledgeSpeedAlert,
+  acknowledgeSpeedViolation: () => acknowledgeSpeedViolation,
+  addComplaintMessage: () => addComplaintMessage,
+  addComplaintPhoto: () => addComplaintPhoto,
+  addLostFoundMessage: () => addLostFoundMessage,
+  addLostFoundPhoto: () => addLostFoundPhoto,
+  addPartnerAlias: () => addPartnerAlias,
+  aliasCountsByPartner: () => aliasCountsByPartner,
+  assignEmployeeToProject: () => assignEmployeeToProject,
+  checkExtraDocsCompliance: () => checkExtraDocsCompliance,
+  checkoutPda: () => checkoutPda,
+  clearPenalty: () => clearPenalty,
+  createAnnualReport: () => createAnnualReport,
+  createApiKey: () => createApiKey,
+  createCampaign: () => createCampaign,
+  createCareerExam: () => createCareerExam,
+  createCareerExamQuestion: () => createCareerExamQuestion,
+  createCategory: () => createCategory,
+  createComplaint: () => createComplaint,
+  createDailyDriverHistory: () => createDailyDriverHistory,
+  createEmployee: () => createEmployee,
+  createEmployeeDocument: () => createEmployeeDocument,
+  createEmployeeDocumentsBatch: () => createEmployeeDocumentsBatch,
+  createEmployeeLeave: () => createEmployeeLeave,
+  createEmployeePenalty: () => createEmployeePenalty,
+  createExpense: () => createExpense,
+  createFAQ: () => createFAQ,
+  createGoogleReview: () => createGoogleReview,
+  createGpsAlert: () => createGpsAlert,
+  createIncident: () => createIncident,
+  createInviteToken: () => createInviteToken,
+  createInvoice: () => createInvoice,
+  createLostFoundItem: () => createLostFoundItem,
+  createManualUser: () => createManualUser,
+  createMarketingExpense: () => createMarketingExpense,
+  createPartnership: () => createPartnership,
+  createPartnershipInvoice: () => createPartnershipInvoice,
+  createPartnershipTransaction: () => createPartnershipTransaction,
+  createPda: () => createPda,
+  createPdaCheckin: () => createPdaCheckin,
+  createPerformanceEvaluation: () => createPerformanceEvaluation,
+  createProject: () => createProject,
+  createQuizQuestion: () => createQuizQuestion,
+  createRadioTranscription: () => createRadioTranscription,
+  createService: () => createService,
+  createSpeedAlert: () => createSpeedAlert,
+  createSpeedLimit: () => createSpeedLimit,
+  createSyncLog: () => createSyncLog,
+  createTask: () => createTask,
+  createTimeRecord: () => createTimeRecord,
+  createTrainingCategory: () => createTrainingCategory,
+  createTrainingManual: () => createTrainingManual,
+  createTrainingVideo: () => createTrainingVideo,
+  createVehicle: () => createVehicle,
+  createVehicleMovement: () => createVehicleMovement,
+  deleteAnnualReport: () => deleteAnnualReport,
+  deleteApiKey: () => deleteApiKey,
+  deleteCampaign: () => deleteCampaign,
+  deleteCareerExam: () => deleteCareerExam,
+  deleteComplaint: () => deleteComplaint,
+  deleteComplaintPhoto: () => deleteComplaintPhoto,
+  deleteDailyStat: () => deleteDailyStat,
+  deleteEmployee: () => deleteEmployee,
+  deleteEmployeeDocument: () => deleteEmployeeDocument,
+  deleteEmployeeLeave: () => deleteEmployeeLeave,
+  deleteExpense: () => deleteExpense,
+  deleteFAQ: () => deleteFAQ,
+  deleteIncident: () => deleteIncident,
+  deleteInvoice: () => deleteInvoice,
+  deleteLostFoundItem: () => deleteLostFoundItem,
+  deleteMarketingExpense: () => deleteMarketingExpense,
+  deletePartnerAlias: () => deletePartnerAlias,
+  deletePartnership: () => deletePartnership,
+  deletePartnershipInvoice: () => deletePartnershipInvoice,
+  deletePayslipRecord: () => deletePayslipRecord,
+  deletePda: () => deletePda,
+  deletePerformanceEvaluation: () => deletePerformanceEvaluation,
+  deleteProject: () => deleteProject,
+  deleteQuizQuestion: () => deleteQuizQuestion,
+  deleteSchedule: () => deleteSchedule,
+  deleteService: () => deleteService,
+  deleteSnapshotsByDateRange: () => deleteSnapshotsByDateRange,
+  deleteSpeedLimit: () => deleteSpeedLimit,
+  deleteTask: () => deleteTask,
+  deleteTrainingCategory: () => deleteTrainingCategory,
+  deleteTrainingManual: () => deleteTrainingManual,
+  deleteTrainingVideo: () => deleteTrainingVideo,
+  deleteVehicle: () => deleteVehicle,
+  diagnoseBilling: () => diagnoseBilling,
+  generateAnnualSummary: () => generateAnnualSummary,
+  generateWeeklyEvaluation: () => generateWeeklyEvaluation,
+  getActiveCheckins: () => getActiveCheckins,
+  getActivityLogs: () => getActivityLogs,
+  getAgentHistoryFromDb: () => getAgentHistoryFromDb,
+  getAllCategories: () => getAllCategories,
+  getAllDailyStats: () => getAllDailyStats,
+  getAllEmployees: () => getAllEmployees,
+  getAllEmployeesDocumentStatus: () => getAllEmployeesDocumentStatus,
+  getAllOpenPenaltiesByEmployee: () => getAllOpenPenaltiesByEmployee,
+  getAllUsers: () => getAllUsers,
+  getAnnualBreakdown: () => getAnnualBreakdown,
+  getAnnualReports: () => getAnnualReports,
+  getApiKeys: () => getApiKeys,
+  getBillingData: () => getBillingData,
+  getBookingHistoryByBookingId: () => getBookingHistoryByBookingId,
+  getBookingHistoryByPlate: () => getBookingHistoryByPlate,
+  getBookingHistoryCrossReference: () => getBookingHistoryCrossReference,
+  getBookingHistoryDriverStats: () => getBookingHistoryDriverStats,
+  getBookingRevenueByProject: () => getBookingRevenueByProject,
+  getBookingsByCampaign: () => getBookingsByCampaign,
+  getCampaignById: () => getCampaignById,
+  getCampaignByNameAndPlatform: () => getCampaignByNameAndPlatform,
+  getCampaignStats: () => getCampaignStats,
+  getCampaigns: () => getCampaigns,
+  getCareerExamAttempts: () => getCareerExamAttempts,
+  getCareerExamQuestions: () => getCareerExamQuestions,
+  getCareerExamQuestionsForPlayer: () => getCareerExamQuestionsForPlayer,
+  getCareerExams: () => getCareerExams,
+  getCheckinsByDate: () => getCheckinsByDate,
+  getCheckinsByPda: () => getCheckinsByPda,
+  getCheckoutDriversFromDb: () => getCheckoutDriversFromDb,
+  getComplaintById: () => getComplaintById,
+  getComplaintMessages: () => getComplaintMessages,
+  getComplaintPhotos: () => getComplaintPhotos,
+  getComplaintStats: () => getComplaintStats,
+  getComplaints: () => getComplaints,
+  getDailyDriverHistoryByDate: () => getDailyDriverHistoryByDate,
+  getDailyDriverHistoryByUser: () => getDailyDriverHistoryByUser,
+  getDailyDriverHistoryRange: () => getDailyDriverHistoryRange,
+  getDailyDriverStats: () => getDailyDriverStats,
+  getDailySnapshots: () => getDailySnapshots,
+  getDb: () => getDb,
+  getDefaultSpeedLimit: () => getDefaultSpeedLimit,
+  getDocumentChecklistForEmployee: () => getDocumentChecklistForEmployee,
+  getEmployeeById: () => getEmployeeById,
+  getEmployeeByUserId: () => getEmployeeByUserId,
+  getEmployeeDocuments: () => getEmployeeDocuments,
+  getEmployeeLeaves: () => getEmployeeLeaves,
+  getEmployeeProjects: () => getEmployeeProjects,
+  getEmployeeSalaryAt: () => getEmployeeSalaryAt,
+  getEmployeeSalaryHistory: () => getEmployeeSalaryHistory,
+  getEmployeeSchedules: () => getEmployeeSchedules,
+  getExistingStatsForCampaignAndDateRange: () => getExistingStatsForCampaignAndDateRange,
+  getExpenseById: () => getExpenseById,
+  getExpenseStats: () => getExpenseStats,
+  getExpenses: () => getExpenses,
+  getExtraRates: () => getExtraRates,
+  getFAQs: () => getFAQs,
+  getGoogleReviewById: () => getGoogleReviewById,
+  getGoogleReviewStats: () => getGoogleReviewStats,
+  getGoogleReviews: () => getGoogleReviews,
+  getGpsAlertStats: () => getGpsAlertStats,
+  getGpsAlerts: () => getGpsAlerts,
+  getHRStats: () => getHRStats,
+  getIncidentById: () => getIncidentById,
+  getIncidentBySourceEmailId: () => getIncidentBySourceEmailId,
+  getIncidentStats: () => getIncidentStats,
+  getIncidents: () => getIncidents,
+  getIncidentsByEmployee: () => getIncidentsByEmployee,
+  getInviteByToken: () => getInviteByToken,
+  getInvitesByEmail: () => getInvitesByEmail,
+  getInvitesByUser: () => getInvitesByUser,
+  getInvoiceById: () => getInvoiceById,
+  getInvoiceStats: () => getInvoiceStats,
+  getInvoices: () => getInvoices,
+  getLeaveDaysForMonth: () => getLeaveDaysForMonth,
+  getLocalBookingsByAction: () => getLocalBookingsByAction,
+  getLostFoundDriverRanking: () => getLostFoundDriverRanking,
+  getLostFoundItemById: () => getLostFoundItemById,
+  getLostFoundItems: () => getLostFoundItems,
+  getLostFoundMessages: () => getLostFoundMessages,
+  getLostFoundPhotos: () => getLostFoundPhotos,
+  getMarketingDashboardStats: () => getMarketingDashboardStats,
+  getMarketingExpenses: () => getMarketingExpenses,
+  getMonthlyHours: () => getMonthlyHours,
+  getMultiparkBookingByExternalId: () => getMultiparkBookingByExternalId,
+  getMultiparkBookingStats: () => getMultiparkBookingStats,
+  getMultiparkBookings: () => getMultiparkBookings,
+  getOpenPenalties: () => getOpenPenalties,
+  getOperationalStats: () => getOperationalStats,
+  getOverdueExpenses: () => getOverdueExpenses,
+  getOverdueTasks: () => getOverdueTasks,
+  getPartnerInvoicingDetailByType: () => getPartnerInvoicingDetailByType,
+  getPartnerInvoicingSummary: () => getPartnerInvoicingSummary,
+  getPartnershipAnalytics: () => getPartnershipAnalytics,
+  getPartnershipById: () => getPartnershipById,
+  getPartnershipDashboardStats: () => getPartnershipDashboardStats,
+  getPartnershipInvoices: () => getPartnershipInvoices,
+  getPartnershipTransactions: () => getPartnershipTransactions,
+  getPartnerships: () => getPartnerships,
+  getPayrollData: () => getPayrollData,
+  getPayslipHistoryList: () => getPayslipHistoryList,
+  getPdaById: () => getPdaById,
+  getPerformanceEvaluations: () => getPerformanceEvaluations,
+  getProjectById: () => getProjectById,
+  getProjectCosts: () => getProjectCosts,
+  getProjectEmployees: () => getProjectEmployees,
+  getProjectHierarchyManagers: () => getProjectHierarchyManagers,
+  getProjects: () => getProjects,
+  getQuizQuestions: () => getQuizQuestions,
+  getQuizQuestionsForPlayer: () => getQuizQuestionsForPlayer,
+  getQuizRanking: () => getQuizRanking,
+  getRadioTranscriptions: () => getRadioTranscriptions,
+  getRecentlyCompletedTasks: () => getRecentlyCompletedTasks,
+  getReviewBySourceEmailId: () => getReviewBySourceEmailId,
+  getRhDashboardSummary: () => getRhDashboardSummary,
+  getServiceStats: () => getServiceStats,
+  getServices: () => getServices,
+  getSnapshotKPIs: () => getSnapshotKPIs,
+  getSpeedAlerts: () => getSpeedAlerts,
+  getSpeedLimits: () => getSpeedLimits,
+  getSpeedViolationStats: () => getSpeedViolationStats,
+  getSpeedViolations: () => getSpeedViolations,
+  getSuperAdmins: () => getSuperAdmins,
+  getSyncLogs: () => getSyncLogs,
+  getTaskAssignees: () => getTaskAssignees,
+  getTaskById: () => getTaskById,
+  getTaskStats: () => getTaskStats,
+  getTasks: () => getTasks,
+  getTasksWithAssignees: () => getTasksWithAssignees,
+  getTimeRecords: () => getTimeRecords,
+  getTrainingCategories: () => getTrainingCategories,
+  getTrainingManuals: () => getTrainingManuals,
+  getTrainingVideos: () => getTrainingVideos,
+  getUpcomingPayments: () => getUpcomingPayments,
+  getUserByEmail: () => getUserByEmail,
+  getUserById: () => getUserById,
+  getUserByOpenId: () => getUserByOpenId,
+  getVehicleAgentsByPlate: () => getVehicleAgentsByPlate,
+  getVehicleById: () => getVehicleById,
+  getVehicleDriverHistory: () => getVehicleDriverHistory,
+  getVehicleMovements: () => getVehicleMovements,
+  getVehicles: () => getVehicles,
+  importBookingHistory: () => importBookingHistory,
+  importDailyStats: () => importDailyStats,
+  inferPartnersFromBookings: () => inferPartnersFromBookings,
+  linkInviteToOAuthUser: () => linkInviteToOAuthUser,
+  linkMultiparkPartnerId: () => linkMultiparkPartnerId,
+  listPartnerAliases: () => listPartnerAliases,
+  listPdas: () => listPdas,
+  logActivity: () => logActivity,
+  markOverdueExpenses: () => markOverdueExpenses,
+  markOverduePartnershipInvoices: () => markOverduePartnershipInvoices,
+  markTaskNotified: () => markTaskNotified,
+  moveProject: () => moveProject,
+  processExtraDiaNoShows: () => processExtraDiaNoShows,
+  recordSpeedViolation: () => recordSpeedViolation,
+  removeEmployeeFromProject: () => removeEmployeeFromProject,
+  saveCareerExamAttempt: () => saveCareerExamAttempt,
+  savePayslipRecord: () => savePayslipRecord,
+  saveQuizAttempt: () => saveQuizAttempt,
+  searchBookingByRef: () => searchBookingByRef,
+  searchBookingHistory: () => searchBookingHistory,
+  searchClientHistory: () => searchClientHistory,
+  seedDefaultCategories: () => seedDefaultCategories,
+  seedExtraRates: () => seedExtraRates,
+  seedProjectHierarchy: () => seedProjectHierarchy,
+  setTaskAssignees: () => setTaskAssignees,
+  syncIncidentsFromMultiparkHistory: () => syncIncidentsFromMultiparkHistory,
+  toggleApiKey: () => toggleApiKey,
+  toggleUserActive: () => toggleUserActive,
+  unblockEmployeeLogin: () => unblockEmployeeLogin,
+  updateAnnualReport: () => updateAnnualReport,
+  updateCampaign: () => updateCampaign,
+  updateComplaint: () => updateComplaint,
+  updateEmployee: () => updateEmployee,
+  updateExpense: () => updateExpense,
+  updateExtraRate: () => updateExtraRate,
+  updateFAQ: () => updateFAQ,
+  updateGoogleReview: () => updateGoogleReview,
+  updateIncident: () => updateIncident,
+  updateInvoice: () => updateInvoice,
+  updateLostFoundItem: () => updateLostFoundItem,
+  updateMarketingExpense: () => updateMarketingExpense,
+  updatePartnership: () => updatePartnership,
+  updatePartnershipInvoice: () => updatePartnershipInvoice,
+  updatePda: () => updatePda,
+  updatePerformanceEvaluation: () => updatePerformanceEvaluation,
+  updateProject: () => updateProject,
+  updateService: () => updateService,
+  updateSpeedLimit: () => updateSpeedLimit,
+  updateTask: () => updateTask,
+  updateTrainingManual: () => updateTrainingManual,
+  updateUser: () => updateUser,
+  updateUserRole: () => updateUserRole,
+  updateVehicle: () => updateVehicle,
+  upsertDailySnapshot: () => upsertDailySnapshot,
+  upsertMultiparkBooking: () => upsertMultiparkBooking,
+  upsertSchedule: () => upsertSchedule,
+  upsertUser: () => upsertUser
+});
 import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
-var _db = null;
+function toMysqlDateTime(d) {
+  if (d == null) return "";
+  if (typeof d === "string") return d;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
 async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -1367,8 +1629,9 @@ async function upsertUser(user) {
     values.role = user.role;
     updateSet.role = user.role;
   }
-  if (!values.lastSignedIn) values.lastSignedIn = /* @__PURE__ */ new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = /* @__PURE__ */ new Date();
+  const nowMysql2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+  if (!values.lastSignedIn) values.lastSignedIn = nowMysql2;
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = nowMysql2;
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 async function getUserByOpenId(openId) {
@@ -1387,6 +1650,12 @@ async function updateUserRole(userId, role) {
   if (!db) return;
   await db.update(users).set({ role }).where(eq(users.id, userId));
 }
+async function getUserByEmail(email) {
+  const db = await getDb();
+  if (!db) return void 0;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
+}
 async function createManualUser(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -1398,7 +1667,7 @@ async function createManualUser(data) {
     role: data.role,
     department: data.department ?? null,
     loginMethod: "manual",
-    isActive: true
+    isActive: 1
   });
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
@@ -1411,7 +1680,7 @@ async function updateUser(userId, data) {
   if (data.email !== void 0) updates.email = data.email;
   if (data.role !== void 0) updates.role = data.role;
   if (data.department !== void 0) updates.department = data.department;
-  if (data.isActive !== void 0) updates.isActive = data.isActive;
+  if (data.isActive !== void 0) updates.isActive = data.isActive ? 1 : 0;
   if (Object.keys(updates).length > 0) {
     await db.update(users).set(updates).where(eq(users.id, userId));
   }
@@ -1419,7 +1688,7 @@ async function updateUser(userId, data) {
 async function toggleUserActive(userId, isActive) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ isActive }).where(eq(users.id, userId));
+  await db.update(users).set({ isActive: isActive ? 1 : 0 }).where(eq(users.id, userId));
 }
 async function getUserById(userId) {
   const db = await getDb();
@@ -1446,7 +1715,18 @@ async function seedDefaultCategories() {
   const db = await getDb();
   if (!db) return;
   const existing = await db.select().from(expenseCategories).limit(1);
-  if (existing.length > 0) return;
+  if (existing.length > 0) {
+    await db.update(expenseCategories).set({ name: "Terminal" }).where(eq(expenseCategories.name, "Terminal de Pagamento"));
+    for (const cat of [
+      { name: "Bancos", department: "Financeiro", color: "#1d4ed8" },
+      { name: "Impostos", department: "Financeiro", color: "#dc2626" },
+      { name: "TI", department: "RH", color: "#0284c7" }
+    ]) {
+      const found = await db.select().from(expenseCategories).where(eq(expenseCategories.name, cat.name)).limit(1);
+      if (found.length === 0) await db.insert(expenseCategories).values(cat);
+    }
+    return;
+  }
   const defaults = [
     { name: "Combust\xEDvel", department: "Operacional", color: "#f59e0b" },
     { name: "Manuten\xE7\xE3o", department: "Operacional", color: "#10b981" },
@@ -1461,19 +1741,21 @@ async function seedDefaultCategories() {
     { name: "\xC1gua", department: "Instala\xE7\xF5es", color: "#06b6d4" },
     { name: "Eletricidade", department: "Instala\xE7\xF5es", color: "#eab308" },
     { name: "Telecomunica\xE7\xF5es", department: "Instala\xE7\xF5es", color: "#7c3aed" },
-    { name: "Terminal de Pagamento", department: "Financeiro", color: "#059669" },
+    { name: "Terminal", department: "Financeiro", color: "#059669" },
+    { name: "Bancos", department: "Financeiro", color: "#1d4ed8" },
+    { name: "Impostos", department: "Financeiro", color: "#dc2626" },
+    { name: "TI", department: "RH", color: "#0284c7" },
     { name: "Despesas Operacionais", department: "Operacional", color: "#d97706" },
     { name: "Outros", department: "Geral", color: "#94a3b8" }
   ];
   await db.insert(expenseCategories).values(defaults);
 }
-var buyerEmployees = aliasedTable(employees, "buyer");
 async function getExpenses(filters = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.startDate) conditions.push(gte(expenses.expenseDate, filters.startDate));
-  if (filters.endDate) conditions.push(lte(expenses.expenseDate, filters.endDate));
+  if (filters.startDate) conditions.push(gte(expenses.expenseDate, toMysqlDateTime(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(expenses.expenseDate, toMysqlDateTime(filters.endDate)));
   if (filters.projectId) conditions.push(eq(expenses.projectId, filters.projectId));
   if (filters.categoryId) conditions.push(eq(expenses.categoryId, filters.categoryId));
   if (filters.userId) conditions.push(eq(expenses.insertedById, filters.userId));
@@ -1530,35 +1812,35 @@ async function getExpenseStats() {
   const db = await getDb();
   if (!db) return null;
   const now = /* @__PURE__ */ new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDay2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfWeek = new Date(now);
   startOfWeek.setDate(now.getDate() - now.getDay());
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   const [daily, weekly, monthly, yearly, byCategory, byProject, byUser, pending, overdue] = await Promise.all([
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, startOfDay)),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, startOfWeek)),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, startOfMonth)),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, startOfYear)),
+    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfDay2))),
+    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfWeek))),
+    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))),
+    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfYear))),
     db.select({
       categoryId: expenses.categoryId,
       categoryName: expenseCategories.name,
       color: expenseCategories.color,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
-    }).from(expenses).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(gte(expenses.expenseDate, startOfMonth)).groupBy(expenses.categoryId, expenseCategories.name, expenseCategories.color).orderBy(desc(sql`SUM(expenses.amount)`)).limit(8),
+    }).from(expenses).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.categoryId, expenseCategories.name, expenseCategories.color).orderBy(desc(sql`SUM(expenses.amount)`)).limit(8),
     db.select({
       projectId: expenses.projectId,
       projectName: projects.name,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
-    }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).where(gte(expenses.expenseDate, startOfMonth)).groupBy(expenses.projectId, projects.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
+    }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.projectId, projects.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
     db.select({
       userId: expenses.insertedById,
       userName: users.name,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
-    }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(gte(expenses.expenseDate, startOfMonth)).groupBy(expenses.insertedById, users.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
+    }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.insertedById, users.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
     db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "pending")),
     db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "overdue"))
   ]);
@@ -1566,7 +1848,7 @@ async function getExpenseStats() {
     month: sql`DATE_FORMAT(expenseDate, '%Y-%m')`,
     total: sql`COALESCE(SUM(amount), 0)`,
     count: sql`COUNT(*)`
-  }).from(expenses).where(gte(expenses.expenseDate, new Date(now.getFullYear(), now.getMonth() - 5, 1))).groupBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`).orderBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`);
+  }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(new Date(now.getFullYear(), now.getMonth() - 5, 1)))).groupBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`).orderBy(sql`DATE_FORMAT(expenseDate, '%Y-%m')`);
   return {
     daily: { total: parseFloat(daily[0]?.total || "0"), count: daily[0]?.count || 0 },
     weekly: { total: parseFloat(weekly[0]?.total || "0"), count: weekly[0]?.count || 0 },
@@ -1593,8 +1875,8 @@ async function getUpcomingPayments(daysAhead = 7) {
   }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).leftJoin(projects, eq(expenses.projectId, projects.id)).where(
     and(
       eq(expenses.status, "pending"),
-      gte(expenses.paymentDueDate, now),
-      lte(expenses.paymentDueDate, future)
+      gte(expenses.paymentDueDate, toMysqlDateTime(now)),
+      lte(expenses.paymentDueDate, toMysqlDateTime(future))
     )
   ).orderBy(expenses.paymentDueDate);
 }
@@ -1602,29 +1884,33 @@ async function getOverdueExpenses() {
   const db = await getDb();
   if (!db) return [];
   const now = /* @__PURE__ */ new Date();
-  return db.select({ expense: expenses, insertedBy: users }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, now)));
+  return db.select({ expense: expenses, insertedBy: users }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 async function markOverdueExpenses() {
   const db = await getDb();
   if (!db) return;
   const now = /* @__PURE__ */ new Date();
-  await db.update(expenses).set({ status: "overdue" }).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, now)));
+  await db.update(expenses).set({ status: "overdue" }).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 async function logActivity(data) {
   const db = await getDb();
   if (!db) return;
   await db.insert(activityLogs).values(data);
 }
-async function getActivityLogs(limit = 100) {
+async function getActivityLogs(limit = 100, filters = {}) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({ log: activityLogs, user: users }).from(activityLogs).leftJoin(users, eq(activityLogs.userId, users.id)).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  const conds = [];
+  if (filters.entity) conds.push(eq(activityLogs.entity, filters.entity));
+  if (filters.action) conds.push(eq(activityLogs.action, filters.action));
+  if (filters.userId) conds.push(eq(activityLogs.userId, filters.userId));
+  return db.select({ log: activityLogs, user: users }).from(activityLogs).leftJoin(users, eq(activityLogs.userId, users.id)).where(conds.length > 0 ? and(...conds) : void 0).orderBy(desc(activityLogs.createdAt)).limit(Math.min(Math.max(limit, 1), 2e3));
 }
 async function getAllEmployees(filters = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.isActive !== void 0) conditions.push(eq(employees.isActive, filters.isActive));
+  if (filters.isActive !== void 0) conditions.push(eq(employees.isActive, filters.isActive ? 1 : 0));
   if (filters.position) conditions.push(eq(employees.position, filters.position));
   const q = db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).orderBy(employees.fullName);
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
@@ -1646,15 +1932,304 @@ async function createEmployee(data) {
   if (!db) throw new Error("DB not available");
   return db.insert(employees).values(data);
 }
-async function updateEmployee(id, data) {
+async function updateEmployee(id, data, changedById) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  if (data.monthlySalary !== void 0 || data.mealAllowancePerDay !== void 0) {
+    const [current] = await db.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, id)).limit(1);
+    const newSalary = data.monthlySalary !== void 0 ? data.monthlySalary : current?.monthlySalary;
+    const newMeal = data.mealAllowancePerDay !== void 0 ? data.mealAllowancePerDay : current?.mealAllowancePerDay;
+    const changed = String(current?.monthlySalary ?? "") !== String(newSalary ?? "") || String(current?.mealAllowancePerDay ?? "") !== String(newMeal ?? "");
+    if (changed) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      await db.update(employeeSalaryHistory).set({ effectiveUntil: yesterday }).where(and(eq(employeeSalaryHistory.employeeId, id), isNull(employeeSalaryHistory.effectiveUntil)));
+      await db.insert(employeeSalaryHistory).values({
+        employeeId: id,
+        monthlySalary: newSalary ?? null,
+        mealAllowancePerDay: newMeal ?? null,
+        effectiveFrom: today,
+        changedById: changedById ?? null
+      });
+    }
+  }
   await db.update(employees).set(data).where(eq(employees.id, id));
+}
+async function getEmployeeSalaryAt(employeeId, dateStr) {
+  const db = await getDb();
+  if (!db) return null;
+  const [hist] = await db.select().from(employeeSalaryHistory).where(and(
+    eq(employeeSalaryHistory.employeeId, employeeId),
+    lte(employeeSalaryHistory.effectiveFrom, dateStr),
+    or(
+      isNull(employeeSalaryHistory.effectiveUntil),
+      gte(employeeSalaryHistory.effectiveUntil, dateStr)
+    )
+  )).orderBy(desc(employeeSalaryHistory.effectiveFrom)).limit(1);
+  if (hist) return { monthlySalary: hist.monthlySalary, mealAllowancePerDay: hist.mealAllowancePerDay };
+  const [emp] = await db.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+  return emp ?? null;
+}
+async function getEmployeeSalaryHistory(employeeId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(employeeSalaryHistory).where(eq(employeeSalaryHistory.employeeId, employeeId)).orderBy(desc(employeeSalaryHistory.effectiveFrom));
+}
+async function createEmployeeLeave(data) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(employeeLeaves).values({
+    employeeId: data.employeeId,
+    leaveType: data.leaveType,
+    fromDate: data.fromDate,
+    toDate: data.toDate,
+    notes: data.notes ?? null,
+    createdById: data.createdById ?? null
+  });
+}
+async function getEmployeeLeaves(employeeId, year) {
+  const db = await getDb();
+  if (!db) return [];
+  const conds = [eq(employeeLeaves.employeeId, employeeId)];
+  if (year) {
+    conds.push(gte(employeeLeaves.toDate, `${year}-01-01`));
+    conds.push(lte(employeeLeaves.fromDate, `${year}-12-31`));
+  }
+  return db.select().from(employeeLeaves).where(and(...conds)).orderBy(desc(employeeLeaves.fromDate));
+}
+async function deleteEmployeeLeave(id) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(employeeLeaves).where(eq(employeeLeaves.id, id));
+}
+async function getLeaveDaysForMonth(employeeId, year, month) {
+  const db = await getDb();
+  const out = /* @__PURE__ */ new Set();
+  if (!db) return out;
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const rows = await db.select({ fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate }).from(employeeLeaves).where(and(
+    eq(employeeLeaves.employeeId, employeeId),
+    lte(employeeLeaves.fromDate, end),
+    gte(employeeLeaves.toDate, start)
+  ));
+  for (const r of rows) {
+    const from = r.fromDate < start ? start : r.fromDate;
+    const to = r.toDate > end ? end : r.toDate;
+    const d = /* @__PURE__ */ new Date(from + "T00:00:00");
+    const limit = /* @__PURE__ */ new Date(to + "T00:00:00");
+    while (d <= limit) {
+      out.add(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return out;
+}
+async function createEmployeePenalty(data) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(employeePenalties).values({
+    employeeId: data.employeeId,
+    reason: data.reason,
+    severity: data.severity ?? "penalty",
+    points: data.points ?? 1,
+    relatedId: data.relatedId ?? null,
+    notes: data.notes ?? null
+  });
+}
+async function getOpenPenalties(employeeId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(employeePenalties).where(and(eq(employeePenalties.employeeId, employeeId), isNull(employeePenalties.clearedAt))).orderBy(desc(employeePenalties.createdAt));
+}
+async function getAllOpenPenaltiesByEmployee() {
+  const db = await getDb();
+  if (!db) return /* @__PURE__ */ new Map();
+  const rows = await db.select({
+    employeeId: employeePenalties.employeeId,
+    totalPoints: sql`COALESCE(SUM(${employeePenalties.points}), 0)`
+  }).from(employeePenalties).where(isNull(employeePenalties.clearedAt)).groupBy(employeePenalties.employeeId);
+  return new Map(rows.map((r) => [r.employeeId, Number(r.totalPoints)]));
+}
+async function clearPenalty(id, clearedById) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(employeePenalties).set({ clearedAt: toMysqlDateTime(/* @__PURE__ */ new Date()), clearedById }).where(eq(employeePenalties.id, id));
+}
+async function unblockEmployeeLogin(employeeId, clearedById) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
+  await logActivity({
+    userId: clearedById,
+    action: "unblock",
+    entity: "employee",
+    entityId: employeeId,
+    details: "Login desbloqueado"
+  });
+}
+async function checkExtraDocsCompliance(employeeId) {
+  const db = await getDb();
+  if (!db) return null;
+  const [emp] = await db.select({
+    id: employees.id,
+    position: employees.position,
+    contractStart: employees.contractStart,
+    createdAt: employees.createdAt,
+    loginBlocked: employees.loginBlocked,
+    docsWarningAt: employees.docsWarningAt
+  }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+  if (!emp || emp.position !== "extra") return null;
+  const startDate = new Date(emp.contractStart ?? emp.createdAt ?? /* @__PURE__ */ new Date());
+  const daysSinceStart = Math.floor((Date.now() - startDate.getTime()) / 864e5);
+  const checklist = await getDocumentChecklistForEmployee(employeeId);
+  const missingDocs = checklist.filter((c) => !c.present).map((c) => c.docType);
+  if (missingDocs.length === 0) {
+    if (emp.loginBlocked || emp.docsWarningAt) {
+      await db.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
+    }
+    return { blocked: false, warning: false, missingDocs: [], daysSinceStart };
+  }
+  if (daysSinceStart >= 21) {
+    if (!emp.loginBlocked) {
+      await db.update(employees).set({
+        loginBlocked: 1,
+        loginBlockedReason: `Documentos obrigat\xF3rios em falta h\xE1 ${daysSinceStart} dias: ${missingDocs.join(", ")}`
+      }).where(eq(employees.id, employeeId));
+    }
+    return { blocked: true, warning: true, missingDocs, daysSinceStart };
+  }
+  if (daysSinceStart >= 14 && !emp.docsWarningAt) {
+    await db.update(employees).set({ docsWarningAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(employees.id, employeeId));
+    return { blocked: false, warning: true, missingDocs, daysSinceStart };
+  }
+  return {
+    blocked: Boolean(emp.loginBlocked),
+    warning: Boolean(emp.docsWarningAt),
+    missingDocs,
+    daysSinceStart
+  };
+}
+async function getRhDashboardSummary(year, month, monthsLookback = 3) {
+  const db = await getDb();
+  if (!db) return [];
+  const currentPayroll = await getPayrollData(year, month);
+  const lookback = [];
+  for (let i = 1; i <= monthsLookback; i++) {
+    let m = month - i;
+    let y = year;
+    while (m < 1) {
+      m += 12;
+      y -= 1;
+    }
+    lookback.push({ year: y, month: m });
+  }
+  const previousMonths = await Promise.all(
+    lookback.map(({ year: y, month: m }) => getPayrollData(y, m).then((rows) => ({ y, m, rows })))
+  );
+  const penaltiesByEmp = await getAllOpenPenaltiesByEmployee();
+  const out = [];
+  for (const row of currentPayroll) {
+    const empId = row.employeeId;
+    const history = previousMonths.map(({ y, m, rows }) => {
+      const r = rows.find((x) => x.employeeId === empId);
+      return {
+        year: y,
+        month: m,
+        totalHours: r?.totalHours ?? 0,
+        totalPayment: r?.totalPayment ?? 0,
+        netEstimate: r?.netEstimate ?? 0
+      };
+    });
+    const totalReceived = history.reduce((s, h) => s + h.totalPayment, 0);
+    const totalHoursLookback = history.reduce((s, h) => s + h.totalHours, 0);
+    const avgPerHour = totalHoursLookback > 0 ? totalReceived / totalHoursLookback : 0;
+    const openPoints = penaltiesByEmp.get(empId) ?? 0;
+    out.push({
+      employeeId: empId,
+      fullName: row.fullName,
+      position: row.position,
+      isExtra: row.isExtra,
+      department: row.department,
+      projectName: row.projectName,
+      currentMonth: {
+        totalHours: row.totalHours,
+        daysWorked: row.daysWorked,
+        totalPayment: row.totalPayment,
+        netEstimate: row.netEstimate
+      },
+      history,
+      totalReceivedLookback: Math.round(totalReceived * 100) / 100,
+      avgPerHourLookback: Math.round(avgPerHour * 100) / 100,
+      openPenaltyPoints: openPoints,
+      severity: openPoints >= 3 ? "red" : openPoints >= 1 ? "yellow" : "ok"
+    });
+  }
+  return out;
+}
+async function processExtraDiaNoShows(dateStr) {
+  const db = await getDb();
+  if (!db) return { scanned: 0, created: 0, blocked: [] };
+  const rows = await db.select({
+    id: extrasDiaAssignments.id,
+    employeeId: extrasDiaAssignments.employeeId,
+    personName: extrasDiaAssignments.personName
+  }).from(extrasDiaAssignments).where(
+    and(
+      eq(extrasDiaAssignments.assignmentDate, dateStr),
+      eq(extrasDiaAssignments.isTeamLeader, 0),
+      isNotNull(extrasDiaAssignments.employeeId)
+    )
+  );
+  let created = 0;
+  const affected = /* @__PURE__ */ new Set();
+  for (const r of rows) {
+    if (r.employeeId == null) continue;
+    const [existing] = await db.select({ id: employeePenalties.id }).from(employeePenalties).where(and(
+      eq(employeePenalties.employeeId, r.employeeId),
+      eq(employeePenalties.reason, "no_show_extra_dia"),
+      eq(employeePenalties.relatedId, r.id)
+    )).limit(1);
+    if (existing) continue;
+    const start = /* @__PURE__ */ new Date(`${dateStr}T00:00:00`);
+    const end = /* @__PURE__ */ new Date(`${dateStr}T23:59:59`);
+    const checkIns = await db.select({ id: timeRecords.id }).from(timeRecords).where(and(
+      eq(timeRecords.employeeId, r.employeeId),
+      eq(timeRecords.type, "check_in"),
+      gte(timeRecords.recordedAt, toMysqlDateTime(start)),
+      lte(timeRecords.recordedAt, toMysqlDateTime(end))
+    )).limit(1);
+    if (checkIns.length > 0) continue;
+    await db.insert(employeePenalties).values({
+      employeeId: r.employeeId,
+      reason: "no_show_extra_dia",
+      severity: "penalty",
+      points: 1,
+      relatedId: r.id,
+      notes: `Faltou ao extras-dia em ${dateStr} (${r.personName})`
+    });
+    created += 1;
+    affected.add(r.employeeId);
+  }
+  const blocked = [];
+  for (const empId of affected) {
+    const [agg] = await db.select({ total: sql`COALESCE(SUM(${employeePenalties.points}), 0)` }).from(employeePenalties).where(and(eq(employeePenalties.employeeId, empId), isNull(employeePenalties.clearedAt)));
+    const points = Number(agg?.total ?? 0);
+    if (points >= 3) {
+      await db.update(employees).set({
+        loginBlocked: 1,
+        loginBlockedReason: `${points} faltas em extras-dia sem aviso. Contacta o supervisor.`
+      }).where(eq(employees.id, empId));
+      blocked.push(empId);
+    }
+  }
+  return { scanned: rows.length, created, blocked };
 }
 async function deleteEmployee(id) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(employees).set({ isActive: false }).where(eq(employees.id, id));
+  await db.update(employees).set({ isActive: 0 }).where(eq(employees.id, id));
 }
 async function getEmployeeDocuments(employeeId) {
   const db = await getDb();
@@ -1665,6 +2240,12 @@ async function createEmployeeDocument(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.insert(employeeDocuments).values(data);
+}
+async function createEmployeeDocumentsBatch(docs) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (docs.length === 0) return;
+  return db.insert(employeeDocuments).values(docs);
 }
 async function deleteEmployeeDocument(id) {
   const db = await getDb();
@@ -1704,17 +2285,27 @@ async function getEmployeeSchedules(employeeId) {
   if (!db) return [];
   return db.select().from(schedules).where(eq(schedules.employeeId, employeeId)).orderBy(schedules.weekday);
 }
+async function deleteSchedule(employeeId, weekday) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(schedules).where(and(eq(schedules.employeeId, employeeId), eq(schedules.weekday, weekday)));
+}
 async function upsertSchedule(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  return db.insert(schedules).values(data).onDuplicateKeyUpdate({ set: { startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay } });
+  const [existing] = await db.select({ id: schedules.id }).from(schedules).where(and(eq(schedules.employeeId, data.employeeId), eq(schedules.weekday, data.weekday))).limit(1);
+  if (existing) {
+    await db.update(schedules).set({ startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay }).where(eq(schedules.id, existing.id));
+    return;
+  }
+  await db.insert(schedules).values(data);
 }
 async function getTimeRecords(employeeId, startDate, endDate) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(timeRecords.employeeId, employeeId)];
-  if (startDate) conditions.push(gte(timeRecords.recordedAt, startDate));
-  if (endDate) conditions.push(lte(timeRecords.recordedAt, endDate));
+  if (startDate) conditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+  if (endDate) conditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   return db.select().from(timeRecords).where(and(...conditions)).orderBy(desc(timeRecords.recordedAt));
 }
 async function createTimeRecord(data) {
@@ -1727,7 +2318,7 @@ async function getMonthlyHours(employeeId, year, month) {
   if (!db) return { totalHours: 0, records: [] };
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
-  const records = await db.select().from(timeRecords).where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, start), lte(timeRecords.recordedAt, end))).orderBy(timeRecords.recordedAt);
+  const records = await db.select().from(timeRecords).where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end)))).orderBy(timeRecords.recordedAt);
   const totalHours = records.reduce((sum, r) => sum + parseFloat(String(r.hoursWorked ?? 0)), 0);
   return { totalHours, records };
 }
@@ -1758,12 +2349,12 @@ async function updateExtraRate(level, hourlyRate) {
 async function getHRStats() {
   const db = await getDb();
   if (!db) return null;
-  const [total] = await db.select({ count: sql`count(*)` }).from(employees).where(eq(employees.isActive, true));
-  const [extras] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, true), eq(employees.position, "extra")));
-  const [permanent] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, true), eq(employees.contractType, "permanent")));
+  const [total] = await db.select({ count: sql`count(*)` }).from(employees).where(eq(employees.isActive, 1));
+  const [extras] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.position, "extra")));
+  const [permanent] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.contractType, "permanent")));
   const now = /* @__PURE__ */ new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [hoursRow] = await db.select({ total: sql`COALESCE(SUM(hoursWorked), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, monthStart));
+  const [hoursRow] = await db.select({ total: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
   return {
     totalActive: total?.count ?? 0,
     totalExtras: extras?.count ?? 0,
@@ -1798,6 +2389,74 @@ async function deleteProject(id) {
   await db.delete(projects).where(eq(projects.parentId, id));
   await db.delete(projects).where(eq(projects.id, id));
 }
+async function seedProjectHierarchy() {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(projects).where(and(eq(projects.name, "Multipark"), eq(projects.level, "group"))).limit(1);
+  if (existing.length > 0) return;
+  const [group] = await db.insert(projects).values({
+    name: "Multipark",
+    level: "group",
+    color: "#6366f1"
+  }).$returningId();
+  const cityCfg = [
+    { name: "Lisboa", color: "#3b82f6" },
+    { name: "Porto", color: "#10b981" },
+    { name: "Faro", color: "#f59e0b" }
+  ];
+  const cityIds = {};
+  for (const c of cityCfg) {
+    const [row] = await db.insert(projects).values({
+      name: c.name,
+      level: "city",
+      parentId: group.id,
+      color: c.color
+    }).$returningId();
+    cityIds[c.name] = row.id;
+  }
+  const brandCfg = [
+    { name: "Airpark", cities: ["Lisboa", "Porto", "Faro"], color: "#ef4444" },
+    { name: "Redpark", cities: ["Lisboa", "Porto", "Faro"], color: "#e11d48" },
+    { name: "Skypark", cities: ["Lisboa", "Porto", "Faro"], color: "#8b5cf6" }
+  ];
+  const brandIds = {};
+  for (const b of brandCfg) {
+    for (const city of b.cities) {
+      const [row] = await db.insert(projects).values({
+        name: b.name,
+        level: "brand",
+        parentId: cityIds[city],
+        color: b.color
+      }).$returningId();
+      brandIds[`${b.name}:${city}`] = row.id;
+    }
+  }
+  const parkCfg = [
+    { name: "Airpark Lisboa", city: "Lisboa", brand: "Airpark", color: "#ef4444" },
+    { name: "Redpark Lisboa", city: "Lisboa", brand: "Redpark", color: "#e11d48" },
+    { name: "Skypark Lisboa", city: "Lisboa", brand: "Skypark", color: "#8b5cf6" },
+    { name: "Lispark Lisboa", city: "Lisboa", color: "#ec4899" },
+    // sem marca
+    { name: "Top-Parking Lisboa", city: "Lisboa", color: "#14b8a6" },
+    // sem marca
+    { name: "Airpark Porto", city: "Porto", brand: "Airpark", color: "#ef4444" },
+    { name: "Redpark Porto", city: "Porto", brand: "Redpark", color: "#e11d48" },
+    { name: "Skypark Porto", city: "Porto", brand: "Skypark", color: "#8b5cf6" },
+    { name: "Airpark Faro", city: "Faro", brand: "Airpark", color: "#ef4444" },
+    { name: "Redpark Faro", city: "Faro", brand: "Redpark", color: "#e11d48" },
+    { name: "Skypark Faro", city: "Faro", brand: "Skypark", color: "#8b5cf6" }
+  ];
+  for (const p of parkCfg) {
+    const parentId = p.brand ? brandIds[`${p.brand}:${p.city}`] : cityIds[p.city];
+    await db.insert(projects).values({
+      name: p.name,
+      level: "project",
+      parentId,
+      color: p.color
+    });
+  }
+  console.log("[Seed] Hierarchy created: Multipark \u2192 3 cities \u2192 brands \u2192 10 parks");
+}
 async function moveProject(id, newParentId) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -1817,6 +2476,11 @@ async function getProjectEmployees(projectId) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(projectEmployees).where(eq(projectEmployees.projectId, projectId));
+}
+async function getEmployeeProjects(employeeId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(projectEmployees).where(eq(projectEmployees.employeeId, employeeId));
 }
 async function assignEmployeeToProject(data) {
   const db = await getDb();
@@ -1848,7 +2512,8 @@ async function getTaskById(id) {
 async function createTask(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.insert(tasks).values(data);
+  const [result] = await db.insert(tasks).values(data);
+  return result.insertId;
 }
 async function updateTask(id, data) {
   const db = await getDb();
@@ -1859,6 +2524,36 @@ async function deleteTask(id) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.delete(tasks).where(eq(tasks.id, id));
+}
+async function getTasksWithAssignees(filters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conds = [];
+  if (filters?.projectId) conds.push(eq(tasks.projectId, filters.projectId));
+  if (filters?.status) conds.push(eq(tasks.taskStatus, filters.status));
+  const taskRows = await db.select({ task: tasks, projectName: projects.name }).from(tasks).leftJoin(projects, eq(projects.id, tasks.projectId)).where(conds.length ? and(...conds) : void 0).orderBy(desc(tasks.updatedAt));
+  if (taskRows.length === 0) return [];
+  const taskIds = taskRows.map((r) => r.task.id);
+  const assigneeRows = await db.select({
+    taskId: taskAssignees.taskId,
+    employeeId: taskAssignees.employeeId,
+    fullName: employees.fullName
+  }).from(taskAssignees).innerJoin(employees, eq(employees.id, taskAssignees.employeeId)).where(inArray(taskAssignees.taskId, taskIds));
+  const assigneesByTask = /* @__PURE__ */ new Map();
+  for (const r of assigneeRows) {
+    if (!assigneesByTask.has(r.taskId)) assigneesByTask.set(r.taskId, []);
+    assigneesByTask.get(r.taskId).push({ id: r.employeeId, fullName: r.fullName });
+  }
+  let result = taskRows.map((r) => ({
+    ...r.task,
+    projectName: r.projectName,
+    assignees: assigneesByTask.get(r.task.id) ?? []
+  }));
+  if (filters?.assigneeId) {
+    const want = filters.assigneeId;
+    result = result.filter((t2) => t2.assigneeId === want || t2.assignees.some((a) => a.id === want));
+  }
+  return result;
 }
 async function getTaskStats() {
   const db = await getDb();
@@ -1892,7 +2587,7 @@ async function getCampaigns(filters = {}) {
     addChildren(filters.projectId);
     conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(ids).join(",") || "0")})`);
   }
-  if (filters.status) conditions.push(eq(campaigns.status, filters.status));
+  if (filters.status) conditions.push(eq(campaigns.campaignStatus, filters.status));
   const q = db.select({ campaign: campaigns, project: projects }).from(campaigns).leftJoin(projects, eq(campaigns.projectId, projects.id)).orderBy(desc(campaigns.createdAt));
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
@@ -1928,8 +2623,8 @@ async function getAllDailyStats(filters = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.from) conditions.push(gte(campaignDailyStats.date, filters.from));
-  if (filters.to) conditions.push(lte(campaignDailyStats.date, filters.to));
+  if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (filters.projectId) {
     const allProjects = await db.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
@@ -1960,10 +2655,10 @@ async function getMarketingExpenses(filters = {}) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters.category) conditions.push(eq(marketingExpenses.category, filters.category));
+  if (filters.category) conditions.push(eq(marketingExpenses.mktCategory, filters.category));
   if (filters.projectId) conditions.push(eq(marketingExpenses.projectId, filters.projectId));
-  if (filters.from) conditions.push(gte(marketingExpenses.date, filters.from));
-  if (filters.to) conditions.push(lte(marketingExpenses.date, filters.to));
+  if (filters.from) conditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
   const q = db.select({ expense: marketingExpenses, project: projects }).from(marketingExpenses).leftJoin(projects, eq(marketingExpenses.projectId, projects.id)).orderBy(desc(marketingExpenses.date));
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
@@ -1972,6 +2667,11 @@ async function createMarketingExpense(data) {
   if (!db) throw new Error("DB unavailable");
   const result = await db.insert(marketingExpenses).values(data);
   return result[0].insertId;
+}
+async function updateMarketingExpense(id, data) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(marketingExpenses).set(data).where(eq(marketingExpenses.id, id));
 }
 async function deleteMarketingExpense(id) {
   const db = await getDb();
@@ -1994,8 +2694,8 @@ async function getMarketingDashboardStats(filters = {}) {
     addChildren(filters.projectId);
   }
   const conditions = [];
-  if (filters.from) conditions.push(gte(campaignDailyStats.date, filters.from));
-  if (filters.to) conditions.push(lte(campaignDailyStats.date, filters.to));
+  if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
+  if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (projectIds) conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
   const statsQ = db.select({
     totalSpend: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
@@ -2007,8 +2707,8 @@ async function getMarketingDashboardStats(filters = {}) {
   const statsResult = conditions.length > 0 ? await statsQ.where(and(...conditions)) : await statsQ;
   const s = statsResult[0];
   const mktConditions = [];
-  if (filters.from) mktConditions.push(gte(marketingExpenses.date, filters.from));
-  if (filters.to) mktConditions.push(lte(marketingExpenses.date, filters.to));
+  if (filters.from) mktConditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
+  if (filters.to) mktConditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
   if (projectIds) mktConditions.push(sql`${marketingExpenses.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
   const mktQ = db.select({
     total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)`
@@ -2080,7 +2780,7 @@ async function getVehicles(filters) {
   if (!db) return [];
   let query = db.select().from(vehicles).orderBy(desc(vehicles.createdAt));
   const conditions = [];
-  if (filters?.status) conditions.push(eq(vehicles.status, filters.status));
+  if (filters?.status) conditions.push(eq(vehicles.vehicleStatus, filters.status));
   if (filters?.projectId) conditions.push(eq(vehicles.projectId, filters.projectId));
   if (conditions.length > 0) query = query.where(and(...conditions));
   return query;
@@ -2130,7 +2830,7 @@ async function getSpeedAlerts(filters) {
   let query = db.select().from(speedAlerts).orderBy(desc(speedAlerts.createdAt));
   const conditions = [];
   if (filters?.vehicleId) conditions.push(eq(speedAlerts.vehicleId, filters.vehicleId));
-  if (filters?.acknowledged !== void 0) conditions.push(eq(speedAlerts.acknowledged, filters.acknowledged));
+  if (filters?.acknowledged !== void 0) conditions.push(eq(speedAlerts.acknowledged, filters.acknowledged ? 1 : 0));
   if (conditions.length > 0) query = query.where(and(...conditions));
   if (filters?.limit) query = query.limit(filters.limit);
   return query;
@@ -2144,7 +2844,7 @@ async function createSpeedAlert(data) {
 async function acknowledgeSpeedAlert(id, userId) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(speedAlerts).set({ acknowledged: true, acknowledgedById: userId, acknowledgedAt: /* @__PURE__ */ new Date() }).where(eq(speedAlerts.id, id));
+  await db.update(speedAlerts).set({ acknowledged: 1, acknowledgedById: userId, acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedAlerts.id, id));
 }
 async function getRadioTranscriptions(filters) {
   const db = await getDb();
@@ -2168,14 +2868,15 @@ async function getOperationalStats() {
   if (!db) return { totalVehicles: 0, activeVehicles: 0, todayAlerts: 0, unacknowledgedAlerts: 0, todayMovements: 0 };
   const allVehicles = await db.select().from(vehicles);
   const totalVehicles = allVehicles.length;
-  const activeVehicles = allVehicles.filter((v) => v.status === "active").length;
+  const activeVehicles = allVehicles.filter((v) => v.vehicleStatus === "active").length;
   const today = /* @__PURE__ */ new Date();
   today.setHours(0, 0, 0, 0);
-  const allAlerts = await db.select().from(speedAlerts).where(gte(speedAlerts.createdAt, today));
+  const todayStr = toMysqlDateTime(today);
+  const allAlerts = await db.select().from(speedAlerts).where(gte(speedAlerts.createdAt, todayStr));
   const todayAlerts = allAlerts.length;
-  const allUnack = await db.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, false));
+  const allUnack = await db.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, 0));
   const unacknowledgedAlerts = allUnack.length;
-  const allMovements = await db.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, today));
+  const allMovements = await db.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, todayStr));
   const todayMovements = allMovements.length;
   return { totalVehicles, activeVehicles, todayAlerts, unacknowledgedAlerts, todayMovements };
 }
@@ -2198,7 +2899,7 @@ async function createApiKey(data) {
 async function toggleApiKey(id, active) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  await db.update(apiKeys).set({ active }).where(eq(apiKeys.id, id));
+  await db.update(apiKeys).set({ active: active ? 1 : 0 }).where(eq(apiKeys.id, id));
 }
 async function deleteApiKey(id) {
   const db = await getDb();
@@ -2209,8 +2910,8 @@ async function getComplaints(filters) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters?.status) conditions.push(eq(complaints.status, filters.status));
-  if (filters?.type) conditions.push(eq(complaints.type, filters.type));
+  if (filters?.status) conditions.push(eq(complaints.complaintStatus, filters.status));
+  if (filters?.type) conditions.push(eq(complaints.complaintType, filters.type));
   if (filters?.vehicleId) conditions.push(eq(complaints.vehicleId, filters.vehicleId));
   if (filters?.assignedToId) conditions.push(eq(complaints.assignedToId, filters.assignedToId));
   if (filters?.projectId) conditions.push(eq(complaints.projectId, filters.projectId));
@@ -2274,12 +2975,12 @@ async function getComplaintStats() {
   const now = /* @__PURE__ */ new Date();
   return {
     total: all.length,
-    new: all.filter((c) => c.status === "new").length,
-    analyzing: all.filter((c) => c.status === "analyzing").length,
-    waitingClient: all.filter((c) => c.status === "waiting_client").length,
-    resolved: all.filter((c) => c.status === "resolved").length,
-    closed: all.filter((c) => c.status === "closed").length,
-    overdue: all.filter((c) => c.slaDeadline && new Date(c.slaDeadline) < now && c.status !== "resolved" && c.status !== "closed").length
+    new: all.filter((c) => c.complaintStatus === "new").length,
+    analyzing: all.filter((c) => c.complaintStatus === "analyzing").length,
+    waitingClient: all.filter((c) => c.complaintStatus === "waiting_client").length,
+    resolved: all.filter((c) => c.complaintStatus === "resolved").length,
+    closed: all.filter((c) => c.complaintStatus === "closed").length,
+    overdue: all.filter((c) => c.slaDeadline && new Date(c.slaDeadline) < now && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed").length
   };
 }
 async function createGoogleReview(data) {
@@ -2386,7 +3087,7 @@ async function deleteTrainingVideo(id) {
 async function getTrainingManuals(categoryId, type) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(trainingManuals.published, true)];
+  const conditions = [eq(trainingManuals.published, 1)];
   if (categoryId) conditions.push(eq(trainingManuals.categoryId, categoryId));
   if (type) conditions.push(eq(trainingManuals.type, type));
   return db.select().from(trainingManuals).where(and(...conditions)).orderBy(desc(trainingManuals.createdAt));
@@ -2400,7 +3101,10 @@ async function createTrainingManual(data) {
 async function updateTrainingManual(id, data) {
   const db = await getDb();
   if (!db) return;
-  await db.update(trainingManuals).set(data).where(eq(trainingManuals.id, id));
+  const { published, ...rest } = data;
+  const updates = { ...rest };
+  if (published !== void 0) updates.published = published ? 1 : 0;
+  await db.update(trainingManuals).set(updates).where(eq(trainingManuals.id, id));
 }
 async function deleteTrainingManual(id) {
   const db = await getDb();
@@ -2434,6 +3138,22 @@ async function getQuizQuestions(categoryId) {
   if (!db) return [];
   const conditions = categoryId ? [eq(quizQuestions.categoryId, categoryId)] : [];
   return db.select().from(quizQuestions).where(conditions.length ? and(...conditions) : void 0);
+}
+async function getQuizQuestionsForPlayer(categoryId) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = categoryId ? [eq(quizQuestions.categoryId, categoryId)] : [];
+  return db.select({
+    id: quizQuestions.id,
+    categoryId: quizQuestions.categoryId,
+    question: quizQuestions.question,
+    optionA: quizQuestions.optionA,
+    optionB: quizQuestions.optionB,
+    optionC: quizQuestions.optionC,
+    optionD: quizQuestions.optionD,
+    difficulty: quizQuestions.difficulty,
+    points: quizQuestions.points
+  }).from(quizQuestions).where(conditions.length ? and(...conditions) : void 0);
 }
 async function createQuizQuestion(data) {
   const db = await getDb();
@@ -2478,6 +3198,20 @@ async function getCareerExamQuestions(examId) {
   if (!db) return [];
   return db.select().from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
 }
+async function getCareerExamQuestionsForPlayer(examId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: careerExamQuestions.id,
+    examId: careerExamQuestions.examId,
+    question: careerExamQuestions.question,
+    optionA: careerExamQuestions.optionA,
+    optionB: careerExamQuestions.optionB,
+    optionC: careerExamQuestions.optionC,
+    optionD: careerExamQuestions.optionD,
+    points: careerExamQuestions.points
+  }).from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
+}
 async function createCareerExamQuestion(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -2487,7 +3221,8 @@ async function createCareerExamQuestion(data) {
 async function saveCareerExamAttempt(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(careerExamAttempts).values(data).$returningId();
+  const { passed, ...rest } = data;
+  const [result] = await db.insert(careerExamAttempts).values({ ...rest, passed: passed ? 1 : 0 }).$returningId();
   return result;
 }
 async function getCareerExamAttempts(employeeId, examId) {
@@ -2666,6 +3401,31 @@ function getWeekNumber(d) {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   return Math.ceil(((date.getTime() - yearStart.getTime()) / 864e5 + 1) / 7);
 }
+function isoWeekRange(year, week) {
+  const simple = new Date(Date.UTC(year, 0, 4));
+  const dow = simple.getUTCDay() || 7;
+  const monday = new Date(simple);
+  monday.setUTCDate(simple.getUTCDate() - (dow - 1) + (week - 1) * 7);
+  monday.setUTCHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  sunday.setUTCHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+function speedAlertPoints(speed, limit) {
+  if (limit <= 0) return 5;
+  const excess = (speed - limit) / limit;
+  if (excess <= 0.1) return 2;
+  if (excess <= 0.25) return 5;
+  if (excess <= 0.5) return 10;
+  return 15;
+}
+async function createPerformanceEvaluation(data) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(performanceEvaluations).values(data).$returningId();
+  return result?.id;
+}
 async function getPerformanceEvaluations(filters) {
   const db = await getDb();
   if (!db) return [];
@@ -2689,67 +3449,130 @@ async function deletePerformanceEvaluation(id) {
 async function generateWeeklyEvaluation(weekNumber, yearNumber) {
   const db = await getDb();
   if (!db) return [];
-  const { employees: empTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const allEmployees = await db.select().from(empTable);
-  const results = [];
-  for (const emp of allEmployees) {
-    const timeRecs = await db.select().from(timeRecords).where(eq(timeRecords.employeeId, emp.id));
-    const weekRecs = timeRecs.filter((r) => {
-      const d = new Date(r.recordedAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    let hoursWorked = 0;
-    const checkIns = weekRecs.filter((r) => r.type === "check_in").sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-    const checkOuts = weekRecs.filter((r) => r.type === "check_out").sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-    for (let i = 0; i < Math.min(checkIns.length, checkOuts.length); i++) {
-      hoursWorked += Math.round((new Date(checkOuts[i].recordedAt).getTime() - new Date(checkIns[i].recordedAt).getTime()) / 36e5);
+  const { start, end } = isoWeekRange(yearNumber, weekNumber);
+  const startStr = toMysqlDateTime(start);
+  const endStr = toMysqlDateTime(end);
+  const drivers = await db.select({ id: employees.id, fullName: employees.fullName, position: employees.position }).from(employees).where(and(
+    eq(employees.isActive, 1),
+    inArray(employees.position, ["driver", "senior_driver", "extra"])
+  ));
+  if (drivers.length === 0) return [];
+  const driverIds = drivers.map((d) => d.id);
+  const hoursRows = await db.select({
+    employeeId: timeRecords.employeeId,
+    hours: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)`
+  }).from(timeRecords).where(and(
+    inArray(timeRecords.employeeId, driverIds),
+    eq(timeRecords.type, "check_out"),
+    gte(timeRecords.recordedAt, startStr),
+    lte(timeRecords.recordedAt, endStr)
+  )).groupBy(timeRecords.employeeId);
+  const hoursMap = new Map(hoursRows.map((r) => [r.employeeId, Number(r.hours)]));
+  const movRows = await db.select({
+    employeeId: vehicleMovements.employeeId,
+    count: sql`COUNT(*)`
+  }).from(vehicleMovements).where(and(
+    inArray(vehicleMovements.employeeId, driverIds),
+    gte(vehicleMovements.createdAt, startStr),
+    lte(vehicleMovements.createdAt, endStr)
+  )).groupBy(vehicleMovements.employeeId);
+  const movMap = new Map(movRows.map((r) => [Number(r.employeeId ?? 0), Number(r.count)]));
+  const alertRows = await db.select({
+    employeeId: speedAlerts.employeeId,
+    speed: speedAlerts.speed,
+    speedLimit: speedAlerts.speedLimit
+  }).from(speedAlerts).where(and(
+    inArray(speedAlerts.employeeId, driverIds),
+    eq(speedAlerts.acknowledged, 0),
+    gte(speedAlerts.createdAt, startStr),
+    lte(speedAlerts.createdAt, endStr)
+  ));
+  const alertStats = /* @__PURE__ */ new Map();
+  for (const a of alertRows) {
+    const empId = Number(a.employeeId ?? 0);
+    if (!empId) continue;
+    const stats = alertStats.get(empId) ?? { count: 0, points: 0 };
+    stats.count += 1;
+    stats.points += speedAlertPoints(Number(a.speed), Number(a.speedLimit));
+    alertStats.set(empId, stats);
+  }
+  const incidentRows = await db.select({
+    reportedBy: incidents.reportedBy,
+    employeeId: incidents.employeeId,
+    severity: incidents.severity
+  }).from(incidents).where(and(
+    gte(incidents.createdAt, startStr),
+    lte(incidents.createdAt, endStr)
+  ));
+  const posIncidents = /* @__PURE__ */ new Map();
+  const negIncidents = /* @__PURE__ */ new Map();
+  for (const i of incidentRows) {
+    const reporterId = Number(i.reportedBy ?? 0);
+    const targetId = Number(i.employeeId ?? 0);
+    if (reporterId && driverIds.includes(reporterId)) {
+      posIncidents.set(reporterId, (posIncidents.get(reporterId) ?? 0) + 1);
     }
-    const allMovements = await db.select().from(vehicleMovements).where(eq(vehicleMovements.employeeId, emp.id));
-    const weekMovements = allMovements.filter((m) => {
-      const d = new Date(m.createdAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    const allAlerts = await db.select().from(speedAlerts).where(eq(speedAlerts.employeeId, emp.id));
-    const weekAlerts = allAlerts.filter((a) => {
-      const d = new Date(a.createdAt);
-      return getWeekNumber(d) === weekNumber && d.getFullYear() === yearNumber;
-    });
-    const empIncidents = await db.select().from(incidents).where(
-      and(eq(incidents.weekNumber, weekNumber), eq(incidents.yearNumber, yearNumber))
-    );
-    const positiveIncidents = empIncidents.filter((i) => i.reportedBy === emp.id).length;
-    const negativeIncidents = empIncidents.filter((i) => i.employeeId === emp.id).length;
-    const movPerHour = hoursWorked > 0 ? Math.round(weekMovements.length / hoursWorked) : 0;
-    const positivePoints = weekMovements.length * 2 + positiveIncidents * 5;
-    const negativePoints = weekAlerts.length * 10 + negativeIncidents * 5;
+    if (targetId && driverIds.includes(targetId)) {
+      const sev = String(i.severity ?? "medium");
+      const pts = INCIDENT_SEVERITY_POINTS[sev] ?? 5;
+      const cur = negIncidents.get(targetId) ?? { count: 0, points: 0 };
+      cur.count += 1;
+      cur.points += pts;
+      negIncidents.set(targetId, cur);
+    }
+  }
+  const penaltyRows = await db.select({
+    employeeId: employeePenalties.employeeId,
+    totalPoints: sql`COALESCE(SUM(${employeePenalties.points}), 0)`
+  }).from(employeePenalties).where(and(
+    inArray(employeePenalties.employeeId, driverIds),
+    gte(employeePenalties.createdAt, startStr),
+    lte(employeePenalties.createdAt, endStr)
+  )).groupBy(employeePenalties.employeeId);
+  const PENALTY_WEIGHT = 5;
+  const penaltyMap = new Map(penaltyRows.map((r) => [r.employeeId, Number(r.totalPoints) * PENALTY_WEIGHT]));
+  const existingEvals = await db.select().from(performanceEvaluations).where(and(
+    eq(performanceEvaluations.weekNumber, weekNumber),
+    eq(performanceEvaluations.yearNumber, yearNumber),
+    inArray(performanceEvaluations.employeeId, driverIds)
+  ));
+  const existingMap = new Map(existingEvals.map((e) => [e.employeeId, e]));
+  const MOV_POINTS = 2;
+  const INCIDENT_REPORT_POINTS = 5;
+  const results = [];
+  for (const emp of drivers) {
+    const hoursWorked = Math.round((hoursMap.get(emp.id) ?? 0) * 100) / 100;
+    const movementsCount = movMap.get(emp.id) ?? 0;
+    const movementsPerHour = hoursWorked > 0 ? Math.round(movementsCount / hoursWorked * 100) / 100 : 0;
+    const alertCount = alertStats.get(emp.id)?.count ?? 0;
+    const alertPoints = alertStats.get(emp.id)?.points ?? 0;
+    const positiveIncidentsCount = posIncidents.get(emp.id) ?? 0;
+    const negStats = negIncidents.get(emp.id) ?? { count: 0, points: 0 };
+    const penaltyPts = penaltyMap.get(emp.id) ?? 0;
+    const positivePoints = movementsCount * MOV_POINTS + positiveIncidentsCount * INCIDENT_REPORT_POINTS;
+    const negativePoints = alertPoints + negStats.points + penaltyPts;
     const totalPoints = positivePoints - negativePoints;
-    const existing = await db.select().from(performanceEvaluations).where(
-      and(
-        eq(performanceEvaluations.employeeId, emp.id),
-        eq(performanceEvaluations.weekNumber, weekNumber),
-        eq(performanceEvaluations.yearNumber, yearNumber)
-      )
-    );
     const evalData = {
       employeeId: emp.id,
       weekNumber,
       yearNumber,
-      hoursWorked,
-      movementsCount: weekMovements.length,
-      movementsPerHour: movPerHour,
-      speedAlerts: weekAlerts.length,
-      incidentsPositive: positiveIncidents,
-      incidentsNegative: negativeIncidents,
+      hoursWorked: Math.round(hoursWorked),
+      movementsCount,
+      movementsPerHour: Math.round(movementsPerHour),
+      speedAlerts: alertCount,
+      incidentsPositive: positiveIncidentsCount,
+      incidentsNegative: negStats.count,
       positivePoints,
       negativePoints,
       totalPoints
     };
-    if (existing.length > 0) {
-      await db.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing[0].id));
-      results.push({ ...evalData, id: existing[0].id, employeeName: emp.fullName });
+    const existing = existingMap.get(emp.id);
+    if (existing) {
+      await db.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing.id));
+      results.push({ ...evalData, id: existing.id, employeeName: emp.fullName, notes: existing.notes });
     } else {
       const [result] = await db.insert(performanceEvaluations).values(evalData).$returningId();
-      results.push({ ...evalData, id: result?.id, employeeName: emp.fullName });
+      results.push({ ...evalData, id: result?.id, employeeName: emp.fullName, notes: null });
     }
   }
   return results.sort((a, b) => b.totalPoints - a.totalPoints);
@@ -2902,17 +3725,169 @@ async function resolveProjectIds(projectId) {
   addChildren(projectId);
   return Array.from(ids);
 }
+function bucketSqlExpr(col, granularity) {
+  switch (granularity) {
+    case "week":
+      return sql`DATE_FORMAT(${col}, '%x-W%v')`;
+    case "month":
+      return sql`DATE_FORMAT(${col}, '%Y-%m')`;
+    case "year":
+      return sql`DATE_FORMAT(${col}, '%Y')`;
+    default:
+      return sql`DATE_FORMAT(${col}, '%Y-%m-%d')`;
+  }
+}
+async function diagnoseBilling(filters) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
+  let projectIds = null;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
+  const [a1] = await db.select({
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr)));
+  const [a2] = await db.select({
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr), isNotNull(multiparkBookings.checkOut)));
+  const [a3] = await db.select({
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    sql`${multiparkBookings.status} != 'CANCELLED'`
+  ));
+  const filteredConds = [
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    sql`${multiparkBookings.status} != 'CANCELLED'`
+  ];
+  if (projectIds) filteredConds.push(inArray(multiparkBookings.projectId, projectIds));
+  const [a4] = await db.select({
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(...filteredConds));
+  const distinctRow = await db.select({
+    total: sql`COUNT(*)`,
+    distinct: sql`COUNT(DISTINCT ${multiparkBookings.externalId})`
+  }).from(multiparkBookings).where(and(...filteredConds));
+  const dup = distinctRow[0];
+  const duplicates = await db.select({
+    externalId: multiparkBookings.externalId,
+    count: sql`COUNT(*)`
+  }).from(multiparkBookings).where(and(...filteredConds)).groupBy(multiparkBookings.externalId).having(sql`COUNT(*) > 1`).orderBy(desc(sql`COUNT(*)`)).limit(20);
+  const byProj = await db.select({
+    projectId: multiparkBookings.projectId,
+    projectName: projects.name,
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).leftJoin(projects, eq(projects.id, multiparkBookings.projectId)).where(and(...filteredConds)).groupBy(multiparkBookings.projectId, projects.name).orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
+  const byCamp = await db.select({
+    campaign: multiparkBookings.campaign,
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(...filteredConds)).groupBy(multiparkBookings.campaign).orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
+  const byStatus = await db.select({
+    status: multiparkBookings.status,
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(...filteredConds)).groupBy(multiparkBookings.status);
+  const cancelConds = [
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    isNotNull(multiparkBookings.checkOut),
+    isNotNull(multiparkBookings.cancelledAt)
+  ];
+  if (projectIds) cancelConds.push(inArray(multiparkBookings.projectId, projectIds));
+  const [cancelled] = await db.select({
+    count: sql`COUNT(*)`,
+    sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(...cancelConds));
+  const top = await db.select({
+    id: multiparkBookings.id,
+    externalId: multiparkBookings.externalId,
+    bookingNumber: multiparkBookings.bookingNumber,
+    projectName: projects.name,
+    campaign: multiparkBookings.campaign,
+    status: multiparkBookings.status,
+    totalPrice: multiparkBookings.totalPrice,
+    checkOut: multiparkBookings.checkOut,
+    cancelledAt: multiparkBookings.cancelledAt
+  }).from(multiparkBookings).leftJoin(projects, eq(projects.id, multiparkBookings.projectId)).where(and(...filteredConds)).orderBy(desc(multiparkBookings.totalPrice)).limit(20);
+  return {
+    range: { from: filters.from, to: filters.to },
+    projectIds,
+    sumByCheckoutPeriod: { count: Number(a1?.count ?? 0), sum: Number(a1?.sum ?? 0) },
+    sumWithCheckoutNotNull: { count: Number(a2?.count ?? 0), sum: Number(a2?.sum ?? 0) },
+    sumExcludingCancelled: { count: Number(a3?.count ?? 0), sum: Number(a3?.sum ?? 0) },
+    sumWithProjectFilter: { count: Number(a4?.count ?? 0), sum: Number(a4?.sum ?? 0) },
+    rowsCount: Number(dup?.total ?? 0),
+    distinctExternalIds: Number(dup?.distinct ?? 0),
+    duplicatedExternalIds: duplicates.map((d) => ({ externalId: d.externalId, count: Number(d.count ?? 0) })),
+    byProject: byProj.map((p) => ({ projectId: p.projectId, projectName: p.projectName, count: Number(p.count ?? 0), sum: Number(p.sum ?? 0) })),
+    byCampaign: byCamp.map((c) => ({ campaign: c.campaign, count: Number(c.count ?? 0), sum: Number(c.sum ?? 0) })),
+    byStatus: byStatus.map((s) => ({ status: s.status, count: Number(s.count ?? 0), sum: Number(s.sum ?? 0) })),
+    cancelledCount: Number(cancelled?.count ?? 0),
+    cancelledSum: Number(cancelled?.sum ?? 0),
+    topBookings: top.map((t2) => ({
+      id: t2.id,
+      externalId: t2.externalId,
+      bookingNumber: t2.bookingNumber,
+      projectName: t2.projectName,
+      campaign: t2.campaign,
+      status: t2.status,
+      totalPrice: Number(t2.totalPrice ?? 0),
+      checkOut: t2.checkOut,
+      cancelledAt: t2.cancelledAt
+    }))
+  };
+}
 async function getBillingData(filters) {
   const db = await getDb();
-  if (!db) return { deliveries: [], expensesPaid: [], expensesPending: [], forecast: [] };
-  let projectIds;
-  if (filters.projectId) {
-    projectIds = await resolveProjectIds(filters.projectId);
+  const granularity = filters.granularity ?? "day";
+  if (!db) {
+    return {
+      summary: {
+        produced: 0,
+        invoiced: 0,
+        expensesPaid: 0,
+        expensesPending: 0,
+        extrasDiaCost: 0,
+        marketingCost: 0,
+        partnerCommissionsPaid: 0,
+        partnerCommissionsPending: 0,
+        totalCostsPaid: 0,
+        totalCostsAll: 0,
+        marginRealized: 0,
+        marginAll: 0
+      },
+      timeseries: [],
+      deliveries: [],
+      expensesPaid: [],
+      expensesPending: [],
+      forecast: [],
+      invoices: [],
+      extrasDia: [],
+      marketing: [],
+      partnerCommissions: [],
+      forecastBookings: [],
+      forecastExpenses: [],
+      forecastExtrasDia: []
+    };
   }
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
+  const fromDateOnly = filters.from;
+  const toDateOnly = filters.to;
+  let projectIds;
+  if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
   const deliveryConds = [
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, /* @__PURE__ */ new Date(filters.to + "T23:59:59")),
-    isNotNull(multiparkBookings.checkOut)
+    gte(multiparkBookings.checkOut, fromStr),
+    lte(multiparkBookings.checkOut, toStr),
+    sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
   const deliveryRows = await db.select({
@@ -2924,11 +3899,24 @@ async function getBillingData(filters) {
     deliveryCharges: sql`COALESCE(SUM(${multiparkBookings.deliveryCharges}), 0)`,
     extrasRevenue: sql`COALESCE(SUM(${multiparkBookings.extrasTotal}), 0)`
   }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...deliveryConds)).groupBy(multiparkBookings.projectId, projects.name);
+  const invConds = [
+    gte(invoices.issueDate, fromStr),
+    lte(invoices.issueDate, toStr),
+    sql`${invoices.status} != 'cancelled'`
+  ];
+  if (projectIds) invConds.push(inArray(invoices.projectId, projectIds));
+  const invoicedRows = await db.select({
+    projectId: invoices.projectId,
+    projectName: projects.name,
+    count: sql`COUNT(*)`,
+    totalAmount: sql`COALESCE(SUM(${invoices.totalAmount}), 0)`,
+    paidAmount: sql`COALESCE(SUM(CASE WHEN ${invoices.status} = 'paid' THEN ${invoices.totalAmount} ELSE 0 END), 0)`
+  }).from(invoices).leftJoin(projects, eq(invoices.projectId, projects.id)).where(and(...invConds)).groupBy(invoices.projectId, projects.name);
   const paidConds = [
     eq(expenses.status, "paid"),
     isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, new Date(filters.from)),
-    lte(expenses.paidAt, /* @__PURE__ */ new Date(filters.to + "T23:59:59"))
+    gte(expenses.paidAt, fromStr),
+    lte(expenses.paidAt, toStr)
   ];
   if (projectIds) paidConds.push(inArray(expenses.projectId, projectIds));
   const expPaidRows = await db.select({
@@ -2941,8 +3929,8 @@ async function getBillingData(filters) {
   const pendConds = [
     inArray(expenses.status, ["pending", "overdue"]),
     isNotNull(expenses.paymentDueDate),
-    gte(expenses.paymentDueDate, new Date(filters.from)),
-    lte(expenses.paymentDueDate, /* @__PURE__ */ new Date(filters.to + "T23:59:59"))
+    gte(expenses.paymentDueDate, fromStr),
+    lte(expenses.paymentDueDate, toStr)
   ];
   if (projectIds) pendConds.push(inArray(expenses.projectId, projectIds));
   const expPendRows = await db.select({
@@ -2953,11 +3941,239 @@ async function getBillingData(filters) {
     count: sql`COUNT(*)`,
     totalAmount: sql`COALESCE(SUM(${expenses.amount}), 0)`
   }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(and(...pendConds)).groupBy(expenses.projectId, projects.name, expenseCategories.name, expenses.supplier);
+  const extrasRows = await db.select({
+    level: extrasDiaAssignments.level,
+    hours: sql`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`,
+    headcount: sql`COUNT(*)`
+  }).from(extrasDiaAssignments).where(
+    and(
+      gte(extrasDiaAssignments.assignmentDate, fromDateOnly),
+      lte(extrasDiaAssignments.assignmentDate, toDateOnly)
+    )
+  ).groupBy(extrasDiaAssignments.level);
+  const extrasDiaSummary = extrasRows.map((r) => {
+    const rate = EXTRAS_DIA_RATES[String(r.level ?? "junior")] ?? 4;
+    const hours = Number(r.hours ?? 0);
+    return {
+      level: r.level ?? "junior",
+      hours,
+      headcount: Number(r.headcount ?? 0),
+      cost: hours * rate
+    };
+  });
+  const mktExpConds = [
+    gte(marketingExpenses.date, fromStr),
+    lte(marketingExpenses.date, toStr)
+  ];
+  if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
+  const mktExpRows = await db.select({
+    projectId: marketingExpenses.projectId,
+    projectName: projects.name,
+    category: marketingExpenses.mktCategory,
+    totalAmount: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)`,
+    count: sql`COUNT(*)`
+  }).from(marketingExpenses).leftJoin(projects, eq(marketingExpenses.projectId, projects.id)).where(and(...mktExpConds)).groupBy(marketingExpenses.projectId, projects.name, marketingExpenses.mktCategory);
+  const mktAdsConds = [
+    gte(campaignDailyStats.date, fromStr),
+    lte(campaignDailyStats.date, toStr)
+  ];
+  if (projectIds) {
+    mktAdsConds.push(inArray(campaigns.projectId, projectIds));
+  }
+  const mktAdsRows = await db.select({
+    projectId: campaigns.projectId,
+    projectName: projects.name,
+    totalSpend: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
+    conversions: sql`COALESCE(SUM(${campaignDailyStats.conversions}), 0)`
+  }).from(campaignDailyStats).innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).leftJoin(projects, eq(campaigns.projectId, projects.id)).where(and(...mktAdsConds)).groupBy(campaigns.projectId, projects.name);
+  const bookingsByCampaignRows = await db.select({
+    campaign: multiparkBookings.campaign,
+    projectId: multiparkBookings.projectId,
+    projectName: projects.name,
+    bookingsCount: sql`COUNT(*)`,
+    revenueGross: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...deliveryConds, isNotNull(multiparkBookings.campaign))).groupBy(multiparkBookings.campaign, multiparkBookings.projectId, projects.name);
+  const allPartners = await db.select({
+    id: partnerships.id,
+    name: partnerships.name,
+    campaignKey: partnerships.campaignKey,
+    commissionRate: partnerships.commissionRate,
+    updatedAt: partnerships.updatedAt
+  }).from(partnerships);
+  const allAliases = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasValue: partnerAliases.aliasValue
+  }).from(partnerAliases);
+  const partnersById = /* @__PURE__ */ new Map();
+  for (const p of allPartners) {
+    partnersById.set(p.id, {
+      id: p.id,
+      name: p.name,
+      commissionRate: Number(p.commissionRate ?? 0),
+      updatedAt: p.updatedAt ?? ""
+    });
+  }
+  const partnerByCampaign = /* @__PURE__ */ new Map();
+  function registerKey(rawKey, partnerId) {
+    if (!rawKey) return;
+    const key = rawKey.trim().toLowerCase();
+    if (!key) return;
+    const partner = partnersById.get(partnerId);
+    if (!partner) return;
+    const existing = partnerByCampaign.get(key);
+    if (!existing || partner.updatedAt > existing.updatedAt) {
+      partnerByCampaign.set(key, partner);
+    }
+  }
+  for (const p of allPartners) {
+    registerKey(p.campaignKey, p.id);
+    registerKey(p.name, p.id);
+  }
+  for (const a of allAliases) {
+    registerKey(a.aliasValue, a.partnershipId);
+  }
+  const salesAgg = /* @__PURE__ */ new Map();
+  for (const r of bookingsByCampaignRows) {
+    const cmpKey = (r.campaign ?? "").trim().toLowerCase();
+    const partner = partnerByCampaign.get(cmpKey);
+    if (!partner) continue;
+    const revenueGross = Number(r.revenueGross ?? 0);
+    const rate = partner.commissionRate / 100;
+    const key = `${partner.id}|${r.projectId ?? "null"}`;
+    const ex = salesAgg.get(key);
+    if (ex) {
+      ex.bookingsCount += Number(r.bookingsCount ?? 0);
+      ex.revenueGross += revenueGross;
+      ex.commission += revenueGross * rate;
+    } else {
+      salesAgg.set(key, {
+        partnerId: partner.id,
+        partnerName: partner.name,
+        projectId: r.projectId,
+        projectName: r.projectName,
+        bookingsCount: Number(r.bookingsCount ?? 0),
+        revenueGross,
+        commissionRate: partner.commissionRate,
+        commission: revenueGross * rate
+      });
+    }
+  }
+  const salesCommissions = Array.from(salesAgg.values()).sort((a, b) => b.commission - a.commission);
+  const partnerInvRows = await db.select({
+    status: partnershipInvoices.invoiceStatus,
+    totalAmount: sql`COALESCE(SUM(${partnershipInvoices.amount}), 0)`,
+    count: sql`COUNT(*)`
+  }).from(partnershipInvoices).where(
+    and(
+      gte(partnershipInvoices.sentAt, fromStr),
+      lte(partnershipInvoices.sentAt, toStr),
+      sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`
+    )
+  ).groupBy(partnershipInvoices.invoiceStatus);
+  const partnerOpRows = await db.select({
+    invoiceId: partnershipInvoices.id,
+    partnershipId: partnershipInvoices.partnershipId,
+    partnerName: partnerships.name,
+    partnerType: partnerships.partnerType,
+    amount: partnershipInvoices.amount,
+    status: partnershipInvoices.invoiceStatus,
+    sentAt: partnershipInvoices.sentAt,
+    paidAt: partnershipInvoices.paidAt,
+    referenceMonth: partnershipInvoices.referenceMonth,
+    referenceYear: partnershipInvoices.referenceYear
+  }).from(partnershipInvoices).innerJoin(partnerships, eq(partnerships.id, partnershipInvoices.partnershipId)).where(
+    and(
+      gte(partnershipInvoices.sentAt, fromStr),
+      lte(partnershipInvoices.sentAt, toStr),
+      sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`
+    )
+  );
+  const allProjsForPartnerMap = await db.select({ id: projects.id, name: projects.name }).from(projects);
+  const operationalPartners = partnerOpRows.map((r) => {
+    const pname = (r.partnerName ?? "").toLowerCase();
+    const matched = allProjsForPartnerMap.find((p) => p.name && pname.includes(p.name.toLowerCase()));
+    return {
+      invoiceId: r.invoiceId,
+      partnerName: r.partnerName,
+      partnerType: r.partnerType,
+      amount: Number(r.amount ?? 0),
+      status: r.status,
+      sentAt: r.sentAt,
+      paidAt: r.paidAt,
+      referenceMonth: r.referenceMonth,
+      referenceYear: r.referenceYear,
+      projectId: matched?.id ?? null,
+      projectName: matched?.name ?? null
+    };
+  });
+  const allEmps = await db.select({
+    id: employees.id,
+    fullName: employees.fullName,
+    projectId: employees.projectId,
+    contractType: employees.contractType,
+    monthlySalary: employees.monthlySalary,
+    isActive: employees.isActive
+  }).from(employees).where(eq(employees.isActive, 1));
+  const allProjectsForHierarchy = await db.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
+  const childrenMap = /* @__PURE__ */ new Map();
+  for (const p of allProjectsForHierarchy) {
+    if (p.parentId != null) {
+      if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+      childrenMap.get(p.parentId).push(p.id);
+    }
+  }
+  function leafDescendants(projectId) {
+    const self = allProjectsForHierarchy.find((p) => p.id === projectId);
+    if (!self) return [];
+    if (self.level === "project") return [projectId];
+    const kids = childrenMap.get(projectId) ?? [];
+    if (kids.length === 0) return [projectId];
+    const out = [];
+    for (const kid of kids) out.push(...leafDescendants(kid));
+    return out.length > 0 ? out : [projectId];
+  }
+  const msPerDay = 1e3 * 60 * 60 * 24;
+  const periodDays = Math.max(
+    1,
+    Math.floor((new Date(filters.to).getTime() - new Date(filters.from).getTime()) / msPerDay) + 1
+  );
+  const salaryPerProject = /* @__PURE__ */ new Map();
+  const salaryDetailRows = [];
+  for (const e of allEmps) {
+    const monthlySalary = parseFloat(String(e.monthlySalary ?? "0"));
+    if (e.contractType === "extra" || monthlySalary <= 0) continue;
+    const periodCost = monthlySalary / 30 * periodDays;
+    const directProjectId = e.projectId ?? null;
+    let targets;
+    if (directProjectId == null) {
+      targets = [];
+    } else {
+      targets = leafDescendants(directProjectId);
+    }
+    if (targets.length === 0) {
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: [] });
+    } else if (targets.length === 1 && targets[0] === directProjectId) {
+      const cur = salaryPerProject.get(targets[0]) ?? 0;
+      salaryPerProject.set(targets[0], cur + periodCost);
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: targets });
+    } else {
+      const share = periodCost / targets.length;
+      for (const t2 of targets) {
+        const cur = salaryPerProject.get(t2) ?? 0;
+        salaryPerProject.set(t2, cur + share);
+      }
+      salaryDetailRows.push({ employeeId: e.id, fullName: e.fullName, projectId: directProjectId, cost: periodCost, ratedTo: targets });
+    }
+  }
+  const salariesByProject = Array.from(salaryPerProject.entries()).filter(([pid]) => !projectIds || projectIds.includes(pid)).map(([pid, cost]) => {
+    const p = allProjectsForHierarchy.find((x) => x.id === pid);
+    return { projectId: pid, projectName: p?.name ?? null, cost };
+  }).sort((a, b) => b.cost - a.cost);
   const now = /* @__PURE__ */ new Date();
-  const forecastFrom = now > new Date(filters.from) ? now.toISOString().slice(0, 10) : filters.from;
+  const forecastFrom = now > new Date(filters.from) ? toMysqlDateTime(now) : fromStr;
   const forecastConds = [
-    gte(multiparkBookings.checkIn, new Date(forecastFrom)),
-    lte(multiparkBookings.checkIn, /* @__PURE__ */ new Date(filters.to + "T23:59:59")),
+    gte(multiparkBookings.checkIn, forecastFrom),
+    lte(multiparkBookings.checkIn, toStr),
     isNull(multiparkBookings.checkOut),
     isNull(multiparkBookings.cancelledAt)
   ];
@@ -2968,11 +4184,95 @@ async function getBillingData(filters) {
     count: sql`COUNT(*)`,
     totalRevenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...forecastConds)).groupBy(multiparkBookings.projectId, projects.name);
+  const checkOutBucket = bucketSqlExpr(multiparkBookings.checkOut, granularity);
+  const issueBucket = bucketSqlExpr(invoices.issueDate, granularity);
+  const paidAtBucket = bucketSqlExpr(expenses.paidAt, granularity);
+  const checkInBucket = bucketSqlExpr(multiparkBookings.checkIn, granularity);
+  const mktDateBucket = bucketSqlExpr(marketingExpenses.date, granularity);
+  const adsDateBucket = bucketSqlExpr(campaignDailyStats.date, granularity);
+  const tsProduced = await db.select({ bucket: checkOutBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...deliveryConds)).groupBy(checkOutBucket);
+  const tsInvoiced = await db.select({ bucket: issueBucket, total: sql`COALESCE(SUM(${invoices.totalAmount}), 0)` }).from(invoices).where(and(...invConds)).groupBy(issueBucket);
+  const tsExpensesPaid = await db.select({ bucket: paidAtBucket, total: sql`COALESCE(SUM(${expenses.amount}), 0)` }).from(expenses).where(and(...paidConds)).groupBy(paidAtBucket);
+  const tsForecast = await db.select({ bucket: checkInBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...forecastConds)).groupBy(checkInBucket);
+  const tsMktExpenses = await db.select({ bucket: mktDateBucket, total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)` }).from(marketingExpenses).where(and(...mktExpConds)).groupBy(mktDateBucket);
+  const tsMktAds = await db.select({ bucket: adsDateBucket, total: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)` }).from(campaignDailyStats).innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).where(and(...mktAdsConds)).groupBy(adsDateBucket);
+  const tsMap = /* @__PURE__ */ new Map();
+  function bump(arr, key) {
+    for (const r of arr) {
+      const bk = r.bucket;
+      if (!bk) continue;
+      const ex = tsMap.get(bk) ?? { bucket: bk, produced: 0, invoiced: 0, expensesPaid: 0, revenueForecast: 0, marketingCost: 0 };
+      ex[key] += Number(r.total ?? 0);
+      tsMap.set(bk, ex);
+    }
+  }
+  bump(tsProduced, "produced");
+  bump(tsInvoiced, "invoiced");
+  bump(tsExpensesPaid, "expensesPaid");
+  bump(tsForecast, "revenueForecast");
+  bump(tsMktExpenses, "marketingCost");
+  bump(tsMktAds, "marketingCost");
+  const timeseries = Array.from(tsMap.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
+  const produced = deliveryRows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
+  const invoiced = invoicedRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const expensesPaidTotal = expPaidRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const expensesPendingTotal = expPendRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const extrasDiaCost = extrasDiaSummary.reduce((s, r) => s + r.cost, 0);
+  const mktExpensesTotal = mktExpRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
+  const mktAdsSpend = mktAdsRows.reduce((s, r) => s + Number(r.totalSpend ?? 0), 0);
+  const marketingCost = mktExpensesTotal + mktAdsSpend;
+  const partnerInvByStatus = new Map(partnerInvRows.map((r) => [r.status, Number(r.totalAmount ?? 0)]));
+  const operationalPartnersPaid = partnerInvByStatus.get("paid") ?? 0;
+  const operationalPartnersPending = (partnerInvByStatus.get("sent") ?? 0) + (partnerInvByStatus.get("overdue") ?? 0) + (partnerInvByStatus.get("draft") ?? 0);
+  const salesCommissionsTotal = salesCommissions.reduce((s, r) => s + r.commission, 0);
+  const totalSalaries = Array.from(salaryPerProject.values()).reduce((s, v) => s + v, 0);
+  const totalCostsPaid = expensesPaidTotal + extrasDiaCost + marketingCost + operationalPartnersPaid + salesCommissionsTotal + totalSalaries;
+  const totalCostsAll = totalCostsPaid + expensesPendingTotal + operationalPartnersPending;
+  const summary = {
+    produced,
+    invoiced,
+    expensesPaid: expensesPaidTotal,
+    expensesPending: expensesPendingTotal,
+    extrasDiaCost,
+    marketingCost,
+    salariesCost: totalSalaries,
+    salesCommissions: salesCommissionsTotal,
+    // back-compat
+    partnerCommissionsPaid: operationalPartnersPaid,
+    partnerCommissionsPending: operationalPartnersPending,
+    operationalPartnersPaid,
+    operationalPartnersPending,
+    totalCostsPaid,
+    totalCostsAll,
+    marginRealized: produced - totalCostsPaid,
+    marginAll: produced - totalCostsAll,
+    periodDays
+  };
   return {
+    summary,
+    timeseries,
+    granularity,
+    range: { from: filters.from, to: filters.to },
+    // Mantém os blocos antigos para back-compat / drilldown
     deliveries: deliveryRows,
     expensesPaid: expPaidRows,
     expensesPending: expPendRows,
-    forecast: forecastRows
+    forecast: forecastRows,
+    // Novos blocos para drilldown
+    invoices: invoicedRows,
+    extrasDia: extrasDiaSummary,
+    marketing: { expenses: mktExpRows, ads: mktAdsRows },
+    partnerCommissions: partnerInvRows,
+    // back-compat (estado agregado)
+    salesCommissions,
+    // novo: comissões parceiros de venda por projeto
+    operationalPartners,
+    // novo: faturas a parceiros operacionais com projeto inferido
+    salaries: {
+      byProject: salariesByProject,
+      details: salaryDetailRows,
+      total: totalSalaries
+    }
   };
 }
 async function getPartnershipAnalytics(filters) {
@@ -2982,8 +4282,8 @@ async function getPartnershipAnalytics(filters) {
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
   const baseConds = [
     isNotNull(multiparkBookings.checkOut),
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, /* @__PURE__ */ new Date(filters.to + "T23:59:59"))
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59")))
   ];
   if (projectIds) baseConds.push(inArray(multiparkBookings.projectId, projectIds));
   const partnerRows = await db.select({
@@ -3055,8 +4355,8 @@ async function getBookingsByCampaign(filters) {
   const conds = [
     eq(multiparkBookings.campaign, filters.campaignKey),
     isNotNull(multiparkBookings.checkOut),
-    gte(multiparkBookings.checkOut, new Date(filters.from)),
-    lte(multiparkBookings.checkOut, /* @__PURE__ */ new Date(filters.to + "T23:59:59"))
+    gte(multiparkBookings.checkOut, toMysqlDateTime(new Date(filters.from))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59")))
   ];
   if (projectIds) conds.push(inArray(multiparkBookings.projectId, projectIds));
   const rows = await db.select({
@@ -3099,6 +4399,497 @@ async function getPartnerships(filters) {
   const where = conditions.length > 0 ? and(...conditions) : void 0;
   return db.select().from(partnerships).where(where).orderBy(desc(partnerships.createdAt));
 }
+async function inferPartnersFromBookings() {
+  const db = await getDb();
+  if (!db) return [];
+  const [rawRows] = await db.execute(sql`
+    SELECT
+      JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) AS partnerId,
+      paymentMethod,
+      remarks,
+      totalPrice
+    FROM multipark_bookings
+    WHERE (rawJson LIKE '%partnerId%' AND JSON_EXTRACT(rawJson, '$.partnerId') IS NOT NULL)
+       OR paymentMethod IS NOT NULL
+  `);
+  const byPartner = /* @__PURE__ */ new Map();
+  const byPaymentNoPartner = /* @__PURE__ */ new Map();
+  for (const r of rawRows) {
+    const pid = r.partnerId;
+    const tp = r.totalPrice ? parseFloat(String(r.totalPrice)) : 0;
+    const tpVal = Number.isFinite(tp) ? tp : 0;
+    if (pid) {
+      let agg = byPartner.get(pid);
+      if (!agg) {
+        agg = { bookings: 0, totalValue: 0, paymentMethods: /* @__PURE__ */ new Map(), remarksSample: null };
+        byPartner.set(pid, agg);
+      }
+      agg.bookings++;
+      agg.totalValue += tpVal;
+      if (r.paymentMethod) {
+        agg.paymentMethods.set(r.paymentMethod, (agg.paymentMethods.get(r.paymentMethod) ?? 0) + 1);
+      }
+      if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
+    } else if (r.paymentMethod) {
+      const key = r.paymentMethod;
+      let agg = byPaymentNoPartner.get(key);
+      if (!agg) {
+        agg = { bookings: 0, totalValue: 0, paymentMethods: /* @__PURE__ */ new Map(), remarksSample: null };
+        byPaymentNoPartner.set(key, agg);
+      }
+      agg.bookings++;
+      agg.totalValue += tpVal;
+      if (!agg.remarksSample && r.remarks) agg.remarksSample = r.remarks;
+    }
+  }
+  const aliasIndex = /* @__PURE__ */ new Map();
+  const aliases = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasType: partnerAliases.aliasType,
+    aliasValue: partnerAliases.aliasValue
+  }).from(partnerAliases);
+  const partnersById = /* @__PURE__ */ new Map();
+  const partnersAll = await db.select({ id: partnerships.id, name: partnerships.name }).from(partnerships);
+  for (const p of partnersAll) partnersById.set(p.id, p.name);
+  for (const a of aliases) {
+    const key = `${a.aliasType}:${a.aliasValue}`;
+    const name = partnersById.get(a.partnershipId);
+    if (name) aliasIndex.set(key, { id: a.partnershipId, name });
+  }
+  function firstAlphaToken(s) {
+    if (!s) return null;
+    const m = s.match(/^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+  function topPayment(m) {
+    let best = null;
+    for (const [k, v] of m) if (!best || v > best[1]) best = [k, v];
+    return best ? best[0] : null;
+  }
+  const GENERIC = /^(online|multibanco|numerário|numerario|dinheiro|no pay|stripe|wallet|allowance|pro_plan|cash|multbanco|sibs|transferencia)/i;
+  const result = [];
+  for (const [pid, agg] of byPartner) {
+    const top = topPayment(agg.paymentMethods);
+    const fromPayment = top && !GENERIC.test(top.trim()) ? top : null;
+    const fromRemarks = firstAlphaToken(agg.remarksSample);
+    const suggestedName = fromPayment ?? fromRemarks ?? "Desconhecido";
+    const linked = aliasIndex.get(`multipark_partner_id:${pid}`);
+    result.push({
+      aliasType: "multipark_partner_id",
+      aliasValue: pid,
+      suggestedName,
+      paymentMethod: top,
+      remarksSample: agg.remarksSample,
+      bookings: agg.bookings,
+      totalValue: Math.round(agg.totalValue * 100) / 100,
+      linkedPartnershipId: linked?.id ?? null,
+      linkedPartnershipName: linked?.name ?? null
+    });
+  }
+  for (const [pm, agg] of byPaymentNoPartner) {
+    if (GENERIC.test(pm.trim())) continue;
+    const linked = aliasIndex.get(`payment_method:${pm}`);
+    result.push({
+      aliasType: "payment_method",
+      aliasValue: pm,
+      suggestedName: pm,
+      paymentMethod: pm,
+      remarksSample: agg.remarksSample,
+      bookings: agg.bookings,
+      totalValue: Math.round(agg.totalValue * 100) / 100,
+      linkedPartnershipId: linked?.id ?? null,
+      linkedPartnershipName: linked?.name ?? null
+    });
+  }
+  result.sort((a, b) => b.bookings - a.bookings);
+  return result;
+}
+async function addPartnerAlias(partnershipId, aliasType, aliasValue, applyToBookings) {
+  const db = await getDb();
+  if (!db) return 0;
+  try {
+    await db.insert(partnerAliases).values({ partnershipId, aliasType, aliasValue });
+  } catch (err) {
+    if (!String(err.message).includes("Duplicate")) throw err;
+  }
+  if (!applyToBookings) return 0;
+  const [p] = await db.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  if (!p) return 0;
+  if (aliasType === "multipark_partner_id") {
+    const [r] = await db.execute(sql`
+      UPDATE multipark_bookings
+      SET campaign = ${p.name}
+      WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${aliasValue}
+    `);
+    return r.affectedRows ?? 0;
+  } else {
+    const [r] = await db.execute(sql`
+      UPDATE multipark_bookings
+      SET campaign = ${p.name}
+      WHERE paymentMethod = ${aliasValue}
+        AND (rawJson NOT LIKE '%partnerId%' OR JSON_EXTRACT(rawJson, '$.partnerId') IS NULL)
+    `);
+    return r.affectedRows ?? 0;
+  }
+}
+async function getPartnerInvoicingSummary(filters) {
+  const db = await getDb();
+  if (!db) return [];
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
+  const msPerDay = 1e3 * 60 * 60 * 24;
+  const periodDays = Math.max(
+    1,
+    Math.floor((new Date(filters.to).getTime() - new Date(filters.from).getTime()) / msPerDay) + 1
+  );
+  const monthFraction = periodDays / 30;
+  const yearFraction = periodDays / 365;
+  const partnerRows = await db.select({
+    id: partnerships.id,
+    name: partnerships.name,
+    partnerType: partnerships.partnerType,
+    commissionRate: partnerships.commissionRate,
+    monthlyFee: partnerships.monthlyFee,
+    notes: partnerships.notes
+  }).from(partnerships).where(filters.partnerType ? eq(partnerships.partnerType, filters.partnerType) : void 0);
+  if (partnerRows.length === 0) return [];
+  const { parsePartnerConfig: parsePartnerConfig2 } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
+  const aliasRows = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasValue: partnerAliases.aliasValue
+  }).from(partnerAliases);
+  const bookingRows = await db.select({
+    campaign: multiparkBookings.campaign,
+    bookingsCount: sql`COUNT(*)`,
+    revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(
+    and(
+      isNotNull(multiparkBookings.campaign),
+      sql`${multiparkBookings.status} != 'CANCELLED'`,
+      gte(multiparkBookings.checkOut, fromStr),
+      lte(multiparkBookings.checkOut, toStr)
+    )
+  ).groupBy(multiparkBookings.campaign);
+  const keyToPartner = /* @__PURE__ */ new Map();
+  function reg(rawKey, partnerId) {
+    if (!rawKey) return;
+    const k = rawKey.trim().toLowerCase();
+    if (k && !keyToPartner.has(k)) keyToPartner.set(k, partnerId);
+  }
+  for (const p of partnerRows) {
+    reg(p.name, p.id);
+  }
+  for (const a of aliasRows) {
+    reg(a.aliasValue, a.partnershipId);
+  }
+  const bookingsByPartner = /* @__PURE__ */ new Map();
+  for (const b of bookingRows) {
+    const k = (b.campaign ?? "").trim().toLowerCase();
+    const pid = keyToPartner.get(k);
+    if (!pid) continue;
+    const existing = bookingsByPartner.get(pid) ?? { count: 0, revenue: 0 };
+    existing.count += Number(b.bookingsCount ?? 0);
+    existing.revenue += Number(b.revenue ?? 0);
+    bookingsByPartner.set(pid, existing);
+  }
+  const invRows = await db.select({
+    partnershipId: partnershipInvoices.partnershipId,
+    status: partnershipInvoices.invoiceStatus,
+    total: sql`COALESCE(SUM(${partnershipInvoices.amount}), 0)`,
+    count: sql`COUNT(*)`
+  }).from(partnershipInvoices).where(
+    and(
+      gte(partnershipInvoices.sentAt, fromStr),
+      lte(partnershipInvoices.sentAt, toStr),
+      sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`
+    )
+  ).groupBy(partnershipInvoices.partnershipId, partnershipInvoices.invoiceStatus);
+  const invByPartner = /* @__PURE__ */ new Map();
+  for (const r of invRows) {
+    const ex = invByPartner.get(r.partnershipId) ?? { faturado: 0, emAtraso: 0, emAtrasoCount: 0 };
+    const amount = Number(r.total ?? 0);
+    ex.faturado += amount;
+    if (r.status === "overdue") {
+      ex.emAtraso += amount;
+      ex.emAtrasoCount += Number(r.count ?? 0);
+    }
+    invByPartner.set(r.partnershipId, ex);
+  }
+  const operationalPartners = partnerRows.filter((p) => (p.partnerType ?? "outro") === "operacional").map((p) => ({ p, cfg: parsePartnerConfig2(p.notes ?? null) })).filter(({ cfg }) => Array.isArray(cfg.operatesProjects) && cfg.operatesProjects.length > 0);
+  const operationalRevenueByPartner = /* @__PURE__ */ new Map();
+  if (operationalPartners.length > 0) {
+    const allOperatedRaw = /* @__PURE__ */ new Set();
+    for (const { cfg } of operationalPartners) {
+      for (const pid of cfg.operatesProjects ?? []) allOperatedRaw.add(pid);
+    }
+    const expanded = /* @__PURE__ */ new Set();
+    for (const root of allOperatedRaw) {
+      const ids = await resolveProjectIds(root);
+      for (const pid of ids) expanded.add(pid);
+    }
+    if (expanded.size > 0) {
+      const opBookings = await db.select({
+        projectId: multiparkBookings.projectId,
+        count: sql`COUNT(*)`,
+        revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+      }).from(multiparkBookings).where(
+        and(
+          sql`${multiparkBookings.status} != 'CANCELLED'`,
+          gte(multiparkBookings.checkOut, fromStr),
+          lte(multiparkBookings.checkOut, toStr),
+          inArray(multiparkBookings.projectId, Array.from(expanded))
+        )
+      ).groupBy(multiparkBookings.projectId);
+      const revenueByProject = /* @__PURE__ */ new Map();
+      for (const r of opBookings) {
+        if (r.projectId == null) continue;
+        revenueByProject.set(r.projectId, {
+          count: Number(r.count ?? 0),
+          revenue: Number(r.revenue ?? 0)
+        });
+      }
+      for (const { p, cfg } of operationalPartners) {
+        let count = 0;
+        let revenue = 0;
+        const cover = /* @__PURE__ */ new Set();
+        for (const root of cfg.operatesProjects ?? []) {
+          const ids = await resolveProjectIds(root);
+          for (const pid of ids) cover.add(pid);
+        }
+        for (const pid of cover) {
+          const r = revenueByProject.get(pid);
+          if (r) {
+            count += r.count;
+            revenue += r.revenue;
+          }
+        }
+        operationalRevenueByPartner.set(p.id, { count, revenue });
+      }
+    }
+  }
+  return partnerRows.map((p) => {
+    const bk = bookingsByPartner.get(p.id) ?? { count: 0, revenue: 0 };
+    const inv = invByPartner.get(p.id) ?? { faturado: 0, emAtraso: 0, emAtrasoCount: 0 };
+    const opRev = operationalRevenueByPartner.get(p.id);
+    const commissionRate = Number(p.commissionRate ?? 0);
+    const monthlyFee = Number(p.monthlyFee ?? 0);
+    const partnerType = p.partnerType ?? "outro";
+    let aFaturar = 0;
+    let displayBookingsCount = bk.count;
+    let displayRevenue = bk.revenue;
+    if (partnerType === "avenca_mensal") {
+      aFaturar = monthlyFee * monthFraction;
+    } else if (partnerType === "avenca_anual") {
+      aFaturar = monthlyFee * yearFraction;
+    } else if (partnerType === "operacional") {
+      const revenue = opRev?.revenue ?? bk.revenue;
+      displayRevenue = revenue;
+      displayBookingsCount = opRev?.count ?? bk.count;
+      aFaturar = revenue * commissionRate / 100;
+    } else if (partnerType === "agregador" || partnerType === "agencia_viagem" || partnerType === "hotel" || partnerType === "companhia_aerea" || partnerType === "afiliado") {
+      aFaturar = bk.revenue * commissionRate / 100;
+    } else if (partnerType === "cliente_pro") {
+      aFaturar = bk.revenue;
+    }
+    const pendente = Math.max(0, aFaturar - inv.faturado);
+    return {
+      partnershipId: p.id,
+      partnerName: p.name,
+      partnerType,
+      commissionRate,
+      monthlyFee,
+      bookingsCount: displayBookingsCount,
+      revenueGross: displayRevenue,
+      aFaturar,
+      faturado: inv.faturado,
+      emAtraso: inv.emAtraso,
+      pendente,
+      faturasEmAtrasoCount: inv.emAtrasoCount
+    };
+  }).sort((a, b) => b.aFaturar - a.aFaturar);
+}
+async function getPartnerInvoicingDetailByType(filters) {
+  const db = await getDb();
+  if (!db) return { partnerType: filters.partnerType, partners: [] };
+  const fromStr = toMysqlDateTime(new Date(filters.from));
+  const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
+  const msPerDay = 1e3 * 60 * 60 * 24;
+  const periodDays = Math.max(
+    1,
+    Math.floor((new Date(filters.to).getTime() - new Date(filters.from).getTime()) / msPerDay) + 1
+  );
+  const monthFraction = periodDays / 30;
+  const yearFraction = periodDays / 365;
+  const { parsePartnerConfig: parsePartnerConfig2 } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
+  const partnerRows = await db.select({
+    id: partnerships.id,
+    name: partnerships.name,
+    partnerType: partnerships.partnerType,
+    commissionRate: partnerships.commissionRate,
+    monthlyFee: partnerships.monthlyFee,
+    notes: partnerships.notes
+  }).from(partnerships).where(eq(partnerships.partnerType, filters.partnerType));
+  if (partnerRows.length === 0) return { partnerType: filters.partnerType, partners: [] };
+  const aliasRows = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasValue: partnerAliases.aliasValue
+  }).from(partnerAliases);
+  const keyToPartner = /* @__PURE__ */ new Map();
+  function reg(k, pid) {
+    if (!k) return;
+    const x = k.trim().toLowerCase();
+    if (x && !keyToPartner.has(x)) keyToPartner.set(x, pid);
+  }
+  for (const p of partnerRows) reg(p.name, p.id);
+  for (const a of aliasRows) reg(a.aliasValue, a.partnershipId);
+  const bookingRows = await db.select({
+    campaign: multiparkBookings.campaign,
+    projectId: multiparkBookings.projectId,
+    count: sql`COUNT(*)`,
+    revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`,
+    discount: sql`COALESCE(SUM(${multiparkBookings.discount}), 0)`,
+    extras: sql`COALESCE(SUM(${multiparkBookings.extrasTotal}), 0)`
+  }).from(multiparkBookings).where(
+    and(
+      isNotNull(multiparkBookings.campaign),
+      sql`${multiparkBookings.status} != 'CANCELLED'`,
+      gte(multiparkBookings.checkOut, fromStr),
+      lte(multiparkBookings.checkOut, toStr)
+    )
+  ).groupBy(multiparkBookings.campaign, multiparkBookings.projectId);
+  const byPartner = /* @__PURE__ */ new Map();
+  for (const b of bookingRows) {
+    const k = (b.campaign ?? "").trim().toLowerCase();
+    const pid = keyToPartner.get(k);
+    if (!pid) continue;
+    const ex = byPartner.get(pid) ?? { count: 0, revenue: 0, discount: 0, extras: 0 };
+    ex.count += Number(b.count ?? 0);
+    ex.revenue += Number(b.revenue ?? 0);
+    ex.discount += Number(b.discount ?? 0);
+    ex.extras += Number(b.extras ?? 0);
+    byPartner.set(pid, ex);
+  }
+  const operationalRevenueByPartner = /* @__PURE__ */ new Map();
+  if (filters.partnerType === "operacional") {
+    for (const p of partnerRows) {
+      const cfg = parsePartnerConfig2(p.notes ?? null);
+      const operatedRoots = cfg.operatesProjects ?? [];
+      if (operatedRoots.length === 0) continue;
+      const expanded = /* @__PURE__ */ new Set();
+      for (const root of operatedRoots) {
+        const ids = await resolveProjectIds(root);
+        for (const pid of ids) expanded.add(pid);
+      }
+      if (expanded.size === 0) continue;
+      const rows = await db.select({
+        count: sql`COUNT(*)`,
+        revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+      }).from(multiparkBookings).where(
+        and(
+          sql`${multiparkBookings.status} != 'CANCELLED'`,
+          gte(multiparkBookings.checkOut, fromStr),
+          lte(multiparkBookings.checkOut, toStr),
+          inArray(multiparkBookings.projectId, Array.from(expanded))
+        )
+      );
+      operationalRevenueByPartner.set(p.id, {
+        count: Number(rows[0]?.count ?? 0),
+        revenue: Number(rows[0]?.revenue ?? 0)
+      });
+    }
+  }
+  const partners = partnerRows.map((p) => {
+    const cfg = parsePartnerConfig2(p.notes ?? null);
+    const cashbackPercent = Number(cfg.cashbackPercent ?? 0);
+    const prizeBudget = Number(cfg.prizeBudget ?? 0);
+    const commissionRate = Number(p.commissionRate ?? 0);
+    const monthlyFee = Number(p.monthlyFee ?? 0);
+    const bk = byPartner.get(p.id) ?? { count: 0, revenue: 0, discount: 0, extras: 0 };
+    const opRev = operationalRevenueByPartner.get(p.id);
+    let bookingsCount = bk.count;
+    let revenueGross = bk.revenue;
+    let aFaturar = 0;
+    const cashbackAmount = bk.revenue * cashbackPercent / 100;
+    if (filters.partnerType === "operacional" && opRev) {
+      bookingsCount = opRev.count;
+      revenueGross = opRev.revenue;
+      aFaturar = opRev.revenue * commissionRate / 100;
+    } else if (filters.partnerType === "avenca_mensal") {
+      aFaturar = monthlyFee * monthFraction;
+    } else if (filters.partnerType === "avenca_anual") {
+      aFaturar = monthlyFee * yearFraction;
+    } else if (filters.partnerType === "agregador" || filters.partnerType === "agencia_viagem" || filters.partnerType === "hotel" || filters.partnerType === "companhia_aerea" || filters.partnerType === "afiliado") {
+      aFaturar = bk.revenue * commissionRate / 100;
+    } else if (filters.partnerType === "cliente_pro") {
+      aFaturar = bk.revenue;
+    }
+    return {
+      partnershipId: p.id,
+      partnerName: p.name,
+      commissionRate,
+      monthlyFee,
+      bookingsCount,
+      revenueGross,
+      discountTotal: bk.discount,
+      extrasTotal: bk.extras,
+      cashbackPercent,
+      cashbackAmount,
+      prizeBudget,
+      operatesProjectsCount: (cfg.operatesProjects ?? []).length,
+      aFaturar,
+      notes: p.notes ?? null
+    };
+  }).sort((a, b) => b.aFaturar - a.aFaturar);
+  return { partnerType: filters.partnerType, partners };
+}
+async function listPartnerAliases(partnershipId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(partnerAliases).where(eq(partnerAliases.partnershipId, partnershipId));
+}
+async function aliasCountsByPartner() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    partnershipId: partnerAliases.partnershipId,
+    aliasType: partnerAliases.aliasType,
+    aliasValue: partnerAliases.aliasValue,
+    partnershipName: partnerships.name
+  }).from(partnerAliases).leftJoin(partnerships, eq(partnerships.id, partnerAliases.partnershipId));
+  const map = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const entry = map.get(r.partnershipId) ?? { partnershipName: r.partnershipName, partnerIds: [], paymentMethods: [] };
+    if (r.aliasType === "multipark_partner_id") entry.partnerIds.push(r.aliasValue);
+    else entry.paymentMethods.push(r.aliasValue);
+    map.set(r.partnershipId, entry);
+  }
+  return Array.from(map.entries()).map(([id, v]) => ({
+    partnershipId: id,
+    partnershipName: v.partnershipName,
+    partnerIds: v.partnerIds,
+    paymentMethods: v.paymentMethods,
+    total: v.partnerIds.length + v.paymentMethods.length
+  })).sort((a, b) => b.total - a.total);
+}
+async function deletePartnerAlias(id) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(partnerAliases).where(eq(partnerAliases.id, id));
+}
+async function linkMultiparkPartnerId(partnershipId, multiparkPartnerId, applyToBookings) {
+  const db = await getDb();
+  if (!db) return 0;
+  await db.update(partnerships).set({ multiparkPartnerId }).where(eq(partnerships.id, partnershipId));
+  if (!applyToBookings) return 0;
+  const [p] = await db.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  if (!p) return 0;
+  const [result] = await db.execute(sql`
+    UPDATE multipark_bookings
+    SET campaign = ${p.name}
+    WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${multiparkPartnerId}
+  `);
+  return result.affectedRows ?? 0;
+}
 async function getPartnershipById(id) {
   const db = await getDb();
   if (!db) return null;
@@ -3138,7 +4929,7 @@ async function getPartnershipInvoices(filters) {
   if (!db) return [];
   const conditions = [];
   if (filters?.partnershipId) conditions.push(eq(partnershipInvoices.partnershipId, filters.partnershipId));
-  if (filters?.status) conditions.push(eq(partnershipInvoices.status, filters.status));
+  if (filters?.status) conditions.push(eq(partnershipInvoices.invoiceStatus, filters.status));
   if (filters?.year) conditions.push(eq(partnershipInvoices.referenceYear, filters.year));
   if (filters?.month) conditions.push(eq(partnershipInvoices.referenceMonth, filters.month));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
@@ -3158,10 +4949,10 @@ async function markOverduePartnershipInvoices() {
   const db = await getDb();
   if (!db) return 0;
   const now = /* @__PURE__ */ new Date();
-  const result = await db.update(partnershipInvoices).set({ status: "overdue" }).where(
+  const result = await db.update(partnershipInvoices).set({ invoiceStatus: "overdue" }).where(
     and(
-      eq(partnershipInvoices.status, "sent"),
-      sql`${partnershipInvoices.dueDate} < ${now}`
+      eq(partnershipInvoices.invoiceStatus, "sent"),
+      sql`${partnershipInvoices.dueDate} < ${toMysqlDateTime(now)}`
     )
   );
   return result[0]?.affectedRows || 0;
@@ -3173,14 +4964,14 @@ async function getPartnershipDashboardStats() {
   const allInvoices = await db.select().from(partnershipInvoices);
   const allTx = await db.select().from(partnershipTransactions);
   const totalPartners = allPartners.length;
-  const activePartners = allPartners.filter((p) => p.status === "active").length;
+  const activePartners = allPartners.filter((p) => p.partnerStatus === "active").length;
   const byType = {};
   allPartners.forEach((p) => {
     byType[p.partnerType] = (byType[p.partnerType] || 0) + 1;
   });
-  const pendingInvoices = allInvoices.filter((i) => i.status === "sent");
-  const overdueInvoices = allInvoices.filter((i) => i.status === "overdue");
-  const paidInvoices = allInvoices.filter((i) => i.status === "paid");
+  const pendingInvoices = allInvoices.filter((i) => i.invoiceStatus === "sent");
+  const overdueInvoices = allInvoices.filter((i) => i.invoiceStatus === "overdue");
+  const paidInvoices = allInvoices.filter((i) => i.invoiceStatus === "paid");
   const totalPending = pendingInvoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalOverdue = overdueInvoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalPaid = paidInvoices.reduce((s, i) => s + (i.amount || 0), 0);
@@ -3188,9 +4979,9 @@ async function getPartnershipDashboardStats() {
   const partnerSummaries = allPartners.map((p) => {
     const pInvoices = allInvoices.filter((i) => i.partnershipId === p.id);
     const pTx = allTx.filter((t2) => t2.partnershipId === p.id);
-    const pending = pInvoices.filter((i) => i.status === "sent").reduce((s, i) => s + (i.amount || 0), 0);
-    const overdue = pInvoices.filter((i) => i.status === "overdue").reduce((s, i) => s + (i.amount || 0), 0);
-    const paid = pInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + (i.amount || 0), 0);
+    const pending = pInvoices.filter((i) => i.invoiceStatus === "sent").reduce((s, i) => s + (i.amount || 0), 0);
+    const overdue = pInvoices.filter((i) => i.invoiceStatus === "overdue").reduce((s, i) => s + (i.amount || 0), 0);
+    const paid = pInvoices.filter((i) => i.invoiceStatus === "paid").reduce((s, i) => s + (i.amount || 0), 0);
     const bookings = pTx.filter((t2) => t2.transactionType === "booking").reduce((s, t2) => s + (t2.amount || 0), 0);
     return {
       ...p,
@@ -3214,6 +5005,12 @@ async function getPartnershipDashboardStats() {
     overdueCount: overdueInvoices.length,
     partnerSummaries
   };
+}
+async function createAnnualReport(data) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(annualReports).values(data).$returningId();
+  return result?.id;
 }
 async function getAnnualReports(filters) {
   const db = await getDb();
@@ -3241,9 +5038,9 @@ async function getAnnualBreakdown(year, projectId) {
   let projectIds;
   if (projectId) projectIds = await resolveProjectIds(projectId);
   const revConds = [
-    gte(multiparkBookings.checkOut, /* @__PURE__ */ new Date(`${year}-01-01`)),
-    lte(multiparkBookings.checkOut, /* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)),
-    isNotNull(multiparkBookings.checkOut)
+    gte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-01-01`))),
+    lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`))),
+    sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (projectIds) revConds.push(inArray(multiparkBookings.projectId, projectIds));
   const revenueRows = await db.select({
@@ -3251,38 +5048,186 @@ async function getAnnualBreakdown(year, projectId) {
     total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...revConds)).groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
   const expConds = [
-    eq(expenses.status, "paid"),
-    isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, /* @__PURE__ */ new Date(`${year}-01-01`)),
-    lte(expenses.paidAt, /* @__PURE__ */ new Date(`${year}-12-31T23:59:59`))
+    sql`${expenses.status} != 'cancelled'`,
+    gte(expenses.expenseDate, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-01-01`))),
+    lte(expenses.expenseDate, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
   ];
   if (projectIds) expConds.push(inArray(expenses.projectId, projectIds));
   const expenseRows = await db.select({
-    month: sql`MONTH(${expenses.paidAt})`,
+    month: sql`MONTH(${expenses.expenseDate})`,
     total: sql`COALESCE(SUM(${expenses.amount}), 0)`
-  }).from(expenses).where(and(...expConds)).groupBy(sql`MONTH(${expenses.paidAt})`);
-  const TSU_EMPLOYER = 0.2375;
-  const payrollByMonth = {};
-  for (let m = 1; m <= 12; m++) {
-    try {
-      const payroll = await getPayrollData(year, m);
-      const filtered = projectIds ? payroll.filter((p) => p.projectId && projectIds.includes(p.projectId)) : payroll;
-      const totalSalaries = filtered.reduce((s, p) => s + p.totalPayment, 0);
-      const totalEmployerTax = filtered.reduce((s, p) => {
-        const taxableBase = p.isExtra ? p.extraPayment : p.baseSalary + p.overtimePayment + p.nightPayment + p.weekendPayment;
-        return s + taxableBase * TSU_EMPLOYER;
-      }, 0);
-      payrollByMonth[m] = { salaries: Math.round(totalSalaries * 100) / 100, employerTax: Math.round(totalEmployerTax * 100) / 100 };
-    } catch {
-      payrollByMonth[m] = { salaries: 0, employerTax: 0 };
+  }).from(expenses).where(and(...expConds)).groupBy(sql`MONTH(${expenses.expenseDate})`);
+  const mktExpConds = [
+    gte(marketingExpenses.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-01-01`))),
+    lte(marketingExpenses.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
+  ];
+  if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
+  const mktExpRows = await db.select({
+    month: sql`MONTH(${marketingExpenses.date})`,
+    total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)`
+  }).from(marketingExpenses).where(and(...mktExpConds)).groupBy(sql`MONTH(${marketingExpenses.date})`);
+  const adsConds = [
+    gte(campaignDailyStats.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-01-01`))),
+    lte(campaignDailyStats.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
+  ];
+  if (projectIds) adsConds.push(inArray(campaigns.projectId, projectIds));
+  const adsRows = await db.select({
+    month: sql`MONTH(${campaignDailyStats.date})`,
+    total: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`
+  }).from(campaignDailyStats).innerJoin(campaigns, eq(campaigns.id, campaignDailyStats.campaignId)).where(and(...adsConds)).groupBy(sql`MONTH(${campaignDailyStats.date})`);
+  const extrasRows = await db.select({
+    date: extrasDiaAssignments.assignmentDate,
+    level: extrasDiaAssignments.level,
+    hours: sql`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`
+  }).from(extrasDiaAssignments).where(
+    and(
+      gte(extrasDiaAssignments.assignmentDate, `${year}-01-01`),
+      lte(extrasDiaAssignments.assignmentDate, `${year}-12-31`),
+      eq(extrasDiaAssignments.isTeamLeader, 0)
+    )
+  ).groupBy(extrasDiaAssignments.assignmentDate, extrasDiaAssignments.level);
+  const extrasDiaByMonth = {};
+  for (const r of extrasRows) {
+    const rate = EXTRAS_DIA_RATES[String(r.level ?? "junior")] ?? 4;
+    const m = Number((r.date ?? "").slice(5, 7));
+    if (!m) continue;
+    extrasDiaByMonth[m] = (extrasDiaByMonth[m] ?? 0) + Number(r.hours) * rate;
+  }
+  const allPartners = await db.select({
+    id: partnerships.id,
+    name: partnerships.name,
+    campaignKey: partnerships.campaignKey,
+    commissionRate: partnerships.commissionRate,
+    partnerType: partnerships.partnerType,
+    notes: partnerships.notes,
+    updatedAt: partnerships.updatedAt
+  }).from(partnerships);
+  const allAliases = await db.select({ partnershipId: partnerAliases.partnershipId, aliasValue: partnerAliases.aliasValue }).from(partnerAliases);
+  const partnerByCampaign = /* @__PURE__ */ new Map();
+  const registerKey = (k, id, name, rate, updatedAt) => {
+    if (!k) return;
+    const key = k.trim().toLowerCase();
+    if (!key) return;
+    const ex = partnerByCampaign.get(key);
+    if (!ex || updatedAt > ex.updatedAt) {
+      partnerByCampaign.set(key, { id, name, rate, updatedAt });
+    }
+  };
+  for (const p of allPartners) {
+    const rate = Number(p.commissionRate ?? 0);
+    const updatedAt = p.updatedAt ?? "";
+    registerKey(p.campaignKey, p.id, p.name, rate, updatedAt);
+    registerKey(p.name, p.id, p.name, rate, updatedAt);
+  }
+  const partnerById = new Map(allPartners.map((p) => [p.id, p]));
+  for (const a of allAliases) {
+    const p = partnerById.get(a.partnershipId);
+    if (!p) continue;
+    registerKey(a.aliasValue, p.id, p.name, Number(p.commissionRate ?? 0), p.updatedAt ?? "");
+  }
+  const bookingsByMonthCampaign = await db.select({
+    month: sql`MONTH(${multiparkBookings.checkOut})`,
+    campaign: multiparkBookings.campaign,
+    revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+  }).from(multiparkBookings).where(and(...revConds, isNotNull(multiparkBookings.campaign))).groupBy(sql`MONTH(${multiparkBookings.checkOut})`, multiparkBookings.campaign);
+  const salesCommissionByMonth = {};
+  for (const r of bookingsByMonthCampaign) {
+    const key = (r.campaign ?? "").trim().toLowerCase();
+    const partner = partnerByCampaign.get(key);
+    if (!partner) continue;
+    const m = Number(r.month);
+    salesCommissionByMonth[m] = (salesCommissionByMonth[m] ?? 0) + Number(r.revenue) * (partner.rate / 100);
+  }
+  const { parsePartnerConfig: parsePartnerConfig2 } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
+  const operationalPartnersList = allPartners.filter((p) => (p.partnerType ?? "outro") === "operacional").map((p) => ({ p, cfg: parsePartnerConfig2(p.notes ?? null) })).filter(({ cfg }) => Array.isArray(cfg.operatesProjects) && cfg.operatesProjects.length > 0);
+  const operationalCommissionByMonth = {};
+  for (const { p, cfg } of operationalPartnersList) {
+    const expanded = /* @__PURE__ */ new Set();
+    for (const root of cfg.operatesProjects ?? []) {
+      const ids = await resolveProjectIds(root);
+      for (const pid of ids) expanded.add(pid);
+    }
+    if (expanded.size === 0) continue;
+    const rows = await db.select({
+      month: sql`MONTH(${multiparkBookings.checkOut})`,
+      revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
+    }).from(multiparkBookings).where(
+      and(
+        gte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-01-01`))),
+        lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`))),
+        sql`${multiparkBookings.status} != 'CANCELLED'`,
+        inArray(multiparkBookings.projectId, Array.from(expanded))
+      )
+    ).groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
+    const rate = Number(p.commissionRate ?? 0) / 100;
+    for (const r of rows) {
+      const m = Number(r.month);
+      operationalCommissionByMonth[m] = (operationalCommissionByMonth[m] ?? 0) + Number(r.revenue) * rate;
     }
   }
+  const allProjsForRateio = await db.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
+  const childrenMap = /* @__PURE__ */ new Map();
+  for (const p of allProjsForRateio) {
+    if (p.parentId != null) {
+      if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+      childrenMap.get(p.parentId).push(p.id);
+    }
+  }
+  function leafDescendants(pid) {
+    const self = allProjsForRateio.find((x) => x.id === pid);
+    if (!self) return [pid];
+    if (self.level === "project") return [pid];
+    const kids = childrenMap.get(pid) ?? [];
+    if (kids.length === 0) return [pid];
+    const out = [];
+    for (const k of kids) out.push(...leafDescendants(k));
+    return out.length > 0 ? out : [pid];
+  }
+  const TSU_EMPLOYER = 0.2375;
+  const monthIds = Array.from({ length: 12 }, (_, i) => i + 1);
+  const payrollResults = await Promise.all(monthIds.map(async (m) => {
+    try {
+      const payroll = await getPayrollData(year, m);
+      let totalSalaries = 0;
+      let totalEmployerTax = 0;
+      for (const p of payroll) {
+        const taxableBase = p.isExtra ? p.extraPayment : p.baseSalary + p.overtimePayment + p.nightPayment + p.weekendPayment;
+        const employerTaxForEmp = taxableBase * TSU_EMPLOYER;
+        const empProjectId = p.projectId ?? null;
+        if (empProjectId == null) {
+          if (!projectIds) {
+            totalSalaries += p.totalPayment;
+            totalEmployerTax += employerTaxForEmp;
+          }
+          continue;
+        }
+        const targets = leafDescendants(empProjectId);
+        const matching = projectIds ? targets.filter((t2) => projectIds.includes(t2)) : targets;
+        if (matching.length === 0) continue;
+        const share = matching.length / targets.length;
+        totalSalaries += p.totalPayment * share;
+        totalEmployerTax += employerTaxForEmp * share;
+      }
+      return [m, { salaries: Math.round(totalSalaries * 100) / 100, employerTax: Math.round(totalEmployerTax * 100) / 100 }];
+    } catch {
+      return [m, { salaries: 0, employerTax: 0 }];
+    }
+  }));
+  const payrollByMonth = {};
+  for (const [m, v] of payrollResults) payrollByMonth[m] = v;
   const revMap = new Map(revenueRows.map((r) => [Number(r.month), Number(r.total)]));
   const expMap = new Map(expenseRows.map((e) => [Number(e.month), Number(e.total)]));
+  const mktExpMap = new Map(mktExpRows.map((r) => [Number(r.month), Number(r.total)]));
+  const adsMap = new Map(adsRows.map((r) => [Number(r.month), Number(r.total)]));
   const months = [];
   for (let m = 1; m <= 12; m++) {
-    const revenueWithVat = revMap.get(m) ?? 0;
+    const revenueGrossWithVat = revMap.get(m) ?? 0;
+    const salesCommissions = Math.round((salesCommissionByMonth[m] ?? 0) * 100) / 100;
+    const operationalCommissions = Math.round((operationalCommissionByMonth[m] ?? 0) * 100) / 100;
+    const revenueWithVat = revenueGrossWithVat - salesCommissions - operationalCommissions;
     const expensesWithVat = expMap.get(m) ?? 0;
+    const marketingCost = (mktExpMap.get(m) ?? 0) + (adsMap.get(m) ?? 0);
+    const extrasDiaCost = extrasDiaByMonth[m] ?? 0;
     const salaries = payrollByMonth[m]?.salaries ?? 0;
     const employerTax = payrollByMonth[m]?.employerTax ?? 0;
     const vatRevenue = Math.round(revenueWithVat * VAT_RATE / (1 + VAT_RATE) * 100) / 100;
@@ -3290,20 +5235,25 @@ async function getAnnualBreakdown(year, projectId) {
     const vatToPay = Math.round((vatRevenue - vatExpenses) * 100) / 100;
     const revenueNoVat = Math.round((revenueWithVat - vatRevenue) * 100) / 100;
     const expensesNoVat = Math.round((expensesWithVat - vatExpenses) * 100) / 100;
-    const totalCosts = expensesNoVat + salaries + employerTax;
+    const totalCosts = expensesNoVat + marketingCost + extrasDiaCost + salaries + employerTax;
     const profit = Math.round((revenueNoVat - totalCosts) * 100) / 100;
     months.push({
       month: m,
-      revenueWithVat,
+      revenueGrossWithVat: Math.round(revenueGrossWithVat * 100) / 100,
+      salesCommissions,
+      operationalCommissions,
+      revenueWithVat: Math.round(revenueWithVat * 100) / 100,
       revenueNoVat,
       vatRevenue,
       expensesWithVat,
       expensesNoVat,
       vatExpenses,
       vatToPay,
+      marketingCost: Math.round(marketingCost * 100) / 100,
+      extrasDiaCost: Math.round(extrasDiaCost * 100) / 100,
       salaries,
       employerTax,
-      totalCosts,
+      totalCosts: Math.round(totalCosts * 100) / 100,
       profit
     });
   }
@@ -3385,8 +5335,8 @@ async function getMultiparkBookings(filters) {
   const conditions = [];
   if (filters?.status) conditions.push(eq(multiparkBookings.status, filters.status));
   if (filters?.parkingType) conditions.push(eq(multiparkBookings.parkingType, filters.parkingType));
-  if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, toMysqlDateTime(filters.to)));
   if (filters?.search) {
     const s = `%${filters.search}%`;
     conditions.push(
@@ -3471,18 +5421,23 @@ async function searchBookingByRef(search) {
     like(multiparkBookings.clientLastName, s)
   )).orderBy(desc(multiparkBookings.bookingCreatedAt)).limit(10);
 }
+async function getMultiparkBookingByExternalId(externalId) {
+  const db = await getDb();
+  if (!db) return void 0;
+  const rows = await db.select().from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  return rows[0];
+}
 async function upsertMultiparkBooking(data) {
   const db = await getDb();
   if (!db) return;
-  const existing = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, data.externalId)).limit(1);
-  if (existing.length > 0) {
-    const { externalId, ...updateData } = data;
-    await db.update(multiparkBookings).set(updateData).where(eq(multiparkBookings.id, existing[0].id));
-    return { id: existing[0].id, action: "updated" };
-  } else {
-    const [result] = await db.insert(multiparkBookings).values(data).$returningId();
-    return { id: result?.id, action: "created" };
+  const { externalId, ...rest } = data;
+  const before = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  await db.insert(multiparkBookings).values(data).onDuplicateKeyUpdate({ set: rest });
+  if (before.length > 0) {
+    return { id: before[0].id, action: "updated" };
   }
+  const [row] = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  return { id: row?.id, action: "created" };
 }
 async function getMultiparkBookingStats(filters) {
   const db = await getDb();
@@ -3656,8 +5611,8 @@ async function getDailySnapshots(filters) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.parkName) conditions.push(eq(multiparkDailySnapshots.parkName, filters.parkName));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
@@ -3667,8 +5622,8 @@ async function getSnapshotKPIs(filters) {
   const db = await getDb();
   if (!db) return { totalBookings: 0, totalRevenue: 0, checkins: 0, checkouts: 0, cancelled: 0, reserved: 0, byPark: [], byCity: [], byDay: [], campaigns: {} };
   const conditions = [];
-  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, filters.from));
-  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, filters.to));
+  if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
+  if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
   const rows = await db.select().from(multiparkDailySnapshots).where(where).orderBy(multiparkDailySnapshots.snapshotDate);
@@ -3721,6 +5676,17 @@ async function getSnapshotKPIs(filters) {
     campaigns: campaignMap
   };
 }
+async function deleteSnapshotsByDateRange(from, to) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.delete(multiparkDailySnapshots).where(
+    and(
+      gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(from)),
+      lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(to))
+    )
+  );
+  return result?.[0]?.affectedRows ?? 0;
+}
 async function createInviteToken(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -3731,8 +5697,8 @@ async function createInviteToken(data) {
     email: data.email,
     userId: data.userId,
     invitedById: data.invitedById,
-    status: "pending",
-    expiresAt
+    inviteStatus: "pending",
+    expiresAt: toMysqlDateTime(expiresAt)
   });
   return { token, expiresAt };
 }
@@ -3745,12 +5711,17 @@ async function getInviteByToken(token) {
 async function acceptInviteToken(token) {
   const db = await getDb();
   if (!db) return;
-  await db.update(inviteTokens).set({ status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }).where(eq(inviteTokens.token, token));
+  await db.update(inviteTokens).set({ inviteStatus: "accepted", acceptedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(inviteTokens.token, token));
 }
 async function getInvitesByUser(userId) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(inviteTokens).where(eq(inviteTokens.userId, userId)).orderBy(desc(inviteTokens.createdAt));
+}
+async function getInvitesByEmail(email) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(inviteTokens).where(eq(inviteTokens.email, email)).orderBy(desc(inviteTokens.createdAt));
 }
 async function linkInviteToOAuthUser(manualUserId, oauthOpenId, oauthName, oauthEmail) {
   const db = await getDb();
@@ -3763,12 +5734,14 @@ async function linkInviteToOAuthUser(manualUserId, oauthOpenId, oauthName, oauth
 async function getPayrollData(year, month) {
   const db = await getDb();
   if (!db) return [];
-  const emps = await db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.isActive, true)).orderBy(employees.fullName);
+  const emps = await db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.isActive, 1)).orderBy(employees.fullName);
   const rates = await db.select().from(extraRates).orderBy(extraRates.level);
   const rateMap = new Map(rates.map((r) => [r.level, parseFloat(String(r.hourlyRate))]));
+  const rateByName = new Map(rates.map((r) => [String(r.levelName ?? ""), parseFloat(String(r.hourlyRate))]));
+  const monthFirstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
-  const records = await db.select().from(timeRecords).where(and(gte(timeRecords.recordedAt, start), lte(timeRecords.recordedAt, end)));
+  const records = await db.select().from(timeRecords).where(and(gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end))));
   const hoursByEmployee = /* @__PURE__ */ new Map();
   for (const r of records) {
     if (!hoursByEmployee.has(r.employeeId)) {
@@ -3785,11 +5758,20 @@ async function getPayrollData(year, month) {
   const OVERTIME_RATE_SUBSEQUENT = 1.375;
   const NIGHT_RATE_MULTIPLIER = 1.25;
   const WEEKEND_RATE_MULTIPLIER = 1.5;
+  const empMeta = await Promise.all(emps.map(async ({ employee: emp }) => {
+    const snapshot = await getEmployeeSalaryAt(emp.id, monthFirstDay);
+    const leaveDays = await getLeaveDaysForMonth(emp.id, year, month);
+    return { empId: emp.id, snapshot, leaveDays };
+  }));
+  const metaById = new Map(empMeta.map((m) => [m.empId, m]));
   return emps.map(({ employee: emp, project }) => {
     const empHours = hoursByEmployee.get(emp.id) ?? { totalHours: 0, days: /* @__PURE__ */ new Set(), records: [] };
     const totalHours = Math.round(empHours.totalHours * 100) / 100;
     const daysWorked = empHours.days.size;
     const isExtra = emp.position === "extra";
+    const meta = metaById.get(emp.id);
+    const snapshot = meta?.snapshot;
+    const leaveDays = meta?.leaveDays ?? /* @__PURE__ */ new Set();
     let baseSalary = 0;
     let extraPayment = 0;
     let overtimeHours = 0;
@@ -3801,30 +5783,34 @@ async function getPayrollData(year, month) {
     let weekendHours = 0;
     let weekendPayment = 0;
     let mealAllowance = 0;
-    const mealAllowancePerDay = parseFloat(String(emp.mealAllowancePerDay ?? 0));
+    const mealAllowancePerDay = parseFloat(String(snapshot?.mealAllowancePerDay ?? emp.mealAllowancePerDay ?? 0));
     if (isExtra) {
-      const hourlyRate = rateMap.get(emp.extraLevel ?? 1) ?? 5;
+      const levelNum = emp.extraLevel ?? 1;
+      const NAME_BY_LEVEL = { 1: "junior", 2: "senior", 3: "terminal", 4: "master" };
+      const fromName = rateByName.get(NAME_BY_LEVEL[levelNum] ?? "junior");
+      const hourlyRate = fromName ?? rateMap.get(levelNum) ?? 4.5;
       extraPayment = Math.round(totalHours * hourlyRate * 100) / 100;
     } else {
-      baseSalary = parseFloat(String(emp.monthlySalary ?? 0));
+      baseSalary = parseFloat(String(snapshot?.monthlySalary ?? emp.monthlySalary ?? 0));
       const hourlyBase = baseSalary > 0 ? baseSalary / STANDARD_MONTHLY_HOURS : 0;
+      let normalHours = 0;
       for (const rec of empHours.records) {
         const recDate = new Date(rec.recordedAt);
         const hours = parseFloat(String(rec.hoursWorked ?? 0));
+        if (hours <= 0) continue;
         const dayOfWeek = recDate.getDay();
         const hour = recDate.getHours();
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          weekendHours += hours;
-        }
-        if (hour >= 22 || hour < 7) {
-          nightHours += hours;
-        }
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isNight = hour >= 22 || hour < 7;
+        if (isWeekend) weekendHours += hours;
+        else if (isNight) nightHours += hours;
+        else normalHours += hours;
       }
       nightHours = Math.round(nightHours * 100) / 100;
       weekendHours = Math.round(weekendHours * 100) / 100;
+      normalHours = Math.round(normalHours * 100) / 100;
       nightPayment = Math.round(nightHours * hourlyBase * (NIGHT_RATE_MULTIPLIER - 1) * 100) / 100;
       weekendPayment = Math.round(weekendHours * hourlyBase * (WEEKEND_RATE_MULTIPLIER - 1) * 100) / 100;
-      const normalHours = totalHours - nightHours - weekendHours;
       if (normalHours > STANDARD_MONTHLY_HOURS) {
         overtimeHours = Math.round((normalHours - STANDARD_MONTHLY_HOURS) * 100) / 100;
         const firstHourPortion = Math.min(overtimeHours, daysWorked);
@@ -3835,9 +5821,19 @@ async function getPayrollData(year, month) {
       }
       thirteenthProvision = Math.round(baseSalary / 12 * 100) / 100;
       fourteenthProvision = Math.round(baseSalary / 12 * 100) / 100;
-      mealAllowance = Math.round(mealAllowancePerDay * daysWorked * 100) / 100;
+      let workedDaysExcludingLeave = 0;
+      for (const day of empHours.days) {
+        if (!leaveDays.has(day)) workedDaysExcludingLeave += 1;
+      }
+      mealAllowance = Math.round(mealAllowancePerDay * workedDaysExcludingLeave * 100) / 100;
     }
     const totalPayment = isExtra ? extraPayment : baseSalary + overtimePayment + nightPayment + weekendPayment + thirteenthProvision + fourteenthProvision + mealAllowance;
+    const TSU_EMPLOYEE = 0.11;
+    const IRS_RATE = 0.15;
+    const taxableBase = isExtra ? extraPayment : baseSalary + overtimePayment + nightPayment + weekendPayment;
+    const tsuEmployee = Math.round(taxableBase * TSU_EMPLOYEE * 100) / 100;
+    const irsEstimate = Math.round(taxableBase * IRS_RATE * 100) / 100;
+    const netEstimate = Math.round((totalPayment - tsuEmployee - irsEstimate) * 100) / 100;
     return {
       employeeId: emp.id,
       fullName: emp.fullName,
@@ -3864,7 +5860,14 @@ async function getPayrollData(year, month) {
       mealAllowance,
       mealAllowancePerDay,
       totalPayment,
-      hourlyRate: isExtra ? rateMap.get(emp.extraLevel ?? 1) ?? 5 : baseSalary > 0 ? Math.round(baseSalary / STANDARD_MONTHLY_HOURS * 100) / 100 : 0
+      // Estimativa líquido (não fiscal)
+      tsuEmployee,
+      irsEstimate,
+      netEstimate,
+      hourlyRate: isExtra ? (() => {
+        const NAME_BY_LEVEL = { 1: "junior", 2: "senior", 3: "terminal", 4: "master" };
+        return rateByName.get(NAME_BY_LEVEL[emp.extraLevel ?? 1] ?? "junior") ?? rateMap.get(emp.extraLevel ?? 1) ?? 4.5;
+      })() : baseSalary > 0 ? Math.round(baseSalary / STANDARD_MONTHLY_HOURS * 100) / 100 : 0
     };
   });
 }
@@ -3872,6 +5875,23 @@ async function savePayslipRecord(data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.insert(payslipHistory).values(data);
+}
+async function getPayslipHistoryList(filters = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters.year) conditions.push(eq(payslipHistory.year, filters.year));
+  if (filters.month) conditions.push(eq(payslipHistory.month, filters.month));
+  if (filters.employeeId) conditions.push(eq(payslipHistory.employeeId, filters.employeeId));
+  if (filters.type) conditions.push(eq(payslipHistory.payslipType, filters.type));
+  const query = db.select().from(payslipHistory).orderBy(desc(payslipHistory.createdAt));
+  if (conditions.length > 0) return query.where(and(...conditions));
+  return query;
+}
+async function deletePayslipRecord(id) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(payslipHistory).where(eq(payslipHistory.id, id));
 }
 async function getTaskAssignees(taskId) {
   const db = await getDb();
@@ -3893,23 +5913,23 @@ async function getOverdueTasks() {
   if (!db) return [];
   const now = /* @__PURE__ */ new Date();
   return db.select().from(tasks).where(and(
-    lte(tasks.dueDate, now),
-    eq(tasks.notifiedOverdue, false),
-    sql`${tasks.status} != 'done'`
+    lte(tasks.dueDate, toMysqlDateTime(now)),
+    eq(tasks.notifiedOverdue, 0),
+    sql`${tasks.taskStatus} != 'done'`
   ));
 }
 async function getRecentlyCompletedTasks() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(tasks).where(and(
-    eq(tasks.status, "done"),
-    eq(tasks.notifiedComplete, false)
+    eq(tasks.taskStatus, "done"),
+    eq(tasks.notifiedComplete, 0)
   ));
 }
 async function markTaskNotified(taskId, field) {
   const db = await getDb();
   if (!db) return;
-  await db.update(tasks).set({ [field]: true }).where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ [field]: 1 }).where(eq(tasks.id, taskId));
 }
 async function getProjectHierarchyManagers(projectId) {
   const db = await getDb();
@@ -3938,13 +5958,13 @@ async function getProjectCosts(year, month) {
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
-    conditions.push(gte(expenses.expenseDate, startDate));
-    conditions.push(lte(expenses.expenseDate, endDate));
+    conditions.push(gte(expenses.expenseDate, toMysqlDateTime(startDate)));
+    conditions.push(lte(expenses.expenseDate, toMysqlDateTime(endDate)));
   } else if (year) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
-    conditions.push(gte(expenses.expenseDate, startDate));
-    conditions.push(lte(expenses.expenseDate, endDate));
+    conditions.push(gte(expenses.expenseDate, toMysqlDateTime(startDate)));
+    conditions.push(lte(expenses.expenseDate, toMysqlDateTime(endDate)));
   }
   conditions.push(sql`${expenses.status} != 'cancelled'`);
   const expenseRows = await db.select({
@@ -3967,13 +5987,13 @@ async function getProjectCosts(year, month) {
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
-    timeConditions.push(gte(timeRecords.recordedAt, startDate));
-    timeConditions.push(lte(timeRecords.recordedAt, endDate));
+    timeConditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+    timeConditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   } else if (year) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
-    timeConditions.push(gte(timeRecords.recordedAt, startDate));
-    timeConditions.push(lte(timeRecords.recordedAt, endDate));
+    timeConditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
+    timeConditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   }
   const timeRows = await db.select({
     employeeId: timeRecords.employeeId,
@@ -4038,12 +6058,12 @@ async function getProjectCosts(year, month) {
 async function getSpeedLimits() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(speedLimits).where(eq(speedLimits.isActive, true));
+  return db.select().from(speedLimits).where(eq(speedLimits.isActive, 1));
 }
 async function getDefaultSpeedLimit() {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select().from(speedLimits).where(eq(speedLimits.isDefault, true)).limit(1);
+  const rows = await db.select().from(speedLimits).where(eq(speedLimits.isDefault, 1)).limit(1);
   return rows[0] || null;
 }
 async function createSpeedLimit(data) {
@@ -4055,7 +6075,7 @@ async function createSpeedLimit(data) {
 async function updateSpeedLimit(id, data) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(speedLimits).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(speedLimits.id, id));
+  await db.update(speedLimits).set({ ...data, updatedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedLimits.id, id));
 }
 async function deleteSpeedLimit(id) {
   const db = await getDb();
@@ -4072,19 +6092,19 @@ async function getSpeedViolations(filters) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters?.startDate) conditions.push(gte(speedViolations.occurredAt, filters.startDate));
-  if (filters?.endDate) conditions.push(lte(speedViolations.occurredAt, filters.endDate));
+  if (filters?.startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(filters.startDate)));
+  if (filters?.endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(filters.endDate)));
   if (filters?.username) conditions.push(eq(speedViolations.zelloUsername, filters.username));
-  if (filters?.acknowledged !== void 0) conditions.push(eq(speedViolations.acknowledged, filters.acknowledged));
+  if (filters?.acknowledged !== void 0) conditions.push(eq(speedViolations.acknowledged, filters.acknowledged ? 1 : 0));
   return db.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(speedViolations.occurredAt));
 }
 async function acknowledgeSpeedViolation(id, userId, notes) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(speedViolations).set({
-    acknowledged: true,
+    acknowledged: 1,
     acknowledgedById: userId,
-    acknowledgedAt: /* @__PURE__ */ new Date(),
+    acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date()),
     notes: notes || null
   }).where(eq(speedViolations.id, id));
 }
@@ -4092,8 +6112,8 @@ async function getSpeedViolationStats(startDate, endDate) {
   const db = await getDb();
   if (!db) return { total: 0, unacknowledged: 0, topOffenders: [] };
   const conditions = [];
-  if (startDate) conditions.push(gte(speedViolations.occurredAt, startDate));
-  if (endDate) conditions.push(lte(speedViolations.occurredAt, endDate));
+  if (startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(startDate)));
+  if (endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(endDate)));
   const allViolations = await db.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0);
   const total = allViolations.length;
   const unacknowledged = allViolations.filter((v) => !v.acknowledged).length;
@@ -4122,11 +6142,11 @@ async function createDailyDriverHistory(data) {
 async function getDailyDriverHistoryByDate(dateStr) {
   const db = await getDb();
   if (!db) return [];
-  const startOfDay = new Date(dateStr);
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay2 = new Date(dateStr);
+  startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  return db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, startOfDay), lte(dailyDriverHistory.date, endOfDay))).orderBy(desc(dailyDriverHistory.totalKm));
+  return db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay)))).orderBy(desc(dailyDriverHistory.totalKm));
 }
 async function getDailyDriverHistoryByUser(username, limit = 30) {
   const db = await getDb();
@@ -4137,18 +6157,18 @@ async function getDailyDriverHistoryRange(startDate, endDate) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(dailyDriverHistory).where(and(
-    gte(dailyDriverHistory.date, new Date(startDate)),
-    lte(dailyDriverHistory.date, new Date(endDate))
+    gte(dailyDriverHistory.date, toMysqlDateTime(new Date(startDate))),
+    lte(dailyDriverHistory.date, toMysqlDateTime(new Date(endDate)))
   )).orderBy(desc(dailyDriverHistory.date));
 }
 async function getDailyDriverStats(dateStr) {
   const db = await getDb();
   if (!db) return { totalDrivers: 0, totalKm: 0, totalHoursWorked: 0, totalHoursStopped: 0, maxSpeedOfDay: 0, avgBattery: 0, totalViolations: 0 };
-  const startOfDay = new Date(dateStr);
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay2 = new Date(dateStr);
+  startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  const rows = await db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, startOfDay), lte(dailyDriverHistory.date, endOfDay)));
+  const rows = await db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay))));
   const totalDrivers = rows.length;
   const totalKm = rows.reduce((s, r) => s + parseFloat(String(r.totalKm || "0")), 0);
   const totalHoursWorked = rows.reduce((s, r) => s + parseFloat(String(r.hoursWorked || "0")), 0);
@@ -4196,23 +6216,23 @@ async function checkoutPda(id, data) {
   if (!db) throw new Error("DB not available");
   await db.update(pdaCheckins).set({
     ...data,
-    checkoutAt: /* @__PURE__ */ new Date(),
-    status: "checked_out"
+    checkoutAt: toMysqlDateTime(/* @__PURE__ */ new Date()),
+    checkinStatus: "checked_out"
   }).where(eq(pdaCheckins.id, id));
 }
 async function getActiveCheckins() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(pdaCheckins).where(eq(pdaCheckins.status, "checked_in")).orderBy(desc(pdaCheckins.checkinAt));
+  return db.select().from(pdaCheckins).where(eq(pdaCheckins.checkinStatus, "checked_in")).orderBy(desc(pdaCheckins.checkinAt));
 }
 async function getCheckinsByDate(dateStr) {
   const db = await getDb();
   if (!db) return [];
-  const startOfDay = new Date(dateStr);
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay2 = new Date(dateStr);
+  startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  return db.select().from(pdaCheckins).where(and(gte(pdaCheckins.checkinAt, startOfDay), lte(pdaCheckins.checkinAt, endOfDay))).orderBy(desc(pdaCheckins.checkinAt));
+  return db.select().from(pdaCheckins).where(and(gte(pdaCheckins.checkinAt, toMysqlDateTime(startOfDay2)), lte(pdaCheckins.checkinAt, toMysqlDateTime(endOfDay)))).orderBy(desc(pdaCheckins.checkinAt));
 }
 async function getCheckinsByPda(pdaId, limit = 30) {
   const db = await getDb();
@@ -4230,7 +6250,7 @@ async function getGpsAlerts(opts = {}) {
   if (!db) return [];
   let query = db.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
   if (opts.unacknowledgedOnly) {
-    return db.select().from(gpsAlerts).where(eq(gpsAlerts.acknowledged, false)).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
+    return db.select().from(gpsAlerts).where(eq(gpsAlerts.acknowledged, 0)).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
   }
   return query;
 }
@@ -4238,9 +6258,9 @@ async function acknowledgeGpsAlert(id, userId) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(gpsAlerts).set({
-    acknowledged: true,
+    acknowledged: 1,
     acknowledgedById: userId,
-    acknowledgedAt: /* @__PURE__ */ new Date()
+    acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date())
   }).where(eq(gpsAlerts.id, id));
 }
 async function getGpsAlertStats() {
@@ -4269,8 +6289,8 @@ async function getExistingStatsForCampaignAndDateRange(campaignId, startDate, en
   if (!db) return [];
   return db.select().from(campaignDailyStats).where(and(
     eq(campaignDailyStats.campaignId, campaignId),
-    gte(campaignDailyStats.date, startDate),
-    lte(campaignDailyStats.date, endDate)
+    gte(campaignDailyStats.date, toMysqlDateTime(startDate)),
+    lte(campaignDailyStats.date, toMysqlDateTime(endDate))
   ));
 }
 async function getReviewBySourceEmailId(sourceEmailId) {
@@ -4316,48 +6336,129 @@ async function importBookingHistory(rows) {
   }
   return { imported, skipped };
 }
+function splitAgentName(full) {
+  if (!full) return { first: null, last: null };
+  const parts = full.trim().split(/\s+/);
+  if (parts.length === 0) return { first: null, last: null };
+  if (parts.length === 1) return { first: parts[0], last: null };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+async function getLostFoundBookingRefSet() {
+  const db = await getDb();
+  if (!db) return /* @__PURE__ */ new Set();
+  const items = await db.select({ bookingRef: lostFoundItems.bookingRef }).from(lostFoundItems);
+  const refs = /* @__PURE__ */ new Set();
+  for (const it of items) {
+    const r = it.bookingRef?.trim();
+    if (r) refs.add(r);
+  }
+  return refs;
+}
+async function mapMultiparkHistoryRows(rows) {
+  const flaggedRefs = await getLostFoundBookingRefSet();
+  return rows.map((r) => {
+    const { first, last } = splitAgentName(r.agentName);
+    return {
+      id: r.id,
+      historyId: r.historyId,
+      bookingId: r.bookingExternalId,
+      changeType: r.changeType ?? "",
+      userName: first,
+      userLastName: last,
+      userEmail: r.agentEmail,
+      remarks: r.remarks,
+      actionDate: r.actionTime,
+      parkName: r.parkName,
+      licensePlate: r.licensePlate,
+      bookingStatus: r.bookingStatus,
+      flagged: flaggedRefs.has(r.bookingExternalId) ? 1 : 0
+    };
+  });
+}
 async function getBookingHistoryByBookingId(bookingId) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(bookingHistory).where(eq(bookingHistory.bookingId, bookingId)).orderBy(desc(bookingHistory.actionDate));
+  const rows = await db.select({
+    id: multiparkBookingHistory.id,
+    historyId: multiparkBookingHistory.historyId,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime,
+    remarks: multiparkBookingHistory.remarks,
+    agentName: multiparkBookingHistory.agentName,
+    agentEmail: multiparkBookingHistory.agentEmail,
+    parkName: multiparkBookings.parkName,
+    licensePlate: multiparkBookings.licensePlate,
+    bookingStatus: multiparkBookings.status
+  }).from(multiparkBookingHistory).leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(eq(multiparkBookingHistory.bookingExternalId, bookingId)).orderBy(desc(multiparkBookingHistory.actionTime)).limit(500);
+  return mapMultiparkHistoryRows(rows);
 }
 async function getBookingHistoryByPlate(plate) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(bookingHistory).where(like(bookingHistory.licensePlate, `%${plate}%`)).orderBy(desc(bookingHistory.actionDate));
+  const rows = await db.select({
+    id: multiparkBookingHistory.id,
+    historyId: multiparkBookingHistory.historyId,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime,
+    remarks: multiparkBookingHistory.remarks,
+    agentName: multiparkBookingHistory.agentName,
+    agentEmail: multiparkBookingHistory.agentEmail,
+    parkName: multiparkBookings.parkName,
+    licensePlate: multiparkBookings.licensePlate,
+    bookingStatus: multiparkBookings.status
+  }).from(multiparkBookingHistory).innerJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(like(multiparkBookings.licensePlate, `%${plate}%`)).orderBy(desc(multiparkBookingHistory.actionTime)).limit(500);
+  return mapMultiparkHistoryRows(rows);
 }
 async function searchBookingHistory(search) {
   const db = await getDb();
   if (!db) return [];
   const s = `%${search}%`;
-  return db.select().from(bookingHistory).where(or(
-    like(bookingHistory.bookingId, s),
-    like(bookingHistory.licensePlate, s),
-    like(bookingHistory.userName, s),
-    like(bookingHistory.changeType, s)
-  )).orderBy(desc(bookingHistory.actionDate)).limit(200);
+  const rows = await db.select({
+    id: multiparkBookingHistory.id,
+    historyId: multiparkBookingHistory.historyId,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime,
+    remarks: multiparkBookingHistory.remarks,
+    agentName: multiparkBookingHistory.agentName,
+    agentEmail: multiparkBookingHistory.agentEmail,
+    parkName: multiparkBookings.parkName,
+    licensePlate: multiparkBookings.licensePlate,
+    bookingStatus: multiparkBookings.status
+  }).from(multiparkBookingHistory).leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(or(
+    like(multiparkBookingHistory.bookingExternalId, s),
+    like(multiparkBookings.licensePlate, s),
+    like(multiparkBookingHistory.agentName, s),
+    like(multiparkBookingHistory.changeType, s)
+  )).orderBy(desc(multiparkBookingHistory.actionTime)).limit(200);
+  return mapMultiparkHistoryRows(rows);
 }
 async function getBookingHistoryCrossReference() {
   const db = await getDb();
   if (!db) return [];
-  const items = await db.select().from(lostFoundItems);
-  const itemsWithRef = items.filter((i) => i.bookingRef && i.bookingRef.trim());
-  if (itemsWithRef.length === 0) return [];
-  const bookingRefs = itemsWithRef.map((i) => i.bookingRef.trim());
-  const allHistory = await db.select().from(bookingHistory);
-  const relevantHistory = allHistory.filter((h) => bookingRefs.some((ref) => h.bookingId.includes(ref) || ref.includes(h.bookingId)));
+  const flaggedRefs = await getLostFoundBookingRefSet();
+  if (flaggedRefs.size === 0) return [];
+  const refs = Array.from(flaggedRefs);
+  const rows = await db.select({
+    agentName: multiparkBookingHistory.agentName,
+    changeType: multiparkBookingHistory.changeType,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    licensePlate: multiparkBookings.licensePlate
+  }).from(multiparkBookingHistory).leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(inArray(multiparkBookingHistory.bookingExternalId, refs));
   const driverMap = /* @__PURE__ */ new Map();
-  for (const h of relevantHistory) {
-    if (!h.userName) continue;
-    const driver = h.userName;
-    const existing = driverMap.get(driver) || { cases: /* @__PURE__ */ new Set(), plates: /* @__PURE__ */ new Set(), total: 0, checkins: 0, checkouts: 0, movements: 0 };
-    existing.cases.add(h.bookingId);
-    if (h.licensePlate) existing.plates.add(h.licensePlate);
-    existing.total++;
-    if (h.changeType === "CHECK_IN") existing.checkins++;
-    else if (h.changeType === "CHECK_OUT") existing.checkouts++;
-    else if (h.changeType === "MOVEMENT") existing.movements++;
-    driverMap.set(driver, existing);
+  for (const r of rows) {
+    if (!r.agentName) continue;
+    const entry = driverMap.get(r.agentName) ?? { cases: /* @__PURE__ */ new Set(), plates: /* @__PURE__ */ new Set(), total: 0, checkins: 0, checkouts: 0, movements: 0 };
+    entry.cases.add(r.bookingExternalId);
+    if (r.licensePlate) entry.plates.add(r.licensePlate);
+    entry.total++;
+    const ct = (r.changeType ?? "").toUpperCase();
+    if (ct === "CHECK_IN") entry.checkins++;
+    else if (ct === "CHECK_OUT") entry.checkouts++;
+    else if (ct === "MOVEMENT") entry.movements++;
+    driverMap.set(r.agentName, entry);
   }
   return Array.from(driverMap.entries()).map(([userName, data]) => ({
     userName,
@@ -4366,21 +6467,2612 @@ async function getBookingHistoryCrossReference() {
     totalActions: data.total,
     checkins: data.checkins,
     checkouts: data.checkouts,
-    movements: data.movements
+    movements: data.movements,
+    flagged: 1
   })).sort((a, b) => b.caseCount - a.caseCount);
 }
 async function getBookingHistoryDriverStats() {
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select({
-    userName: bookingHistory.userName,
+    userName: multiparkBookingHistory.agentName,
     total: sql`COUNT(*)`,
-    checkins: sql`SUM(CASE WHEN ${bookingHistory.changeType} = 'CHECK_IN' THEN 1 ELSE 0 END)`,
-    checkouts: sql`SUM(CASE WHEN ${bookingHistory.changeType} = 'CHECK_OUT' THEN 1 ELSE 0 END)`,
-    movements: sql`SUM(CASE WHEN ${bookingHistory.changeType} = 'MOVEMENT' THEN 1 ELSE 0 END)`
-  }).from(bookingHistory).groupBy(bookingHistory.userName).orderBy(desc(sql`COUNT(*)`));
-  return rows;
+    checkins: sql`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_IN' THEN 1 ELSE 0 END)`,
+    checkouts: sql`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_OUT' THEN 1 ELSE 0 END)`,
+    movements: sql`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'MOVEMENT' THEN 1 ELSE 0 END)`
+  }).from(multiparkBookingHistory).groupBy(multiparkBookingHistory.agentName).orderBy(desc(sql`COUNT(*)`));
+  const cross = await getBookingHistoryCrossReference();
+  const caseMap = new Map(cross.map((c) => [c.userName, c.caseCount]));
+  return rows.map((r) => {
+    const caseCount = caseMap.get(r.userName ?? "") ?? 0;
+    return {
+      userName: r.userName,
+      total: Number(r.total),
+      checkins: Number(r.checkins),
+      checkouts: Number(r.checkouts),
+      movements: Number(r.movements),
+      caseCount,
+      flagged: caseCount > 0 ? 1 : 0
+    };
+  });
 }
+async function getVehicleAgentsByPlate(plate, currentBookingRef) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    agentName: multiparkBookingHistory.agentName,
+    agentEmail: multiparkBookingHistory.agentEmail,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId
+  }).from(multiparkBookingHistory).innerJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(eq(multiparkBookings.licensePlate, plate)).orderBy(desc(multiparkBookingHistory.actionTime)).limit(2e3);
+  const map = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!r.agentName) continue;
+    const e = map.get(r.agentName) ?? {
+      agentName: r.agentName,
+      agentEmail: r.agentEmail ?? null,
+      actions: 0,
+      checkins: 0,
+      checkouts: 0,
+      movements: 0,
+      lastActionAt: null,
+      bookings: /* @__PURE__ */ new Set(),
+      touchedRef: false
+    };
+    if (!e.agentEmail && r.agentEmail) e.agentEmail = r.agentEmail;
+    e.actions++;
+    const ct = (r.changeType ?? "").toUpperCase();
+    if (ct === "CHECK_IN") e.checkins++;
+    else if (ct === "CHECK_OUT") e.checkouts++;
+    else if (ct === "MOVEMENT") e.movements++;
+    if (r.actionTime && (!e.lastActionAt || r.actionTime > e.lastActionAt)) e.lastActionAt = r.actionTime;
+    e.bookings.add(r.bookingExternalId);
+    if (currentBookingRef && r.bookingExternalId === currentBookingRef) e.touchedRef = true;
+    map.set(r.agentName, e);
+  }
+  return Array.from(map.values()).map((e) => ({
+    agentName: e.agentName,
+    agentEmail: e.agentEmail,
+    actions: e.actions,
+    checkins: e.checkins,
+    checkouts: e.checkouts,
+    movements: e.movements,
+    lastActionAt: e.lastActionAt,
+    bookings: Array.from(e.bookings),
+    flagged: e.touchedRef ? 1 : 0
+  })).sort((a, b) => b.flagged - a.flagged || b.actions - a.actions);
+}
+async function getCheckoutDriversFromDb(startDate, endDate) {
+  const db = await getDb();
+  if (!db) return { total: 0, period: { startDate, endDate }, drivers: [] };
+  const startStr = toMysqlDateTime(new Date(startDate));
+  const endStr = toMysqlDateTime(/* @__PURE__ */ new Date(endDate + "T23:59:59"));
+  const rows = await db.select({
+    agentName: multiparkBookingHistory.agentName,
+    agentUserId: multiparkBookingHistory.agentUserId,
+    count: sql`COUNT(*)`
+  }).from(multiparkBookingHistory).where(
+    and(
+      sql`UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_OUT'`,
+      gte(multiparkBookingHistory.actionTime, startStr),
+      lte(multiparkBookingHistory.actionTime, endStr),
+      isNotNull(multiparkBookingHistory.agentName)
+    )
+  ).groupBy(multiparkBookingHistory.agentName, multiparkBookingHistory.agentUserId).orderBy(desc(sql`COUNT(*)`));
+  const drivers = rows.filter((r) => r.agentName).map((r) => ({
+    name: r.agentName,
+    userId: r.agentUserId ?? void 0,
+    count: Number(r.count)
+  }));
+  const total = drivers.reduce((s, d) => s + d.count, 0);
+  return { total, period: { startDate, endDate }, drivers };
+}
+async function getAgentHistoryFromDb(opts) {
+  const db = await getDb();
+  const empty = {
+    total: 0,
+    period: { startDate: opts.startDate, endDate: opts.endDate },
+    agentName: opts.agentName ?? "",
+    agentUserId: opts.userId ?? "",
+    history: []
+  };
+  if (!db) return empty;
+  if (!opts.agentName && !opts.userId) return empty;
+  const startStr = toMysqlDateTime(new Date(opts.startDate));
+  const endStr = toMysqlDateTime(/* @__PURE__ */ new Date(opts.endDate + "T23:59:59"));
+  const conds = [
+    gte(multiparkBookingHistory.actionTime, startStr),
+    lte(multiparkBookingHistory.actionTime, endStr)
+  ];
+  if (opts.userId) {
+    conds.push(eq(multiparkBookingHistory.agentUserId, opts.userId));
+  } else if (opts.agentName) {
+    conds.push(sql`LOWER(${multiparkBookingHistory.agentName}) LIKE LOWER(${"%" + opts.agentName + "%"})`);
+  }
+  const rows = await db.select({
+    id: multiparkBookingHistory.historyId,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime,
+    remarks: multiparkBookingHistory.remarks,
+    agentName: multiparkBookingHistory.agentName,
+    agentUserId: multiparkBookingHistory.agentUserId,
+    modifiedFields: multiparkBookingHistory.modifiedFields,
+    platform: multiparkBookingHistory.platform,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    bookingStatus: multiparkBookings.status,
+    bookingCheckIn: multiparkBookings.checkIn,
+    bookingCheckOut: multiparkBookings.checkOut,
+    bookingParkName: multiparkBookings.parkName,
+    bookingLicensePlate: multiparkBookings.licensePlate
+  }).from(multiparkBookingHistory).leftJoin(multiparkBookings, eq(multiparkBookings.externalId, multiparkBookingHistory.bookingExternalId)).where(and(...conds)).orderBy(desc(multiparkBookingHistory.actionTime)).limit(500);
+  const history = rows.map((r) => ({
+    id: r.id,
+    changeType: r.changeType ?? "",
+    actionTime: r.actionTime ?? "",
+    remarks: r.remarks ?? void 0,
+    agentName: r.agentName ?? "",
+    userId: r.agentUserId ?? "",
+    modifiedFields: r.modifiedFields ?? void 0,
+    platform: r.platform ?? void 0,
+    booking: r.bookingExternalId ? {
+      id: r.bookingExternalId,
+      status: r.bookingStatus ?? "",
+      checkIn: r.bookingCheckIn ?? "",
+      checkOut: r.bookingCheckOut ?? void 0,
+      parkName: r.bookingParkName ?? "",
+      licensePlate: r.bookingLicensePlate ?? ""
+    } : void 0
+  }));
+  const first = rows[0];
+  return {
+    total: history.length,
+    period: { startDate: opts.startDate, endDate: opts.endDate },
+    agentName: first?.agentName ?? opts.agentName ?? "",
+    agentUserId: first?.agentUserId ?? opts.userId ?? "",
+    history
+  };
+}
+function classifyRemarks(remarks) {
+  const r = remarks.toLowerCase();
+  if (/\bdano|amassad|risc|batid|embat|colis|raspad|partid|partiu|partir/.test(r)) {
+    return { incidentType: "dano", severity: "high" };
+  }
+  if (/\bvidro|janela\b/.test(r)) {
+    return { incidentType: "vidro_aberto", severity: "medium" };
+  }
+  if (/\bmal\s*estacion|fora\s*do\s*lugar|posi[cç][aã]o\s*errad/.test(r)) {
+    return { incidentType: "mal_estacionado", severity: "medium" };
+  }
+  if (/\bchav/.test(r)) {
+    return { incidentType: "chave_errada", severity: "medium" };
+  }
+  if (/\bcombust[ií]vel|gasolina|diesel|gas[oó]leo|tanque\s*vazio|sem\s*combust|reserva\s*combust/.test(r)) {
+    return { incidentType: "combustivel", severity: "medium" };
+  }
+  if (/\bsuj|limpez|limpar|nodoa|n[oó]doa|mancha/.test(r)) {
+    return { incidentType: "limpeza", severity: "low" };
+  }
+  if (/\bdocument|carta\s*de\s*condu|livrete|seguro/.test(r)) {
+    return { incidentType: "documentos", severity: "low" };
+  }
+  return { incidentType: "outro", severity: "low" };
+}
+async function syncIncidentsFromMultiparkHistory(opts = {}) {
+  const db = await getDb();
+  const empty = { scanned: 0, imported: 0, skipped: 0, errors: [], details: [] };
+  if (!db) return empty;
+  const lookbackDays = opts.lookbackDays ?? 30;
+  const since = /* @__PURE__ */ new Date();
+  since.setDate(since.getDate() - lookbackDays);
+  const sinceStr = toMysqlDateTime(since);
+  const rows = await db.select({
+    historyId: multiparkBookingHistory.historyId,
+    bookingExternalId: multiparkBookingHistory.bookingExternalId,
+    remarks: multiparkBookingHistory.remarks,
+    actionTime: multiparkBookingHistory.actionTime,
+    agentName: multiparkBookingHistory.agentName,
+    changeType: multiparkBookingHistory.changeType
+  }).from(multiparkBookingHistory).where(
+    and(
+      isNotNull(multiparkBookingHistory.remarks),
+      gte(multiparkBookingHistory.actionTime, sinceStr)
+    )
+  ).orderBy(desc(multiparkBookingHistory.actionTime)).limit(500);
+  const result = { ...empty };
+  for (const row of rows) {
+    const remarks = (row.remarks ?? "").trim();
+    if (!remarks || remarks.length < 3) continue;
+    result.scanned++;
+    const sourceKey = `mp:${row.historyId}`;
+    try {
+      const existing = await db.select({ id: incidents.id }).from(incidents).where(eq(incidents.sourceEmailId, sourceKey)).limit(1);
+      if (existing.length > 0) {
+        result.skipped++;
+        continue;
+      }
+    } catch (e) {
+      result.errors.push(`Lookup ${row.historyId}: ${e.message}`);
+      continue;
+    }
+    const cls = classifyRemarks(remarks);
+    let vehiclePlate;
+    try {
+      const [booking] = await db.select({ plate: multiparkBookings.licensePlate }).from(multiparkBookings).where(eq(multiparkBookings.externalId, row.bookingExternalId)).limit(1);
+      vehiclePlate = booking?.plate ?? void 0;
+    } catch {
+    }
+    const importedAtStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+    try {
+      const id = await createIncident({
+        incidentType: cls.incidentType,
+        severity: cls.severity,
+        status: "open",
+        description: remarks.slice(0, 1e3),
+        vehiclePlate,
+        reportedBy: opts.reportedById ?? null,
+        sourceEmailId: sourceKey,
+        // reaproveita para dedup (Multipark history id)
+        reservationLink: row.bookingExternalId,
+        aiClassification: `Multipark \xB7 ${row.changeType ?? ""} \xB7 ${row.agentName ?? ""}`.trim(),
+        importedAt: importedAtStr
+      });
+      result.imported++;
+      result.details.push(`${cls.incidentType} (${cls.severity}) \u2014 ${remarks.slice(0, 60)}${remarks.length > 60 ? "\u2026" : ""}`);
+    } catch (e) {
+      result.errors.push(`Create ${row.historyId}: ${e.message}`);
+    }
+  }
+  return result;
+}
+var _db, buyerEmployees, INCIDENT_SEVERITY_POINTS, EXTRAS_DIA_RATES;
+var init_db = __esm({
+  "server/db.ts"() {
+    "use strict";
+    init_schema();
+    init_env();
+    init_schema();
+    _db = null;
+    buyerEmployees = aliasedTable(employees, "buyer");
+    INCIDENT_SEVERITY_POINTS = {
+      low: 2,
+      medium: 5,
+      high: 10,
+      critical: 20
+    };
+    EXTRAS_DIA_RATES = {
+      junior: 4.5,
+      senior: 5,
+      terminal: 5.5,
+      master: 6
+    };
+  }
+});
+
+// server/_core/notification.ts
+var notification_exports = {};
+__export(notification_exports, {
+  notifyOwner: () => notifyOwner,
+  sendEmail: () => sendEmail
+});
+import { TRPCError } from "@trpc/server";
+import { createTransport } from "nodemailer";
+function getTransporter() {
+  if (_transporter) return _transporter;
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) {
+    console.warn("[Notification] SMTP not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)");
+    return null;
+  }
+  _transporter = createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass }
+  });
+  return _transporter;
+}
+async function notifyOwner(payload) {
+  const { title, content } = validatePayload(payload);
+  const transporter = getTransporter();
+  const ownerEmail = process.env.OWNER_EMAIL;
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  if (!transporter || !ownerEmail) {
+    console.log(`[Notification] ${title}: ${content}`);
+    return true;
+  }
+  try {
+    await transporter.sendMail({
+      from: `"Dashboard Multipark" <${fromEmail}>`,
+      to: ownerEmail,
+      subject: `[Dashboard Multipark] ${title}`,
+      text: content,
+      html: `<h2>${title}</h2><p>${content.replace(/\n/g, "<br>")}</p>`
+    });
+    return true;
+  } catch (error) {
+    console.warn("[Notification] Failed to send email:", error);
+    return false;
+  }
+}
+async function sendEmail(options) {
+  const transporter = getTransporter();
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  if (!transporter) {
+    console.warn("[Email] SMTP not configured, cannot send email");
+    return false;
+  }
+  try {
+    await transporter.sendMail({
+      from: `"Dashboard Multipark" <${fromEmail}>`,
+      ...options
+    });
+    return true;
+  } catch (error) {
+    console.warn("[Email] Failed to send:", error);
+    return false;
+  }
+}
+var TITLE_MAX_LENGTH, CONTENT_MAX_LENGTH, trimValue, isNonEmptyString2, _transporter, validatePayload;
+var init_notification = __esm({
+  "server/_core/notification.ts"() {
+    "use strict";
+    TITLE_MAX_LENGTH = 1200;
+    CONTENT_MAX_LENGTH = 2e4;
+    trimValue = (value) => value.trim();
+    isNonEmptyString2 = (value) => typeof value === "string" && value.trim().length > 0;
+    _transporter = null;
+    validatePayload = (input) => {
+      if (!isNonEmptyString2(input.title)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Notification title is required."
+        });
+      }
+      if (!isNonEmptyString2(input.content)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Notification content is required."
+        });
+      }
+      const title = trimValue(input.title);
+      const content = trimValue(input.content);
+      if (title.length > TITLE_MAX_LENGTH) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
+        });
+      }
+      if (content.length > CONTENT_MAX_LENGTH) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
+        });
+      }
+      return { title, content };
+    };
+  }
+});
+
+// server/storage.ts
+var storage_exports = {};
+__export(storage_exports, {
+  storageGet: () => storageGet,
+  storagePut: () => storagePut
+});
+import { put, head } from "@vercel/blob";
+import fs from "fs";
+import path from "path";
+function isBlobConfigured() {
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
+}
+function ensureUploadsDir() {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+}
+async function storagePut(relKey, data, contentType = "application/octet-stream") {
+  const key = relKey.replace(/^\/+/, "");
+  const body = typeof data === "string" ? Buffer.from(data) : data;
+  if (!isBlobConfigured()) {
+    ensureUploadsDir();
+    const filePath = path.join(UPLOADS_DIR, key.replace(/\//g, path.sep));
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, body);
+    const url = `/uploads/${key}`;
+    return { key, url };
+  }
+  const blob = await put(key, body, {
+    access: "public",
+    contentType,
+    addRandomSuffix: false
+  });
+  return { key, url: blob.url };
+}
+async function storageGet(relKey) {
+  const key = relKey.replace(/^\/+/, "");
+  if (!isBlobConfigured()) {
+    const url = `/uploads/${key}`;
+    return { key, url };
+  }
+  try {
+    const blob = await head(key);
+    return { key, url: blob.url };
+  } catch {
+    return { key, url: "" };
+  }
+}
+var UPLOADS_DIR;
+var init_storage = __esm({
+  "server/storage.ts"() {
+    "use strict";
+    UPLOADS_DIR = path.join(process.cwd(), "uploads");
+  }
+});
+
+// server/multipark.ts
+var multipark_exports = {};
+__export(multipark_exports, {
+  PARK_CONFIGS: () => PARK_CONFIGS,
+  calculatePricing: () => calculatePricing,
+  cancelBooking: () => cancelBooking,
+  checkAvailability: () => checkAvailability,
+  createBooking: () => createBooking,
+  getAgentHistory: () => getAgentHistory,
+  getBooking: () => getBooking,
+  getBookingHistory: () => getBookingHistory,
+  getBookingTryAllParks: () => getBookingTryAllParks,
+  getBookingsReport: () => getBookingsReport,
+  getBookingsReportAllParks: () => getBookingsReportAllParks,
+  getBookingsReportForPark: () => getBookingsReportForPark,
+  getCheckoutDrivers: () => getCheckoutDrivers,
+  getConfiguredParks: () => getConfiguredParks,
+  getParkApiKey: () => getParkApiKey,
+  healthCheck: () => healthCheck,
+  isMultiparkConfigured: () => isMultiparkConfigured,
+  listParks: () => listParks,
+  testConnection: () => testConnection,
+  updateBooking: () => updateBooking
+});
+function getParkApiKey(parkConfig) {
+  return process.env[parkConfig.envKey];
+}
+function getConfiguredParks() {
+  return PARK_CONFIGS.filter((p) => !p.closed && !!process.env[p.envKey]);
+}
+async function multiparkRequest(opts) {
+  const { method = "GET", path: path2, body, params, baseUrl } = opts;
+  const base = baseUrl || ENV.multiparkApiUrl;
+  const apiKey = opts.apiKey || ENV.multiparkApiKey;
+  if (!apiKey) throw new Error("MULTIPARK_API_KEY n\xE3o configurada");
+  let url = `${base}${path2}`;
+  if (params) {
+    const qs = new URLSearchParams(params).toString();
+    url += `?${qs}`;
+  }
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "X-Api-Key": apiKey,
+          "Content-Type": "application/json"
+        },
+        body: body ? JSON.stringify(body) : void 0
+      });
+      if (res.status === 429 && attempt < MAX_RETRIES - 1) {
+        const delay = Math.pow(2, attempt) * 1e3;
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      if (!res.ok) {
+        let errorBody = null;
+        try {
+          errorBody = await res.json();
+        } catch {
+        }
+        const msg = errorBody?.error?.message || errorBody?.message || `HTTP ${res.status}`;
+        const err = new Error(`MultiPark API: ${Array.isArray(msg) ? msg.join(", ") : msg}`);
+        err.status = res.status;
+        err.details = errorBody?.error?.details || errorBody?.details;
+        throw err;
+      }
+      if (res.status === 204) return {};
+      return await res.json();
+    } catch (error) {
+      if (error.status) throw error;
+      if (attempt === MAX_RETRIES - 1) throw error;
+    }
+  }
+  throw new Error("MultiPark API: max retries exceeded");
+}
+async function healthCheck() {
+  return multiparkRequest({ path: "/health" });
+}
+async function checkAvailability(checkIn, checkOut, vehicleType = "CAR", parkingType = "COVERED") {
+  return multiparkRequest({
+    path: "/availability",
+    params: { checkIn, checkOut, vehicleType, parkingType }
+  });
+}
+async function createBooking(data) {
+  return multiparkRequest({ method: "POST", path: "/bookings", body: data });
+}
+async function updateBooking(id, data) {
+  return multiparkRequest({ method: "PUT", path: `/bookings/${id}`, body: data });
+}
+async function getBooking(id, apiKey) {
+  return multiparkRequest({ path: `/bookings/${id}`, apiKey });
+}
+async function getBookingTryAllParks(id) {
+  const parks = getConfiguredParks();
+  for (const park of parks) {
+    try {
+      const apiKey = getParkApiKey(park);
+      if (!apiKey) continue;
+      const booking = await multiparkRequest({
+        path: `/bookings/${id}`,
+        apiKey
+      });
+      if (booking?.id) return { booking, parkConfig: park };
+    } catch {
+    }
+  }
+  return null;
+}
+function isMultiparkConfigured() {
+  return !!ENV.multiparkApiKey;
+}
+async function listParks() {
+  if (!isMultiparkConfigured()) return { parks: [] };
+  return multiparkRequest({
+    path: "/parks",
+    baseUrl: "https://api.multipark.pt/api/v1"
+  });
+}
+async function getBookingsReport(startDate, endDate, actionType, apiKey) {
+  return multiparkRequest({
+    path: "/bookings/report",
+    params: { startDate, endDate, actionType },
+    apiKey
+  });
+}
+async function getBookingsReportForPark(parkConfig, startDate, endDate, actionType) {
+  const apiKey = getParkApiKey(parkConfig);
+  if (!apiKey) throw new Error(`API key not configured for ${parkConfig.name} - ${parkConfig.city}`);
+  const report = await getBookingsReport(startDate, endDate, actionType, apiKey);
+  return { ...report, parkConfig };
+}
+async function getBookingsReportAllParks(startDate, endDate, actionType) {
+  const parks = getConfiguredParks();
+  const results = [];
+  for (const park of parks) {
+    try {
+      const report = await getBookingsReport(startDate, endDate, actionType, getParkApiKey(park));
+      results.push({ park, report });
+    } catch (err) {
+      console.error(`[MultiPark] Report failed for ${park.name} ${park.city}: ${err.message}`);
+    }
+  }
+  return results;
+}
+async function cancelBooking(id, reason) {
+  return multiparkRequest({
+    method: "PUT",
+    path: `/bookings/${id}/status`,
+    body: { status: "CANCELLED", reason }
+  });
+}
+async function calculatePricing(data) {
+  return multiparkRequest({ method: "POST", path: "/pricing", body: data });
+}
+async function testConnection() {
+  try {
+    const health = await healthCheck();
+    return { ok: true, message: `API OK (v${health.version})`, version: health.version };
+  } catch (error) {
+    return { ok: false, message: `Erro: ${error.message}` };
+  }
+}
+async function getBookingHistory(bookingId, apiKey) {
+  return multiparkRequest({
+    path: `/bookings/${bookingId}/history`,
+    apiKey
+  });
+}
+async function getAgentHistory(opts) {
+  const params = {
+    startDate: opts.startDate,
+    endDate: opts.endDate
+  };
+  if (opts.userId) params.userId = opts.userId;
+  else if (opts.agentName) params.agentName = opts.agentName;
+  else throw new Error("Either userId or agentName must be provided");
+  return multiparkRequest({
+    path: "/agent/history",
+    params,
+    apiKey: opts.apiKey
+  });
+}
+async function getCheckoutDrivers(startDate, endDate, apiKey) {
+  return multiparkRequest({
+    path: "/bookings/checkoutDrivers",
+    params: { startDate, endDate },
+    apiKey
+  });
+}
+var MAX_RETRIES, PARK_CONFIGS;
+var init_multipark = __esm({
+  "server/multipark.ts"() {
+    "use strict";
+    init_env();
+    MAX_RETRIES = 3;
+    PARK_CONFIGS = [
+      { id: "LISBON_AIRPARK", name: "Airpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_AIRPARK" },
+      { id: "LISBON_REDPARK", name: "Redpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_REDPARK" },
+      { id: "LISBON_SKYPARK", name: "Skypark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_SKYPARK" },
+      { id: "LISBON_TOP_PARKING", name: "Top-Parking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TOP_PARKING", closed: true },
+      { id: "FARO_AIRPARK", name: "Airpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_AIRPARK" },
+      { id: "FARO_REDPARK", name: "Redpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_REDPARK" },
+      { id: "FARO_SKYPARK", name: "Skypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_SKYPARK" },
+      { id: "PORTO_AIRPARK", name: "Airpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_AIRPARK" },
+      { id: "PORTO_REDPARK", name: "Redpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_REDPARK" },
+      { id: "PORTO_SKYPARK", name: "Skypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_SKYPARK" }
+    ];
+  }
+});
+
+// server/extrasDia.ts
+import { and as and2, asc, eq as eq2, gte as gte2, lte as lte2, sql as sql2 } from "drizzle-orm";
+function startOfDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function dateKey(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function toMysqlDateTime2(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function hourOf(ts) {
+  if (!ts) return null;
+  const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getHours();
+}
+function minuteOf(ts) {
+  if (!ts) return null;
+  const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getMinutes();
+}
+function parseScheduledHM(timeStr, fallbackIso) {
+  if (timeStr && /^\d{1,2}:\d{2}/.test(timeStr)) {
+    const [hh, mm] = timeStr.split(":");
+    const h2 = parseInt(hh, 10);
+    const m2 = parseInt(mm, 10);
+    if (h2 >= 0 && h2 < 24 && m2 >= 0 && m2 < 60) return { hour: h2, minute: m2 };
+  }
+  const h = hourOf(fallbackIso);
+  const m = minuteOf(fallbackIso);
+  if (h !== null && m !== null) return { hour: h, minute: m };
+  return null;
+}
+function bookingHasLavagem(rawJson) {
+  if (!rawJson) return false;
+  try {
+    const data = JSON.parse(rawJson);
+    const extras = data?.extraServices;
+    if (!Array.isArray(extras)) return false;
+    return extras.some((e) => {
+      const name = typeof e === "string" ? e : e?.name;
+      return typeof name === "string" && LAVAGEM_RE.test(name);
+    });
+  } catch {
+    return false;
+  }
+}
+function suggestShifts(hourlyCars, level = "junior") {
+  const rateInfo = DRIVER_LEVELS.find((l) => l.id === level);
+  const driversPerHour = hourlyCars.map((c) => Math.ceil(c / CARS_PER_HOUR_PER_DRIVER));
+  const peak = Math.max(0, ...driversPerHour);
+  if (peak === 0) {
+    return { shifts: [], totalCost: 0, peakDrivers: 0, totalDriverHours: 0 };
+  }
+  const shifts = [];
+  for (let slot = 0; slot < peak; slot++) {
+    const active = [];
+    for (let h = 0; h < driversPerHour.length; h++) if (driversPerHour[h] > slot) active.push(h);
+    if (active.length === 0) continue;
+    const start = active[0];
+    const end = active[active.length - 1] + 1;
+    let span = end - start;
+    if (span < MIN_SHIFT_HOURS) span = MIN_SHIFT_HOURS;
+    let cursor = start;
+    while (span > 0) {
+      const chunk = Math.min(span, MAX_SHIFT_HOURS);
+      shifts.push({
+        startHour: cursor,
+        endHour: cursor + chunk,
+        hours: chunk,
+        level: rateInfo.id,
+        label: rateInfo.label,
+        hourlyRate: rateInfo.hourlyRate,
+        cost: chunk * rateInfo.hourlyRate
+      });
+      cursor += chunk;
+      span -= chunk;
+    }
+  }
+  const totalDriverHours = shifts.reduce((s, x) => s + x.hours, 0);
+  const totalCost = shifts.reduce((s, x) => s + x.cost, 0);
+  return { shifts, totalCost, peakDrivers: peak, totalDriverHours };
+}
+function classifyDeliveryType(dt) {
+  if (!dt) return "unknown";
+  const x = dt.toLowerCase();
+  if (x.includes("terminal 1")) return "t1";
+  if (x.includes("terminal 2")) return "t2";
+  if (x === "vip" || x.endsWith(" vip")) return "vip";
+  return "other";
+}
+async function fetchBookingsInRange(field, startInclusive, endExclusive) {
+  const db = await getDb();
+  if (!db) return [];
+  const col = field === "checkIn" ? multiparkBookings.checkIn : multiparkBookings.checkOut;
+  const startStr = toMysqlDateTime2(startInclusive);
+  const endStr = toMysqlDateTime2(endExclusive);
+  return db.select({
+    id: multiparkBookings.id,
+    externalId: multiparkBookings.externalId,
+    bookingNumber: multiparkBookings.bookingNumber,
+    clientFirstName: multiparkBookings.clientFirstName,
+    clientLastName: multiparkBookings.clientLastName,
+    licensePlate: multiparkBookings.licensePlate,
+    checkIn: multiparkBookings.checkIn,
+    checkOut: multiparkBookings.checkOut,
+    checkInTime: multiparkBookings.checkInTime,
+    checkOutTime: multiparkBookings.checkOutTime,
+    rawJson: multiparkBookings.rawJson,
+    parkName: multiparkBookings.parkName,
+    city: multiparkBookings.city,
+    deliveryType: multiparkBookings.deliveryType,
+    enrichedAt: multiparkBookings.enrichedAt,
+    spotType: multiparkBookings.spotType,
+    extrasTotal: multiparkBookings.extrasTotal
+  }).from(multiparkBookings).where(
+    and2(
+      gte2(col, startStr),
+      lte2(col, endStr),
+      sql2`${multiparkBookings.status} != 'CANCELLED'`,
+      sql2`(LOWER(${multiparkBookings.city}) LIKE ${CITY_PATTERN} OR ${multiparkBookings.parkId} LIKE ${PARK_ID_PREFIX})`
+    )
+  ).limit(2e4);
+}
+function deriveShortName(fullName) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return fullName.trim();
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+function computeAssignmentCost(row) {
+  const end = row.sentHomeHour ?? row.endHour;
+  const hours = Math.max(0, end - row.startHour);
+  if (row.isTeamLeader) {
+    return { hoursBilled: hours, cost: row.tlDailyCost ?? 0 };
+  }
+  const rate = DRIVER_LEVELS.find((l) => l.id === row.level)?.hourlyRate ?? 0;
+  return { hoursBilled: hours, cost: hours * rate };
+}
+function rowToAssignment(r, tlDailyCost, multiparkAgentName, multiparkAgentUserId) {
+  const isTL = r.isTeamLeader === 1;
+  const level = r.level ?? null;
+  const computed = computeAssignmentCost({
+    level,
+    isTeamLeader: isTL,
+    startHour: r.startHour,
+    endHour: r.endHour,
+    sentHomeHour: r.sentHomeHour,
+    tlDailyCost
+  });
+  return {
+    id: r.id,
+    assignmentDate: r.assignmentDate,
+    employeeId: r.employeeId,
+    personName: r.personName,
+    level,
+    isTeamLeader: isTL,
+    shift: r.shift ?? "morning",
+    startHour: r.startHour,
+    endHour: r.endHour,
+    sentHomeHour: r.sentHomeHour,
+    notes: r.notes,
+    multiparkAgentName: multiparkAgentName ?? null,
+    multiparkAgentUserId: multiparkAgentUserId ?? null,
+    ...computed
+  };
+}
+async function getEmployeeDailyCost(employeeId) {
+  if (!employeeId) return 0;
+  const db = await getDb();
+  if (!db) return 0;
+  const [row] = await db.select({ monthlySalary: employees.monthlySalary }).from(employees).where(eq2(employees.id, employeeId)).limit(1);
+  if (!row?.monthlySalary) return 0;
+  const monthly = parseFloat(String(row.monthlySalary));
+  if (!Number.isFinite(monthly)) return 0;
+  return monthly / TL_WORKING_DAYS_PER_MONTH;
+}
+async function listAssignments(date) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.assignmentDate, date)).orderBy(asc(extrasDiaAssignments.startHour));
+  const empIds = Array.from(new Set(rows.map((r) => r.employeeId).filter((x) => x !== null)));
+  const empMap = /* @__PURE__ */ new Map();
+  if (empIds.length > 0) {
+    const empRows = await db.select({
+      id: employees.id,
+      multiparkAgentName: employees.multiparkAgentName,
+      multiparkAgentUserId: employees.multiparkAgentUserId
+    }).from(employees).where(sql2`${employees.id} IN (${sql2.raw(empIds.join(","))})`);
+    for (const e of empRows) {
+      empMap.set(e.id, {
+        multiparkAgentName: e.multiparkAgentName,
+        multiparkAgentUserId: e.multiparkAgentUserId
+      });
+    }
+  }
+  const result = [];
+  for (const r of rows) {
+    let tlCost;
+    if (r.isTeamLeader === 1) {
+      tlCost = await getEmployeeDailyCost(r.employeeId);
+    }
+    const map = r.employeeId ? empMap.get(r.employeeId) : void 0;
+    result.push(rowToAssignment(r, tlCost, map?.multiparkAgentName, map?.multiparkAgentUserId));
+  }
+  return result;
+}
+async function upsertAssignment(input) {
+  const db = await getDb();
+  if (!db) return null;
+  const isTL = !!input.isTeamLeader;
+  if (isTL) {
+    const existing = await db.select({ id: extrasDiaAssignments.id }).from(extrasDiaAssignments).where(
+      and2(
+        eq2(extrasDiaAssignments.assignmentDate, input.assignmentDate),
+        eq2(extrasDiaAssignments.shift, input.shift),
+        eq2(extrasDiaAssignments.isTeamLeader, 1)
+      )
+    );
+    const other = existing.find((e) => e.id !== (input.id ?? -1));
+    if (other) {
+      const label = input.shift === "morning" ? "manh\xE3" : "noite";
+      throw new Error(`J\xE1 existe um Team Leader para o turno da ${label} deste dia.`);
+    }
+  }
+  const payload = {
+    assignmentDate: input.assignmentDate,
+    employeeId: input.employeeId ?? null,
+    personName: input.personName,
+    level: isTL ? null : input.level ?? "junior",
+    isTeamLeader: isTL ? 1 : 0,
+    shift: input.shift,
+    startHour: input.startHour,
+    endHour: input.endHour,
+    sentHomeHour: input.sentHomeHour ?? null,
+    notes: input.notes ?? null
+  };
+  if (input.id) {
+    await db.update(extrasDiaAssignments).set(payload).where(eq2(extrasDiaAssignments.id, input.id));
+    const [row2] = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, input.id)).limit(1);
+    if (!row2) return null;
+    const tlCost2 = row2.isTeamLeader === 1 ? await getEmployeeDailyCost(row2.employeeId) : void 0;
+    return rowToAssignment(row2, tlCost2);
+  }
+  const [result] = await db.insert(extrasDiaAssignments).values({ ...payload, createdById: input.createdById ?? null }).$returningId();
+  const newId = result.id;
+  const [row] = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, newId)).limit(1);
+  if (!row) return null;
+  const tlCost = row.isTeamLeader === 1 ? await getEmployeeDailyCost(row.employeeId) : void 0;
+  return rowToAssignment(row, tlCost);
+}
+async function deleteAssignment(id) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, id));
+}
+async function getExtrasDiaCostForRange(startDate, endDate) {
+  const db = await getDb();
+  if (!db) return { real: 0, estimate: 0, total: 0, days: 0, daysWithReal: 0, daysWithEstimate: 0 };
+  const start = startOfDay(/* @__PURE__ */ new Date(startDate + "T00:00:00"));
+  const end = startOfDay(/* @__PURE__ */ new Date(endDate + "T00:00:00"));
+  const todayStart = startOfDay(/* @__PURE__ */ new Date());
+  let real = 0;
+  let estimate = 0;
+  let days = 0;
+  let daysWithReal = 0;
+  let daysWithEstimate = 0;
+  async function forecastCheapestFor(d) {
+    const baseDate = new Date(d);
+    baseDate.setDate(baseDate.getDate() - 1);
+    try {
+      const forecast = await getExtrasDiaForecast(dateKey(baseDate));
+      return forecast.allocation.cheapest.totalCost;
+    } catch {
+      return 0;
+    }
+  }
+  for (let d = new Date(start); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
+    const dateKey_ = dateKey(d);
+    days++;
+    if (d.getTime() < todayStart.getTime()) {
+      const assignments = await listAssignments(dateKey_);
+      if (assignments.length > 0) {
+        for (const a of assignments) real += a.cost;
+        daysWithReal++;
+      } else {
+        estimate += await forecastCheapestFor(d);
+        daysWithEstimate++;
+      }
+    } else {
+      estimate += await forecastCheapestFor(d);
+      daysWithEstimate++;
+    }
+  }
+  return { real, estimate, total: real + estimate, days, daysWithReal, daysWithEstimate };
+}
+async function getBookingsInSlot(targetDate, hour, slot, type) {
+  const day = /* @__PURE__ */ new Date(targetDate + "T00:00:00");
+  const targetStartLocal = startOfDay(day);
+  const dayOffset = Math.floor(hour / 24);
+  const dayStart = addDays(targetStartLocal, dayOffset);
+  const dayEnd = addDays(dayStart, 1);
+  const hourLocal = hour % 24;
+  const field = type === "checkin" ? "checkIn" : "checkOut";
+  const rows = await fetchBookingsInRange(field, dayStart, dayEnd);
+  const slotStart = slot * SLOT_MINUTES;
+  const slotEnd = slotStart + SLOT_MINUTES;
+  const pendings = [];
+  for (const r of rows) {
+    const hm = type === "checkin" ? parseScheduledHM(r.checkInTime, r.checkIn) : parseScheduledHM(r.checkOutTime, r.checkOut);
+    if (!hm || hm.hour !== hourLocal) continue;
+    if (hm.minute < slotStart || hm.minute >= slotEnd) continue;
+    const name = [r.clientFirstName, r.clientLastName].filter(Boolean).join(" ").trim();
+    const pad = (n) => String(n).padStart(2, "0");
+    pendings.push({
+      row: r,
+      summary: {
+        id: r.id,
+        externalId: r.externalId,
+        bookingNumber: r.bookingNumber,
+        clientName: name || "\u2014",
+        licensePlate: r.licensePlate,
+        parkName: r.parkName,
+        time: `${pad(hm.hour)}:${pad(hm.minute)}`,
+        deliveryType: r.deliveryType
+      }
+    });
+  }
+  const toEnrich = pendings.filter((p) => !p.row.enrichedAt);
+  if (toEnrich.length > 0) {
+    await Promise.allSettled(toEnrich.map(async (p) => {
+      const enriched = await enrichBookingFromApi(p.row.externalId);
+      if (enriched?.deliveryType) p.summary.deliveryType = enriched.deliveryType;
+    }));
+  }
+  return pendings.map((p) => p.summary).sort((a, b) => a.time.localeCompare(b.time));
+}
+async function enrichBookingFromApi(externalId) {
+  try {
+    const found = await getBookingTryAllParks(externalId);
+    if (!found) return null;
+    const b = found.booking;
+    const deliveryType = typeof b.deliveryType === "string" ? b.deliveryType : null;
+    const returnFlight = typeof b.returnFlight === "string" && b.returnFlight ? b.returnFlight : null;
+    const departingFlight = typeof b.departingFlight === "string" && b.departingFlight ? b.departingFlight : null;
+    const remarks = typeof b.remarks === "string" && b.remarks ? b.remarks.slice(0, 512) : null;
+    const db = await getDb();
+    if (db) {
+      await db.update(multiparkBookings).set({
+        deliveryType,
+        returnFlight,
+        departingFlight,
+        remarks,
+        enrichedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
+      }).where(eq2(multiparkBookings.externalId, externalId));
+    }
+    return { deliveryType, returnFlight, departingFlight, remarks };
+  } catch {
+    return null;
+  }
+}
+function suggestLevel(position, extraLevel) {
+  if (typeof extraLevel === "number") {
+    if (extraLevel >= 4) return "master";
+    if (extraLevel >= 3) return "terminal";
+    if (extraLevel >= 2) return "senior";
+    return "junior";
+  }
+  return POSITION_TO_LEVEL[(position ?? "").toLowerCase()] ?? "junior";
+}
+async function listDriverCandidates() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    id: employees.id,
+    fullName: employees.fullName,
+    position: employees.position,
+    extraLevel: employees.extraLevel,
+    isActive: employees.isActive
+  }).from(employees).where(eq2(employees.isActive, 1)).orderBy(asc(employees.fullName));
+  return rows.map((r) => ({
+    id: r.id,
+    fullName: r.fullName,
+    position: r.position,
+    extraLevel: r.extraLevel,
+    suggestedLevel: suggestLevel(r.position, r.extraLevel)
+  }));
+}
+function countWashes(rows) {
+  let n = 0;
+  for (const r of rows) if (bookingHasLavagem(r.rawJson)) n++;
+  return n;
+}
+async function getExtrasDiaForecast(baseDateInput) {
+  const baseDate = baseDateInput ? new Date(baseDateInput) : /* @__PURE__ */ new Date();
+  const baseStart = startOfDay(baseDate);
+  const targetStart = addDays(baseStart, 1);
+  const nextStart = addDays(baseStart, 2);
+  const nextEnd = addDays(baseStart, 3);
+  const targetEndPlus3h = new Date(targetStart.getTime() + FORECAST_HOURS * 60 * 60 * 1e3);
+  const [targetCheckins, baseCheckouts, targetCheckouts, nextCheckouts] = await Promise.all([
+    fetchBookingsInRange("checkIn", targetStart, targetEndPlus3h),
+    fetchBookingsInRange("checkOut", baseStart, targetStart),
+    fetchBookingsInRange("checkOut", targetStart, targetEndPlus3h),
+    fetchBookingsInRange("checkOut", nextStart, nextEnd)
+  ]);
+  const hourly = Array.from({ length: FORECAST_HOURS }, (_, h) => ({
+    hour: h,
+    checkins: 0,
+    checkouts: 0,
+    driversNeeded: 0,
+    hasT2: false,
+    hasOther: false,
+    slots: Array.from({ length: SLOTS_PER_HOUR }, (_2, s) => ({
+      hour: h,
+      slot: s,
+      checkins: 0,
+      checkouts: 0,
+      weightedDemand: 0,
+      driversNeeded: 0
+    }))
+  }));
+  const weightedBySlot = Array.from({ length: FORECAST_SLOTS }, () => 0);
+  function bookingEffectiveHM(timeStr, fallbackIso) {
+    const hm = parseScheduledHM(timeStr, fallbackIso);
+    if (!hm) return null;
+    if (!fallbackIso) return hm.hour >= 3 ? hm : null;
+    const date = new Date(fallbackIso.includes("T") ? fallbackIso : fallbackIso.replace(" ", "T"));
+    if (Number.isNaN(date.getTime())) return hm.hour >= 3 ? hm : null;
+    const dayStartLocal = startOfDay(date);
+    const offsetDays = Math.round((dayStartLocal.getTime() - targetStart.getTime()) / (24 * 60 * 60 * 1e3));
+    const effectiveHour = hm.hour + 24 * offsetDays;
+    if (effectiveHour < 3 || effectiveHour >= FORECAST_HOURS) return null;
+    return { hour: effectiveHour, minute: hm.minute };
+  }
+  function addToSlot(startHour, startMinute, deliveryType, type) {
+    const startSlot = startHour * SLOTS_PER_HOUR + Math.floor(startMinute / SLOT_MINUTES);
+    const cls = classifyDeliveryType(deliveryType);
+    let spread;
+    if (cls === "t2" && type === "checkin") spread = [1, 0.5];
+    else if (cls === "other") spread = [1, 1, 1];
+    else spread = [1];
+    for (let i = 0; i < spread.length; i++) {
+      const s = startSlot + i;
+      if (s >= 0 && s < FORECAST_SLOTS) weightedBySlot[s] += spread[i];
+    }
+  }
+  function markHourClass(hour, deliveryType, type) {
+    const cls = classifyDeliveryType(deliveryType);
+    if (cls === "t2" && type === "checkin") hourly[hour].hasT2 = true;
+    else if (cls === "other") hourly[hour].hasOther = true;
+  }
+  for (const r of targetCheckins) {
+    const hm = bookingEffectiveHM(r.checkInTime, r.checkIn);
+    if (hm) {
+      const slot = Math.floor(hm.minute / SLOT_MINUTES);
+      hourly[hm.hour].checkins++;
+      hourly[hm.hour].slots[slot].checkins++;
+      addToSlot(hm.hour, hm.minute, r.deliveryType, "checkin");
+      markHourClass(hm.hour, r.deliveryType, "checkin");
+    }
+  }
+  for (const r of targetCheckouts) {
+    const hm = bookingEffectiveHM(r.checkOutTime, r.checkOut);
+    if (hm) {
+      const slot = Math.floor(hm.minute / SLOT_MINUTES);
+      hourly[hm.hour].checkouts++;
+      hourly[hm.hour].slots[slot].checkouts++;
+      addToSlot(hm.hour, hm.minute, r.deliveryType, "checkout");
+      markHourClass(hm.hour, r.deliveryType, "checkout");
+    }
+  }
+  for (const row of hourly) {
+    let hourWeighted = 0;
+    for (const s of row.slots) {
+      const idx = s.hour * SLOTS_PER_HOUR + s.slot;
+      s.weightedDemand = weightedBySlot[idx];
+      s.driversNeeded = Math.ceil(s.weightedDemand);
+      hourWeighted += s.weightedDemand;
+    }
+    row.driversNeeded = Math.ceil(hourWeighted / SLOTS_PER_HOUR);
+  }
+  const hourlyCars = hourly.map((h) => h.slots.reduce((acc, s) => acc + s.weightedDemand, 0));
+  const cheapest = suggestShifts(hourlyCars, "junior");
+  const bySingleLevel = DRIVER_LEVELS.map((l) => {
+    const r = suggestShifts(hourlyCars, l.id);
+    return { level: l.id, label: l.label, totalCost: r.totalCost, totalHours: r.totalDriverHours };
+  });
+  const allParks = /* @__PURE__ */ new Set();
+  for (const r of [...targetCheckins, ...baseCheckouts, ...targetCheckouts, ...nextCheckouts]) {
+    const label = [r.parkName, r.city].filter(Boolean).join(" / ");
+    if (label) allParks.add(label);
+  }
+  const spotTypeCounts = { covered: 0, uncovered: 0, indoor: 0, unknown: 0 };
+  const spotTypeByDirection = {
+    checkin: { covered: 0, uncovered: 0, indoor: 0, unknown: 0 },
+    checkout: { covered: 0, uncovered: 0, indoor: 0, unknown: 0 }
+  };
+  const seenForSpot = /* @__PURE__ */ new Set();
+  for (const r of targetCheckins) {
+    const st = r.spotType ?? "unknown";
+    if (st in spotTypeByDirection.checkin) spotTypeByDirection.checkin[st]++;
+    if (!seenForSpot.has(r.externalId)) {
+      seenForSpot.add(r.externalId);
+      if (st in spotTypeCounts) spotTypeCounts[st]++;
+    }
+  }
+  for (const r of targetCheckouts) {
+    const st = r.spotType ?? "unknown";
+    if (st in spotTypeByDirection.checkout) spotTypeByDirection.checkout[st]++;
+    if (!seenForSpot.has(r.externalId)) {
+      seenForSpot.add(r.externalId);
+      if (st in spotTypeCounts) spotTypeCounts[st]++;
+    }
+  }
+  const extrasValue = { estimate: 0, real: 0, total: 0 };
+  const seenForExtras = /* @__PURE__ */ new Set();
+  const nowMs = Date.now();
+  function addExtras(r, dateStr) {
+    if (seenForExtras.has(r.externalId)) return;
+    seenForExtras.add(r.externalId);
+    const v = r.extrasTotal ? parseFloat(r.extrasTotal) : 0;
+    if (!Number.isFinite(v) || v === 0) return;
+    const d = dateStr ? new Date(dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T")) : null;
+    const isFuture = d && d.getTime() > nowMs;
+    if (isFuture) extrasValue.estimate += v;
+    else extrasValue.real += v;
+    extrasValue.total += v;
+  }
+  for (const r of targetCheckins) addExtras(r, r.checkIn);
+  for (const r of targetCheckouts) addExtras(r, r.checkOut);
+  return {
+    baseDate: dateKey(baseStart),
+    targetDate: dateKey(targetStart),
+    city: "Lisboa",
+    source: "db",
+    parksQueried: Array.from(allParks).sort(),
+    parksFailed: [],
+    hourly,
+    totals: {
+      checkins: hourly.reduce((s, h) => s + h.checkins, 0),
+      checkouts: hourly.reduce((s, h) => s + h.checkouts, 0),
+      operations: hourly.reduce((s, h) => s + h.checkins + h.checkouts, 0)
+    },
+    spotTypeCounts,
+    spotTypeByDirection,
+    extrasValue,
+    washes: {
+      base: { date: dateKey(baseStart), exitsWithWash: countWashes(baseCheckouts) },
+      target: { date: dateKey(targetStart), exitsWithWash: countWashes(targetCheckouts) },
+      next: { date: dateKey(nextStart), exitsWithWash: countWashes(nextCheckouts) }
+    },
+    allocation: { cheapest, bySingleLevel }
+  };
+}
+var DRIVER_LEVELS, CARS_PER_HOUR_PER_DRIVER, MIN_SHIFT_HOURS, MAX_SHIFT_HOURS, TL_WORKING_DAYS_PER_MONTH, SLOT_MINUTES, SLOTS_PER_HOUR, SLOTS_PER_DAY, FORECAST_HOURS, FORECAST_SLOTS, CITY_PATTERN, PARK_ID_PREFIX, LAVAGEM_RE, POSITION_TO_LEVEL;
+var init_extrasDia = __esm({
+  "server/extrasDia.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_multipark();
+    DRIVER_LEVELS = [
+      { id: "junior", label: "J\xFAnior", hourlyRate: 4.5 },
+      { id: "senior", label: "S\xE9nior", hourlyRate: 5 },
+      { id: "terminal", label: "Terminal", hourlyRate: 5.5 },
+      { id: "master", label: "Master", hourlyRate: 6 }
+    ];
+    CARS_PER_HOUR_PER_DRIVER = 3;
+    MIN_SHIFT_HOURS = 3;
+    MAX_SHIFT_HOURS = 12;
+    TL_WORKING_DAYS_PER_MONTH = 15;
+    SLOT_MINUTES = 20;
+    SLOTS_PER_HOUR = 60 / SLOT_MINUTES;
+    SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR;
+    FORECAST_HOURS = 27;
+    FORECAST_SLOTS = FORECAST_HOURS * SLOTS_PER_HOUR;
+    CITY_PATTERN = "%lisb%";
+    PARK_ID_PREFIX = "LISBON_%";
+    LAVAGEM_RE = /lavag|wash/i;
+    POSITION_TO_LEVEL = {
+      driver: "junior",
+      senior_driver: "senior",
+      team_leader: "terminal",
+      supervisor: "master",
+      director: "master"
+    };
+  }
+});
+
+// server/spotClassification.ts
+function classifyAllocation(allocation) {
+  if (!allocation || typeof allocation !== "string") {
+    return { parkBrand: "other", spotType: "unknown" };
+  }
+  const trimmed = allocation.trim();
+  if (!/^\d{4,6}$/.test(trimmed)) {
+    return { parkBrand: "other", spotType: "unknown" };
+  }
+  const num = parseInt(trimmed, 10);
+  const brandDigit = Math.floor(num / 1e4);
+  let parkBrand;
+  if (brandDigit === 1) parkBrand = "airpark";
+  else if (brandDigit === 2) parkBrand = "redpark";
+  else if (brandDigit === 3) parkBrand = "skypark";
+  else return { parkBrand: "other", spotType: "unknown" };
+  const lowFour = num % 1e4;
+  let spotType;
+  if (lowFour < 5e3) spotType = "uncovered";
+  else if (lowFour < 8e3) spotType = "covered";
+  else spotType = "indoor";
+  return { parkBrand, spotType };
+}
+var init_spotClassification = __esm({
+  "server/spotClassification.ts"() {
+    "use strict";
+  }
+});
+
+// server/jobs/multiparkBookingSync.ts
+var multiparkBookingSync_exports = {};
+__export(multiparkBookingSync_exports, {
+  enrichBookingsBatch: () => enrichBookingsBatch,
+  fetchAgentHistoryByName: () => fetchAgentHistoryByName,
+  runFutureCronSync: () => runFutureCronSync,
+  runRecentCronSync: () => runRecentCronSync,
+  startBookingSyncScheduler: () => startBookingSyncScheduler,
+  syncBookingHistory: () => syncBookingHistory,
+  syncBookingHistoryBatch: () => syncBookingHistoryBatch,
+  syncBookings: () => syncBookings
+});
+import { eq as eq3 } from "drizzle-orm";
+async function getProjectMap() {
+  if (projectMapCache && Date.now() - projectMapCacheTime < CACHE_TTL) {
+    return projectMapCache;
+  }
+  const projects2 = await getProjects();
+  const map = /* @__PURE__ */ new Map();
+  for (const p of projects2) {
+    const key = p.name.toLowerCase().trim();
+    map.set(key, p.id);
+  }
+  projectMapCache = map;
+  projectMapCacheTime = Date.now();
+  return map;
+}
+async function getAliasResolver() {
+  if (aliasResolverCache && Date.now() - aliasResolverCacheTime < CACHE_TTL) {
+    return aliasResolverCache;
+  }
+  const db = await getDb();
+  const map = /* @__PURE__ */ new Map();
+  if (!db) {
+    aliasResolverCache = map;
+    aliasResolverCacheTime = Date.now();
+    return map;
+  }
+  const { partnerAliases: partnerAliases2, partnerships: partnerships2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+  const { eq: eq7 } = await import("drizzle-orm");
+  const rows = await db.select({
+    aliasType: partnerAliases2.aliasType,
+    aliasValue: partnerAliases2.aliasValue,
+    partnerName: partnerships2.name
+  }).from(partnerAliases2).leftJoin(partnerships2, eq7(partnerships2.id, partnerAliases2.partnershipId));
+  for (const r of rows) {
+    if (!r.partnerName) continue;
+    const key = `${r.aliasType}:${(r.aliasValue ?? "").trim().toLowerCase()}`;
+    map.set(key, r.partnerName);
+  }
+  aliasResolverCache = map;
+  aliasResolverCacheTime = Date.now();
+  return map;
+}
+function resolvePartnerCampaign(booking, pricing, aliases, fallback) {
+  const partnerId = booking.partnerId ?? booking.partner?.id ?? null;
+  if (partnerId) {
+    const hit = aliases.get(`multipark_partner_id:${String(partnerId).trim().toLowerCase()}`);
+    if (hit) return hit;
+  }
+  const pm = typeof pricing?.paymentMethod === "string" ? pricing.paymentMethod : null;
+  if (pm) {
+    const hit = aliases.get(`payment_method:${pm.trim().toLowerCase()}`);
+    if (hit) return hit;
+  }
+  return fallback;
+}
+function findProjectId(parkName, city, projectMap) {
+  if (!parkName) return void 0;
+  const parkLower = parkName.toLowerCase().trim();
+  const parkNorm = parkLower.replace(/\s*-\s*/g, " ");
+  if (city) {
+    const cityLower = city.toLowerCase().trim();
+    const composite = `${parkNorm} ${cityLower}`;
+    if (projectMap.has(composite)) return projectMap.get(composite);
+    const composite2 = `${parkLower} ${cityLower}`;
+    if (projectMap.has(composite2)) return projectMap.get(composite2);
+  }
+  if (projectMap.has(parkNorm)) return projectMap.get(parkNorm);
+  if (projectMap.has(parkLower)) return projectMap.get(parkLower);
+  let bestMatch = null;
+  for (const [key, id] of projectMap) {
+    if (key.includes(parkNorm) || parkNorm.includes(key)) {
+      if (!bestMatch || key.length > bestMatch.key.length) {
+        bestMatch = { key, id };
+      }
+    }
+  }
+  if (bestMatch) return bestMatch.id;
+  if (city) {
+    const cityLower = city.toLowerCase().trim();
+    for (const [key, id] of projectMap) {
+      if (key.includes(parkNorm) && key.includes(cityLower)) return id;
+    }
+  }
+  return void 0;
+}
+function parseMultiparkDate(dateStr) {
+  if (!dateStr) return null;
+  const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
+  let d = null;
+  if (match) {
+    const [, day, month, year, hours, minutes] = match;
+    d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  } else {
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) d = parsed;
+  }
+  return d ? d.toISOString().slice(0, 19).replace("T", " ") : null;
+}
+function bookingToRecord(booking, projectMap, aliasResolver) {
+  const client = booking.customer || booking.client;
+  const pricing = booking.pricing;
+  const park = booking.park;
+  const parkName = park?.name || booking.parkName;
+  const city = park?.city;
+  const projectId = findProjectId(parkName, city, projectMap);
+  const rawFallback = booking.partnerName || booking.discountCode || booking.campaign || null;
+  const isUnknown = typeof rawFallback === "string" && /unknown/i.test(rawFallback);
+  const effectiveFallback = isUnknown ? null : rawFallback;
+  const resolvedCampaign = resolvePartnerCampaign(booking, pricing, aliasResolver, effectiveFallback);
+  return {
+    externalId: booking.id,
+    bookingNumber: booking.bookingNumber || booking.allocation || null,
+    status: booking.status || null,
+    checkIn: parseMultiparkDate(booking.checkInDate || booking.checkIn),
+    checkOut: parseMultiparkDate(booking.checkOutDate || booking.checkOut),
+    checkInTime: booking.checkInTime || null,
+    checkOutTime: booking.checkOutTime || null,
+    parkingType: booking.parkingType || park?.types?.[0] || null,
+    vehicleType: booking.vehicle?.type || booking.vehicleType || null,
+    clientFirstName: client?.firstName || null,
+    clientLastName: client?.lastName || null,
+    clientEmail: client?.email || null,
+    clientPhone: client?.phoneNumber || null,
+    clientNif: client?.nif || null,
+    licensePlate: booking.vehicle?.licensePlate || null,
+    vehicleBrand: booking.vehicle?.brand || null,
+    vehicleModel: booking.vehicle?.model || null,
+    vehicleColor: booking.vehicle?.color || null,
+    totalPrice: pricing?.totalPrice?.toString() ?? pricing?.total?.toString() ?? null,
+    currency: pricing?.currency || "EUR",
+    parkId: park?.id || booking.parkId || null,
+    parkName: parkName || null,
+    city: city || null,
+    projectId: projectId || null,
+    deliveryService: booking.deliveryService ? 1 : 0,
+    deliveryAddress: booking.deliveryAddress || null,
+    pickupAddress: booking.pickupAddress || null,
+    campaign: resolvedCampaign,
+    parkingPrice: pricing?.parkingPrice?.toString() ?? null,
+    deliveryCharges: pricing?.deliveryCharges?.toString() ?? null,
+    extrasTotal: pricing?.extraServicesTotal?.toString() ?? null,
+    discount: pricing?.discount?.toString() ?? null,
+    remainingToPay: pricing?.remainingToPay?.toString() ?? null,
+    arrivalFlight: booking.flightInfo?.arrivalFlight || booking.arrivalFlight || null,
+    departureFlight: booking.flightInfo?.departureFlight || booking.departureFlight || null,
+    cancelledAt: parseMultiparkDate(booking.cancelledAt),
+    cancelReason: booking.cancelReason || null,
+    notes: booking.notes || null,
+    rawJson: JSON.stringify(booking),
+    bookingCreatedAt: parseMultiparkDate(booking.createdAt),
+    paymentMethod: typeof pricing?.paymentMethod === "string" ? pricing.paymentMethod.slice(0, 128) : null,
+    ...classifyAllocation(booking.allocation)
+  };
+}
+function nowMysql() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+}
+async function enrichBookingIfNeeded(externalId, apiKey) {
+  const db = await getDb();
+  if (!db) return false;
+  const [current] = await db.select({ enrichedAt: multiparkBookings.enrichedAt }).from(multiparkBookings).where(eq3(multiparkBookings.externalId, externalId)).limit(1);
+  if (current?.enrichedAt) return false;
+  try {
+    const detailed = await getBooking(externalId, apiKey);
+    const b = detailed;
+    const update = {
+      deliveryType: typeof b.deliveryType === "string" && b.deliveryType ? b.deliveryType : null,
+      returnFlight: typeof b.returnFlight === "string" && b.returnFlight ? b.returnFlight : null,
+      departingFlight: typeof b.departingFlight === "string" && b.departingFlight ? b.departingFlight : null,
+      remarks: typeof b.remarks === "string" && b.remarks ? b.remarks.slice(0, 512) : null,
+      enrichedAt: nowMysql()
+    };
+    if (b.client?.firstName) update.clientFirstName = b.client.firstName;
+    if (b.client?.lastName) update.clientLastName = b.client.lastName;
+    if (b.client?.email) update.clientEmail = b.client.email;
+    if (b.client?.phoneNumber) update.clientPhone = b.client.phoneNumber;
+    if (b.vehicle?.licensePlate) update.licensePlate = b.vehicle.licensePlate;
+    if (b.vehicle?.brand) update.vehicleBrand = b.vehicle.brand;
+    if (b.vehicle?.model) update.vehicleModel = b.vehicle.model;
+    if (b.vehicle?.color) update.vehicleColor = b.vehicle.color;
+    if (b.vehicle?.vehicleType) update.vehicleType = b.vehicle.vehicleType;
+    if (typeof b.origin === "string" && b.origin) update.origin = b.origin.slice(0, 64);
+    if (typeof b.originUrl === "string" && b.originUrl) update.originUrl = b.originUrl.slice(0, 512);
+    await db.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
+    return true;
+  } catch {
+    try {
+      await db.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
+    } catch {
+    }
+    return false;
+  }
+}
+async function runConcurrent(items, limit, fn) {
+  let idx = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        try {
+          await fn(items[i]);
+        } catch {
+        }
+      }
+    })
+  );
+}
+function parseMpDate(s) {
+  if (!s || typeof s !== "string") return null;
+  if (s.includes("T")) {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 19).replace("T", " ");
+  }
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:00`;
+}
+async function syncBookingHistory(externalId, apiKey) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const response = await getBookingHistory(externalId, apiKey);
+    const items = response?.history ?? [];
+    let checkinAgentName = null;
+    let checkinAgentUserId = null;
+    let checkoutAgentName = null;
+    let checkoutAgentUserId = null;
+    let currentGarage = null;
+    let currentSpot = null;
+    let lastKnownMileage = null;
+    for (const item of items) {
+      const historyId = item.id ?? null;
+      if (!historyId) continue;
+      const actionTime = parseMpDate(item.actionTime);
+      const agentName = item.agentName ?? null;
+      const agentUserId = item.userId ?? item.user?.id ?? null;
+      const agentEmail = item.user?.email ?? null;
+      const modifiedFields = item.modifiedFields ? String(item.modifiedFields) : null;
+      const changeType = item.changeType ?? null;
+      const platform = item.platform ?? null;
+      const remarks = item.remarks ?? null;
+      try {
+        await db.insert(multiparkBookingHistory).values({
+          bookingExternalId: externalId,
+          historyId: String(historyId).slice(0, 128),
+          changeType: changeType ? String(changeType).slice(0, 32) : null,
+          actionTime,
+          remarks,
+          agentName: agentName ? String(agentName).slice(0, 256) : null,
+          agentUserId: agentUserId ? String(agentUserId).slice(0, 128) : null,
+          agentEmail,
+          modifiedFields,
+          platform: platform ? String(platform).slice(0, 32) : null
+        });
+      } catch (err) {
+        if (!String(err.message).includes("Duplicate")) throw err;
+      }
+      if (changeType === "CHECK_IN") {
+        if (agentName) checkinAgentName = agentName;
+        if (agentUserId) checkinAgentUserId = agentUserId;
+      } else if (changeType === "CHECK_OUT") {
+        if (agentName) checkoutAgentName = agentName;
+        if (agentUserId) checkoutAgentUserId = agentUserId;
+      }
+      if (modifiedFields) {
+        try {
+          const mf = JSON.parse(modifiedFields);
+          if (mf.garagem) currentGarage = String(mf.garagem).slice(0, 64);
+          if (mf.lugar) currentSpot = String(mf.lugar).slice(0, 64);
+          if (mf.km !== void 0) {
+            const km = parseInt(String(mf.km), 10);
+            if (Number.isFinite(km)) lastKnownMileage = km;
+          }
+        } catch {
+        }
+      }
+    }
+    const update = { historyFetchedAt: nowMysql() };
+    if (checkinAgentName) update.checkinAgentName = checkinAgentName;
+    if (checkinAgentUserId) update.checkinAgentUserId = checkinAgentUserId;
+    if (checkoutAgentName) update.checkoutAgentName = checkoutAgentName;
+    if (checkoutAgentUserId) update.checkoutAgentUserId = checkoutAgentUserId;
+    if (currentGarage) update.currentGarage = currentGarage;
+    if (currentSpot) update.currentSpot = currentSpot;
+    if (lastKnownMileage !== null) update.lastKnownMileage = lastKnownMileage;
+    await db.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
+    return true;
+  } catch {
+    try {
+      await db.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
+    } catch {
+    }
+    return false;
+  }
+}
+async function enrichBookingsBatch(limit = 100) {
+  const db = await getDb();
+  if (!db) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+  const { isNull: isNull3 } = await import("drizzle-orm");
+  const pending = await db.select({
+    externalId: multiparkBookings.externalId,
+    parkName: multiparkBookings.parkName,
+    city: multiparkBookings.city
+  }).from(multiparkBookings).where(isNull3(multiparkBookings.enrichedAt)).limit(limit);
+  if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+  const parks = getConfiguredParks();
+  const CITY_NORMALIZE = {
+    lisbon: "lisboa",
+    lisboa: "lisboa",
+    oporto: "porto",
+    porto: "porto",
+    faro: "faro"
+  };
+  const keyCache = /* @__PURE__ */ new Map();
+  function pickApiKey(parkName, city) {
+    if (!parkName) return null;
+    const cacheKey = `${parkName.toLowerCase()}|${(city ?? "").toLowerCase()}`;
+    if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
+    const pl = parkName.toLowerCase();
+    const cityNorm = city ? CITY_NORMALIZE[city.toLowerCase()] ?? city.toLowerCase() : "";
+    let match = parks.find(
+      (p) => pl.includes(p.name.toLowerCase()) && pl.includes(p.city.toLowerCase())
+    );
+    if (!match && cityNorm) {
+      match = parks.find(
+        (p) => pl.includes(p.name.toLowerCase()) && p.city.toLowerCase() === cityNorm
+      );
+    }
+    const key = match ? getParkApiKey(match) ?? null : null;
+    keyCache.set(cacheKey, key);
+    return key;
+  }
+  let enriched = 0;
+  let errs = 0;
+  let noKey = 0;
+  await runConcurrent(pending, ENRICH_CONCURRENCY, async (p) => {
+    const apiKey = pickApiKey(p.parkName, p.city);
+    if (!apiKey) {
+      noKey++;
+      const db2 = await getDb();
+      if (db2) {
+        try {
+          await db2.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
+        } catch {
+        }
+      }
+      return;
+    }
+    const ok = await enrichBookingIfNeeded(p.externalId, apiKey);
+    if (ok) enriched++;
+    else errs++;
+  });
+  return { scanned: pending.length, enriched, errors: errs, noKey };
+}
+async function fetchAgentHistoryByName(agentName, date) {
+  const db = await getDb();
+  const parks = getConfiguredParks();
+  const byType = {};
+  let totalEntries = 0;
+  const perPark = [];
+  await runConcurrent(parks, ENRICH_CONCURRENCY, async (park) => {
+    const apiKey = getParkApiKey(park);
+    if (!apiKey) return;
+    try {
+      const response = await getAgentHistory({
+        agentName,
+        startDate: date,
+        endDate: date,
+        apiKey
+      });
+      const items = response?.history ?? [];
+      perPark.push({ park: `${park.name} ${park.city}`, entries: items.length });
+      totalEntries += items.length;
+      if (!db || items.length === 0) return;
+      for (const item of items) {
+        const historyId = item.id ?? null;
+        const bookingExternalId = item.booking?.id ?? null;
+        if (!historyId || !bookingExternalId) continue;
+        const changeType = item.changeType ?? null;
+        if (changeType) byType[changeType] = (byType[changeType] ?? 0) + 1;
+        try {
+          await db.insert(multiparkBookingHistory).values({
+            bookingExternalId: String(bookingExternalId).slice(0, 128),
+            historyId: String(historyId).slice(0, 128),
+            changeType: changeType ? String(changeType).slice(0, 32) : null,
+            actionTime: parseMpDate(item.actionTime),
+            remarks: item.remarks ?? null,
+            agentName: item.agentName ?? agentName,
+            agentUserId: item.userId ?? item.user?.id ?? null,
+            agentEmail: item.user?.email ?? null,
+            modifiedFields: item.modifiedFields ? String(item.modifiedFields) : null,
+            platform: item.platform ?? null
+          });
+        } catch (err) {
+          if (!String(err.message).includes("Duplicate")) throw err;
+        }
+      }
+    } catch {
+      perPark.push({ park: `${park.name} ${park.city}`, entries: 0 });
+    }
+  });
+  return { parks: parks.length, totalEntries, byType, perPark };
+}
+async function syncBookingHistoryBatch(limit = 50) {
+  const db = await getDb();
+  if (!db) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
+  const { isNull: isNull3, and: andOp, gte: gte5 } = await import("drizzle-orm");
+  const now = /* @__PURE__ */ new Date();
+  const cutPast = new Date(now);
+  cutPast.setDate(cutPast.getDate() - 7);
+  const cutFuture = new Date(now);
+  cutFuture.setDate(cutFuture.getDate() + 30);
+  const fmt3 = (d) => d.toISOString().slice(0, 19).replace("T", " ");
+  const pending = await db.select({
+    externalId: multiparkBookings.externalId,
+    parkName: multiparkBookings.parkName,
+    city: multiparkBookings.city
+  }).from(multiparkBookings).where(
+    andOp(
+      isNull3(multiparkBookings.historyFetchedAt),
+      gte5(multiparkBookings.checkIn, fmt3(cutPast))
+    )
+  ).limit(limit);
+  if (pending.length === 0) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
+  const parks = getConfiguredParks();
+  const CITY_NORMALIZE = {
+    lisbon: "lisboa",
+    lisboa: "lisboa",
+    porto: "porto",
+    oporto: "porto",
+    faro: "faro"
+  };
+  const keyCache = /* @__PURE__ */ new Map();
+  function pickApiKey(parkName, city) {
+    if (!parkName) return null;
+    const cacheKey = `${parkName.toLowerCase()}|${(city ?? "").toLowerCase()}`;
+    if (keyCache.has(cacheKey)) return keyCache.get(cacheKey) ?? null;
+    const pl = parkName.toLowerCase();
+    const cityNorm = city ? CITY_NORMALIZE[city.toLowerCase()] ?? city.toLowerCase() : "";
+    let match = parks.find(
+      (p) => pl.includes(p.name.toLowerCase()) && pl.includes(p.city.toLowerCase())
+    );
+    if (!match && cityNorm) {
+      match = parks.find(
+        (p) => pl.includes(p.name.toLowerCase()) && p.city.toLowerCase() === cityNorm
+      );
+    }
+    const key = match ? getParkApiKey(match) ?? null : null;
+    keyCache.set(cacheKey, key);
+    return key;
+  }
+  let fetched = 0;
+  let errs = 0;
+  let noKey = 0;
+  await runConcurrent(pending, ENRICH_CONCURRENCY, async (p) => {
+    const apiKey = pickApiKey(p.parkName, p.city);
+    if (!apiKey) {
+      noKey++;
+      try {
+        await db.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
+      } catch {
+      }
+      return;
+    }
+    const ok = await syncBookingHistory(p.externalId, apiKey);
+    if (ok) fetched++;
+    else errs++;
+  });
+  return { scanned: pending.length, fetched, errors: errs, noKey };
+}
+async function syncBookings(opts) {
+  const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
+  const projectMap = await getProjectMap();
+  const aliasResolver = await getAliasResolver();
+  const errors = [];
+  const parks = getConfiguredParks();
+  const parksToSync = parks.length > 0 ? parks : [null];
+  const jobs = [];
+  for (const park of parksToSync) {
+    for (const actionType of actionTypes) {
+      jobs.push({ park, actionType });
+    }
+  }
+  const perParkResults = await Promise.allSettled(jobs.map(async ({ park, actionType }) => {
+    const apiKey = park ? getParkApiKey(park) : void 0;
+    const parkLabel = park ? `${park.name} ${park.city}` : "global";
+    let processed = 0, created = 0, updated = 0;
+    const parkErrors = [];
+    try {
+      const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
+      if (report?.bookings?.length) {
+        for (const booking of report.bookings) {
+          try {
+            const record = bookingToRecord(booking, projectMap, aliasResolver);
+            const result = await upsertMultiparkBooking(record);
+            processed++;
+            if (result?.action === "created") created++;
+            else updated++;
+          } catch (err) {
+            parkErrors.push(`Booking ${booking.id}: ${err.message}`);
+          }
+        }
+      }
+    } catch (err) {
+      parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
+    }
+    return { processed, created, updated, errors: parkErrors };
+  }));
+  let totalProcessed = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  for (const r of perParkResults) {
+    if (r.status === "fulfilled") {
+      totalProcessed += r.value.processed;
+      totalCreated += r.value.created;
+      totalUpdated += r.value.updated;
+      errors.push(...r.value.errors);
+    } else {
+      errors.push(`Park task failed: ${r.reason?.message ?? r.reason}`);
+    }
+  }
+  await createSyncLog({
+    syncType: "api_sync",
+    status: errors.length === 0 ? "success" : "partial",
+    recordsProcessed: totalProcessed,
+    recordsCreated: totalCreated,
+    recordsUpdated: totalUpdated - totalCreated,
+    errorMessage: errors.length > 0 ? errors.join("; ") : void 0,
+    triggeredById: opts.triggeredById ?? void 0
+  });
+  return {
+    success: errors.length === 0,
+    processed: totalProcessed,
+    created: totalCreated,
+    updated: totalUpdated - totalCreated,
+    errors
+  };
+}
+function startBookingSyncScheduler() {
+  async function runSync() {
+    if (!isMultiparkConfigured()) {
+      console.log("[BookingSync] Skipped \u2014 MULTIPARK_API_KEY not configured");
+      return;
+    }
+    try {
+      const today = /* @__PURE__ */ new Date();
+      const twoDaysAgo = new Date(today);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const thirtyDaysAhead = new Date(today);
+      thirtyDaysAhead.setDate(thirtyDaysAhead.getDate() + 30);
+      const pastStart = twoDaysAgo.toISOString().split("T")[0];
+      const todayStr = today.toISOString().split("T")[0];
+      const futureEnd = thirtyDaysAhead.toISOString().split("T")[0];
+      console.log(`[BookingSync] Past window ${pastStart} \u2192 ${todayStr}`);
+      const past = await syncBookings({ startDate: pastStart, endDate: todayStr });
+      console.log(
+        `[BookingSync] Past done: ${past.processed} processed, ${past.created} new, ${past.updated} updated` + (past.errors.length > 0 ? `, ${past.errors.length} errors` : "")
+      );
+      console.log(`[BookingSync] Future window ${todayStr} \u2192 ${futureEnd}`);
+      const future = await syncBookings({
+        startDate: todayStr,
+        endDate: futureEnd,
+        actionTypes: ["checkin", "checkout"]
+      });
+      console.log(
+        `[BookingSync] Future done: ${future.processed} processed, ${future.created} new, ${future.updated} updated` + (future.errors.length > 0 ? `, ${future.errors.length} errors` : "")
+      );
+    } catch (error) {
+      console.error("[BookingSync] Scheduler error:", error);
+    }
+  }
+  setTimeout(runSync, 1e4);
+  setInterval(runSync, SYNC_INTERVAL);
+  console.log("[BookingSync] Scheduler started \u2014 runs every 15 minutes");
+}
+async function runRecentCronSync(windowMinutes = 30) {
+  const t0 = Date.now();
+  const now = /* @__PURE__ */ new Date();
+  const since = new Date(now.getTime() - windowMinutes * 6e4);
+  const fmt3 = (d) => d.toISOString().slice(0, 10);
+  const report = await syncBookings({
+    startDate: fmt3(since),
+    endDate: fmt3(now)
+  });
+  const [enrichResult, historyResult] = await Promise.allSettled([
+    enrichBookingsBatch(50),
+    syncBookingHistoryBatch(30)
+  ]);
+  const enriched = enrichResult.status === "fulfilled" ? enrichResult.value.enriched : 0;
+  const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+  return {
+    report,
+    enriched,
+    historyFetched,
+    durationMs: Date.now() - t0
+  };
+}
+async function runFutureCronSync(weeksAhead = 4) {
+  const t0 = Date.now();
+  const now = /* @__PURE__ */ new Date();
+  const end = new Date(now.getTime() + weeksAhead * 7 * 864e5);
+  const fmt3 = (d) => d.toISOString().slice(0, 10);
+  const report = await syncBookings({
+    startDate: fmt3(now),
+    endDate: fmt3(end),
+    actionTypes: ["checkin", "checkout"]
+  });
+  return { report, durationMs: Date.now() - t0 };
+}
+var projectMapCache, projectMapCacheTime, CACHE_TTL, aliasResolverCache, aliasResolverCacheTime, ENRICH_CONCURRENCY, SYNC_INTERVAL;
+var init_multiparkBookingSync = __esm({
+  "server/jobs/multiparkBookingSync.ts"() {
+    "use strict";
+    init_multipark();
+    init_db();
+    init_schema();
+    init_spotClassification();
+    projectMapCache = null;
+    projectMapCacheTime = 0;
+    CACHE_TTL = 5 * 60 * 1e3;
+    aliasResolverCache = null;
+    aliasResolverCacheTime = 0;
+    ENRICH_CONCURRENCY = 5;
+    SYNC_INTERVAL = 15 * 60 * 1e3;
+  }
+});
+
+// server/migrations/migration_0044.ts
+var migration_0044_exports = {};
+__export(migration_0044_exports, {
+  IDEMPOTENT_ERROR_CODES: () => IDEMPOTENT_ERROR_CODES,
+  MIGRATION_0044_NAME: () => MIGRATION_0044_NAME,
+  MIGRATION_0044_STATEMENTS: () => MIGRATION_0044_STATEMENTS
+});
+var MIGRATION_0044_NAME, MIGRATION_0044_STATEMENTS, IDEMPOTENT_ERROR_CODES;
+var init_migration_0044 = __esm({
+  "server/migrations/migration_0044.ts"() {
+    "use strict";
+    MIGRATION_0044_NAME = "0044_rh_revamp";
+    MIGRATION_0044_STATEMENTS = [
+      // ── 1. Férias / baixas ────────────────────────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS \`employee_leaves\` (
+    \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`employeeId\` INT NOT NULL,
+    \`leaveType\` ENUM('vacation','sick','unpaid','other') NOT NULL DEFAULT 'vacation',
+    \`fromDate\` VARCHAR(10) NOT NULL,
+    \`toDate\` VARCHAR(10) NOT NULL,
+    \`notes\` VARCHAR(255) NULL,
+    \`createdById\` INT NULL,
+    \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_employee_leaves_emp\` (\`employeeId\`),
+    INDEX \`idx_employee_leaves_dates\` (\`fromDate\`, \`toDate\`)
+  )`,
+      // ── 2. Histórico salários ─────────────────────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS \`employee_salary_history\` (
+    \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`employeeId\` INT NOT NULL,
+    \`monthlySalary\` DECIMAL(10, 2) NULL,
+    \`mealAllowancePerDay\` DECIMAL(6, 2) NULL,
+    \`effectiveFrom\` VARCHAR(10) NOT NULL,
+    \`effectiveUntil\` VARCHAR(10) NULL,
+    \`changedById\` INT NULL,
+    \`notes\` VARCHAR(255) NULL,
+    \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_salary_history_emp\` (\`employeeId\`),
+    INDEX \`idx_salary_history_from\` (\`effectiveFrom\`)
+  )`,
+      // Snapshot inicial: copia o salário actual de cada colaborador.
+      // INSERT IGNORE evita falhar se a migration correr 2× (não duplica).
+      `INSERT INTO \`employee_salary_history\` (\`employeeId\`, \`monthlySalary\`, \`mealAllowancePerDay\`, \`effectiveFrom\`, \`notes\`)
+   SELECT e.\`id\`, e.\`monthlySalary\`, e.\`mealAllowancePerDay\`,
+          COALESCE(DATE_FORMAT(e.\`contractStart\`, '%Y-%m-%d'), '2024-01-01'),
+          'Snapshot inicial (migra\xE7\xE3o 0044)'
+   FROM \`employees\` e
+   LEFT JOIN \`employee_salary_history\` h ON h.\`employeeId\` = e.\`id\`
+   WHERE e.\`isActive\` = 1
+     AND (e.\`monthlySalary\` IS NOT NULL OR e.\`mealAllowancePerDay\` IS NOT NULL)
+     AND h.\`id\` IS NULL`,
+      // ── 3. Penalizações ──────────────────────────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS \`employee_penalties\` (
+    \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`employeeId\` INT NOT NULL,
+    \`reason\` ENUM('no_show_extra_dia','speeding','lost_found_investigation','complaint_investigation','other') NOT NULL,
+    \`severity\` ENUM('warning','penalty','serious') NOT NULL DEFAULT 'penalty',
+    \`points\` INT NOT NULL DEFAULT 1,
+    \`relatedId\` INT NULL,
+    \`notes\` VARCHAR(512) NULL,
+    \`clearedAt\` TIMESTAMP NULL,
+    \`clearedById\` INT NULL,
+    \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_employee_penalties_emp\` (\`employeeId\`),
+    INDEX \`idx_employee_penalties_open\` (\`employeeId\`, \`clearedAt\`)
+  )`,
+      // ── 4. extra_rates: adicionar levelName se não existir ───────────────────
+      // MySQL antigo não tem IF NOT EXISTS em ADD COLUMN. Verificamos via
+      // information_schema antes (statement separado mais à frente, na app).
+      // Para tornar idempotente, fazemos um UPDATE seguro depois.
+      // 1ª tentativa: ADD COLUMN. Se já existir, o runner ignora o erro.
+      `ALTER TABLE \`extra_rates\` ADD COLUMN \`levelName\` VARCHAR(32) NULL`,
+      // Limpa e regrava os 4 níveis canónicos
+      `DELETE FROM \`extra_rates\``,
+      `INSERT INTO \`extra_rates\` (\`level\`, \`levelName\`, \`hourlyRate\`, \`label\`) VALUES
+    (1, 'junior',   4.50, 'Extra Junior'),
+    (2, 'senior',   5.00, 'Extra Senior'),
+    (3, 'terminal', 5.50, 'Extra Terminal'),
+    (4, 'master',   6.00, 'Extra Master')`,
+      // CREATE INDEX falha se já existe — wrapped em try/catch no runner
+      `CREATE INDEX \`idx_extra_rates_levelname\` ON \`extra_rates\` (\`levelName\`)`,
+      // Migra extras de nível 5 para 1 (junior)
+      `UPDATE \`employees\` SET \`extraLevel\` = 1 WHERE \`extraLevel\` = 5`,
+      // ── 5. employees: flags de bloqueio por docs ─────────────────────────────
+      `ALTER TABLE \`employees\` ADD COLUMN \`docsWarningAt\` TIMESTAMP NULL`,
+      `ALTER TABLE \`employees\` ADD COLUMN \`loginBlocked\` TINYINT NOT NULL DEFAULT 0`,
+      `ALTER TABLE \`employees\` ADD COLUMN \`loginBlockedReason\` VARCHAR(255) NULL`
+    ];
+    IDEMPOTENT_ERROR_CODES = /* @__PURE__ */ new Set([
+      "ER_DUP_FIELDNAME",
+      // ADD COLUMN onde já existe
+      "ER_DUP_KEYNAME",
+      // CREATE INDEX onde já existe
+      "ER_TABLE_EXISTS_ERROR",
+      // CREATE TABLE (mesmo com IF NOT EXISTS é seguro)
+      "ER_DUP_ENTRY"
+      // INSERT duplicado
+    ]);
+  }
+});
+
+// server/complaintsExtended.ts
+var complaintsExtended_exports = {};
+__export(complaintsExtended_exports, {
+  attachDriverToComplaint: () => attachDriverToComplaint,
+  createNotification: () => createNotification,
+  detachComplaintDriver: () => detachComplaintDriver,
+  findDriversOnDuty: () => findDriversOnDuty,
+  listComplaintDrivers: () => listComplaintDrivers,
+  listNotifications: () => listNotifications,
+  listPenaltyConfig: () => listPenaltyConfig,
+  markAllNotificationsRead: () => markAllNotificationsRead,
+  markNotificationRead: () => markNotificationRead,
+  notifyComplaintCreated: () => notifyComplaintCreated,
+  sendComplaintEmailToClient: () => sendComplaintEmailToClient,
+  unreadCount: () => unreadCount,
+  updatePenaltyConfig: () => updatePenaltyConfig
+});
+import { and as and3, desc as desc2, eq as eq4, gte as gte3, lte as lte3, sql as sql3 } from "drizzle-orm";
+async function createNotification(input) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(appNotifications).values({
+    userId: input.userId,
+    title: input.title.slice(0, 255),
+    body: input.body ?? null,
+    kind: (input.kind ?? "info").slice(0, 32),
+    link: input.link?.slice(0, 512) ?? null
+  });
+}
+async function listNotifications(userId, unreadOnly = false, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  const cond = unreadOnly ? and3(eq4(appNotifications.userId, userId), eq4(appNotifications.isRead, 0)) : eq4(appNotifications.userId, userId);
+  return db.select().from(appNotifications).where(cond).orderBy(desc2(appNotifications.createdAt)).limit(limit);
+}
+async function unreadCount(userId) {
+  const db = await getDb();
+  if (!db) return 0;
+  const [row] = await db.select({ n: sql3`COUNT(*)` }).from(appNotifications).where(and3(eq4(appNotifications.userId, userId), eq4(appNotifications.isRead, 0)));
+  return Number(row?.n ?? 0);
+}
+async function markNotificationRead(userId, id) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(appNotifications).set({ isRead: 1 }).where(and3(eq4(appNotifications.id, id), eq4(appNotifications.userId, userId)));
+}
+async function markAllNotificationsRead(userId) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(appNotifications).set({ isRead: 1 }).where(eq4(appNotifications.userId, userId));
+}
+async function findDriversOnDuty(complaintId) {
+  const db = await getDb();
+  if (!db) return [];
+  const [c] = await db.select({
+    reservationRef: complaints.reservationRef,
+    reservationStart: complaints.reservationStart,
+    reservationEnd: complaints.reservationEnd
+  }).from(complaints).where(eq4(complaints.id, complaintId)).limit(1);
+  if (!c) return [];
+  const drivers = [];
+  const seen = /* @__PURE__ */ new Set();
+  if (c.reservationRef) {
+    const histRows = await db.select({
+      agentName: multiparkBookingHistory.agentName,
+      agentEmail: multiparkBookingHistory.agentEmail,
+      changeType: multiparkBookingHistory.changeType
+    }).from(multiparkBookingHistory).where(eq4(multiparkBookingHistory.bookingExternalId, c.reservationRef));
+    const grouped = /* @__PURE__ */ new Map();
+    for (const h of histRows) {
+      if (!h.agentName) continue;
+      let g = grouped.get(h.agentName);
+      if (!g) {
+        g = { actions: [], email: h.agentEmail ?? null };
+        grouped.set(h.agentName, g);
+      }
+      if (h.changeType) g.actions.push(h.changeType);
+      if (!g.email && h.agentEmail) g.email = h.agentEmail;
+    }
+    for (const [name, info] of Array.from(grouped.entries())) {
+      const empCandidates = await db.select({ id: employees.id, fullName: employees.fullName }).from(employees).where(
+        info.email ? eq4(employees.email, info.email) : sql3`LOWER(${employees.fullName}) LIKE LOWER(${"%" + name + "%"})`
+      ).limit(1);
+      const emp = empCandidates[0];
+      const k = `${emp?.id ?? "?"}|${name}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      drivers.push({
+        source: "history",
+        employeeId: emp?.id ?? null,
+        employeeName: emp?.fullName ?? name,
+        roleAtTime: null,
+        notes: `Ac\xE7\xF5es: ${info.actions.join(", ") || "\u2014"}`,
+        alreadyLinked: false
+      });
+    }
+  }
+  if (c.reservationStart || c.reservationEnd) {
+    const startDate = (c.reservationStart ?? c.reservationEnd ?? "").slice(0, 10);
+    const endDate = (c.reservationEnd ?? c.reservationStart ?? "").slice(0, 10);
+    if (startDate && endDate) {
+      const assignmentRows = await db.select({
+        employeeId: extrasDiaAssignments.employeeId,
+        personName: extrasDiaAssignments.personName,
+        isTeamLeader: extrasDiaAssignments.isTeamLeader,
+        shift: extrasDiaAssignments.shift,
+        assignmentDate: extrasDiaAssignments.assignmentDate
+      }).from(extrasDiaAssignments).where(
+        and3(
+          gte3(extrasDiaAssignments.assignmentDate, startDate),
+          lte3(extrasDiaAssignments.assignmentDate, endDate)
+        )
+      );
+      for (const a of assignmentRows) {
+        const k = `${a.employeeId ?? "?"}|${a.personName}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const role = a.isTeamLeader === 1 ? "team_leader" : a.shift ?? "driver";
+        drivers.push({
+          source: "assignment",
+          employeeId: a.employeeId,
+          employeeName: a.personName,
+          roleAtTime: role,
+          notes: `Escalado ${a.assignmentDate} (${a.shift})`,
+          alreadyLinked: false
+        });
+      }
+    }
+  }
+  const existing = await db.select({ employeeName: complaintDriversOnDuty.employeeName, employeeId: complaintDriversOnDuty.employeeId }).from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
+  const existingSet = new Set(existing.map((e) => `${e.employeeId ?? "?"}|${e.employeeName}`));
+  for (const d of drivers) {
+    if (existingSet.has(`${d.employeeId ?? "?"}|${d.employeeName}`)) d.alreadyLinked = true;
+  }
+  return drivers;
+}
+async function attachDriverToComplaint(input) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(complaintDriversOnDuty).values({
+    complaintId: input.complaintId,
+    employeeId: input.employeeId ?? null,
+    employeeName: input.employeeName.slice(0, 256),
+    roleAtTime: input.roleAtTime?.slice(0, 64) ?? null,
+    source: input.source,
+    penaltyPointsApplied: 0,
+    notes: input.notes?.slice(0, 512) ?? null
+  });
+}
+async function listComplaintDrivers(complaintId) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
+}
+async function detachComplaintDriver(id) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.id, id));
+}
+async function listPenaltyConfig() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(complaintPenaltyConfig);
+}
+async function updatePenaltyConfig(complaintType, basePoints) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(complaintPenaltyConfig).values({ complaintType, basePoints }).onDuplicateKeyUpdate({ set: { basePoints } });
+}
+async function sendComplaintEmailToClient(input) {
+  const db = await getDb();
+  if (!db) return { ok: false, error: "DB indispon\xEDvel" };
+  const [c] = await db.select({
+    clientEmail: complaints.clientEmail,
+    clientName: complaints.clientName
+  }).from(complaints).where(eq4(complaints.id, input.complaintId)).limit(1);
+  if (!c) return { ok: false, error: "Reclama\xE7\xE3o n\xE3o encontrada" };
+  if (!c.clientEmail) return { ok: false, error: "Reclama\xE7\xE3o sem email de cliente" };
+  const greeting = c.clientName ? `Ol\xE1 ${c.clientName},
+
+` : "Ol\xE1,\n\n";
+  const fullBody = greeting + input.body;
+  const ok = await sendEmail({
+    to: c.clientEmail,
+    subject: input.subject,
+    text: fullBody,
+    html: `<p>${fullBody.replace(/\n/g, "<br>")}</p>`
+  });
+  if (ok) {
+    await db.update(complaints).set({
+      clientEmailSentAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
+      clientEmailSubject: input.subject.slice(0, 255),
+      clientEmailBody: input.body
+    }).where(eq4(complaints.id, input.complaintId));
+    return { ok: true };
+  }
+  return { ok: false, error: "Falha ao enviar email (SMTP)" };
+}
+async function notifyComplaintCreated(complaintId) {
+  const db = await getDb();
+  if (!db) return;
+  const [c] = await db.select({
+    id: complaints.id,
+    title: complaints.title,
+    complaintType: complaints.complaintType,
+    complaintPriority: complaints.complaintPriority,
+    assignedToId: complaints.assignedToId,
+    clientName: complaints.clientName
+  }).from(complaints).where(eq4(complaints.id, complaintId)).limit(1);
+  if (!c) return;
+  const { users: users2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+  const recipients = await db.select({ id: users2.id }).from(users2).where(sql3`${users2.role} IN ('admin','super_admin','supervisor','team_leader')`);
+  const title = `Nova reclama\xE7\xE3o: ${c.title}`;
+  const body = `Tipo: ${c.complaintType} \xB7 Prioridade: ${c.complaintPriority}${c.clientName ? ` \xB7 Cliente: ${c.clientName}` : ""}`;
+  const link = `/reclamacoes/${complaintId}`;
+  const userIds = new Set(recipients.map((r) => r.id));
+  if (c.assignedToId) userIds.add(c.assignedToId);
+  for (const userId of Array.from(userIds)) {
+    try {
+      await createNotification({ userId, title, body, kind: "complaint", link });
+    } catch {
+    }
+  }
+}
+var init_complaintsExtended = __esm({
+  "server/complaintsExtended.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_notification();
+  }
+});
+
+// server/multiparkEvaluation.ts
+var multiparkEvaluation_exports = {};
+__export(multiparkEvaluation_exports, {
+  evaluateDay: () => evaluateDay,
+  getDashboardRange: () => getDashboardRange
+});
+import { and as and4, gte as gte4, lt, lte as lte4, sql as sql4 } from "drizzle-orm";
+async function evaluateDay(date) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      date,
+      shifts: [],
+      totals: { people: 0, totalActions: 0, totalCost: 0, byType: {}, costPerAction: 0 }
+    };
+  }
+  const assignments = await listAssignments(date);
+  const startStr = `${date} 00:00:00`;
+  const endDate = /* @__PURE__ */ new Date(date + "T00:00:00");
+  endDate.setDate(endDate.getDate() + 1);
+  const endStr = endDate.toISOString().slice(0, 19).replace("T", " ");
+  const historyRows = await db.select({
+    agentName: multiparkBookingHistory.agentName,
+    changeType: multiparkBookingHistory.changeType
+  }).from(multiparkBookingHistory).where(
+    and4(
+      gte4(multiparkBookingHistory.actionTime, startStr),
+      lt(multiparkBookingHistory.actionTime, endStr)
+    )
+  );
+  const normalize = (s) => s.toLowerCase().trim();
+  const byAgent = /* @__PURE__ */ new Map();
+  for (const h of historyRows) {
+    if (!h.agentName) continue;
+    const key = normalize(h.agentName);
+    let c = byAgent.get(key);
+    if (!c) {
+      c = { total: 0, byType: {} };
+      byAgent.set(key, c);
+    }
+    c.total++;
+    const ct = h.changeType ?? "?";
+    c.byType[ct] = (c.byType[ct] ?? 0) + 1;
+  }
+  const people = assignments.map((a) => {
+    const shortName = a.multiparkAgentName || deriveShortName(a.personName);
+    const counts = byAgent.get(normalize(shortName)) ?? { total: 0, byType: {} };
+    return {
+      assignmentId: a.id,
+      personName: a.personName,
+      resolvedAgentName: shortName,
+      isTeamLeader: a.isTeamLeader,
+      shift: a.shift,
+      level: a.level,
+      hoursPaid: a.hoursBilled,
+      cost: a.cost,
+      totalActions: counts.total,
+      byType: counts.byType,
+      costPerAction: counts.total > 0 ? a.cost / counts.total : 0
+    };
+  });
+  const shifts = ["morning", "night"].map((shift) => {
+    const shiftPeople = people.filter((p) => p.shift === shift);
+    const tl = shiftPeople.find((p) => p.isTeamLeader) ?? null;
+    const drivers = shiftPeople.filter((p) => !p.isTeamLeader);
+    const driverActions = drivers.reduce((s, d) => s + d.totalActions, 0);
+    const driverCost = drivers.reduce((s, d) => s + d.cost, 0);
+    const driverByType = {};
+    for (const d of drivers) {
+      for (const [k, v] of Object.entries(d.byType)) driverByType[k] = (driverByType[k] ?? 0) + v;
+    }
+    if (tl) {
+      tl.teamAggregate = {
+        drivers: drivers.length,
+        totalActions: driverActions,
+        totalCost: driverCost,
+        costPerAction: driverActions > 0 ? driverCost / driverActions : 0,
+        byType: driverByType
+      };
+    }
+    const totalActions = shiftPeople.reduce((s, p) => s + p.totalActions, 0);
+    const totalCost = shiftPeople.reduce((s, p) => s + p.cost, 0);
+    const byType = {};
+    for (const p of shiftPeople) {
+      for (const [k, v] of Object.entries(p.byType)) byType[k] = (byType[k] ?? 0) + v;
+    }
+    return {
+      shift,
+      drivers: shiftPeople.length,
+      totalActions,
+      totalCost,
+      byType,
+      costPerAction: totalActions > 0 ? totalCost / totalActions : 0,
+      tl,
+      members: drivers
+    };
+  });
+  const dayActions = people.reduce((s, p) => s + p.totalActions, 0);
+  const dayCost = people.reduce((s, p) => s + p.cost, 0);
+  const dayByType = {};
+  for (const p of people) {
+    for (const [k, v] of Object.entries(p.byType)) dayByType[k] = (dayByType[k] ?? 0) + v;
+  }
+  return {
+    date,
+    shifts,
+    totals: {
+      people: people.length,
+      totalActions: dayActions,
+      totalCost: dayCost,
+      byType: dayByType,
+      costPerAction: dayActions > 0 ? dayCost / dayActions : 0
+    }
+  };
+}
+function actionTimeToOffsetHours(actionTime, assignmentDate) {
+  if (!actionTime) return null;
+  const aDate = new Date(actionTime.includes("T") ? actionTime : actionTime.replace(" ", "T"));
+  if (Number.isNaN(aDate.getTime())) return null;
+  const baseDate = /* @__PURE__ */ new Date(assignmentDate + "T00:00:00");
+  const diffMs = aDate.getTime() - baseDate.getTime();
+  return diffMs / (60 * 60 * 1e3);
+}
+async function getDashboardRange(startDate, endDate) {
+  const db = await getDb();
+  const empty = {
+    startDate,
+    endDate,
+    daily: [],
+    byPerson: [],
+    totals: {
+      days: 0,
+      drivers: 0,
+      totalCost: 0,
+      totalActions: 0,
+      inShift: 0,
+      outOfShift: 0,
+      byType: {},
+      costPerAction: 0
+    }
+  };
+  if (!db) return empty;
+  const assignmentRows = await db.select().from(extrasDiaAssignments).where(
+    and4(
+      gte4(extrasDiaAssignments.assignmentDate, startDate),
+      lte4(extrasDiaAssignments.assignmentDate, endDate)
+    )
+  );
+  const empIds = Array.from(new Set(assignmentRows.map((r) => r.employeeId).filter((x) => x !== null)));
+  const empMap = /* @__PURE__ */ new Map();
+  if (empIds.length > 0) {
+    const empRows = await db.select({
+      id: employees.id,
+      multiparkAgentName: employees.multiparkAgentName,
+      monthlySalary: employees.monthlySalary
+    }).from(employees).where(sql4`${employees.id} IN (${sql4.raw(empIds.join(","))})`);
+    for (const e of empRows) {
+      empMap.set(e.id, {
+        multiparkAgentName: e.multiparkAgentName,
+        monthlySalary: e.monthlySalary ? String(e.monthlySalary) : null
+      });
+    }
+  }
+  const assignmentsPlus = assignmentRows.map((r) => {
+    const isTL = r.isTeamLeader === 1;
+    const effectiveEnd = r.sentHomeHour ?? r.endHour;
+    const hours = Math.max(0, effectiveEnd - r.startHour);
+    const map = r.employeeId ? empMap.get(r.employeeId) : void 0;
+    let cost = 0;
+    if (isTL && map?.monthlySalary) {
+      const monthly = parseFloat(map.monthlySalary);
+      if (Number.isFinite(monthly)) cost = monthly / TL_WORKING_DAYS_PER_MONTH;
+    } else if (!isTL && r.level) {
+      const rate = DRIVER_LEVELS.find((l) => l.id === r.level)?.hourlyRate ?? 0;
+      cost = hours * rate;
+    }
+    const resolvedAgentName = map?.multiparkAgentName ?? deriveShortName(r.personName);
+    return {
+      id: r.id,
+      assignmentDate: r.assignmentDate,
+      personName: r.personName,
+      resolvedAgentName,
+      isTeamLeader: isTL,
+      shift: r.shift ?? "morning",
+      startHour: r.startHour,
+      endHour: r.endHour,
+      sentHomeHour: r.sentHomeHour,
+      hoursPaid: hours,
+      cost
+    };
+  });
+  const startStr = `${startDate} 00:00:00`;
+  const endPlus = /* @__PURE__ */ new Date(endDate + "T00:00:00");
+  endPlus.setDate(endPlus.getDate() + 2);
+  const endStr = endPlus.toISOString().slice(0, 19).replace("T", " ");
+  const historyRows = await db.select({
+    agentName: multiparkBookingHistory.agentName,
+    changeType: multiparkBookingHistory.changeType,
+    actionTime: multiparkBookingHistory.actionTime
+  }).from(multiparkBookingHistory).where(
+    and4(
+      gte4(multiparkBookingHistory.actionTime, startStr),
+      lt(multiparkBookingHistory.actionTime, endStr)
+    )
+  );
+  const normalize = (s) => s.toLowerCase().trim();
+  const personByName = /* @__PURE__ */ new Map();
+  for (const a of assignmentsPlus) {
+    const key = normalize(a.resolvedAgentName);
+    let p = personByName.get(key);
+    if (!p) {
+      p = {
+        personName: a.personName,
+        resolvedAgentName: a.resolvedAgentName,
+        isTeamLeader: a.isTeamLeader,
+        daysWorked: /* @__PURE__ */ new Set(),
+        hoursPaid: 0,
+        totalCost: 0,
+        totalActions: 0,
+        inShiftActions: 0,
+        outOfShiftActions: 0,
+        byType: {}
+      };
+      personByName.set(key, p);
+    }
+    p.daysWorked.add(a.assignmentDate);
+    p.hoursPaid += a.hoursPaid;
+    p.totalCost += a.cost;
+    if (a.isTeamLeader) p.isTeamLeader = true;
+  }
+  const dailyMap = /* @__PURE__ */ new Map();
+  for (const h of historyRows) {
+    if (!h.agentName || !h.actionTime || !h.changeType) continue;
+    const key = normalize(h.agentName);
+    const p = personByName.get(key);
+    if (!p) continue;
+    p.totalActions++;
+    p.byType[h.changeType] = (p.byType[h.changeType] ?? 0) + 1;
+    const personAssignments = assignmentsPlus.filter(
+      (a) => normalize(a.resolvedAgentName) === key
+    );
+    let inShift = false;
+    let bucketDate = null;
+    for (const a of personAssignments) {
+      const offset = actionTimeToOffsetHours(h.actionTime, a.assignmentDate);
+      if (offset === null) continue;
+      const effectiveEnd = a.sentHomeHour ?? a.endHour;
+      if (offset >= a.startHour && offset <= effectiveEnd) {
+        inShift = true;
+        bucketDate = a.assignmentDate;
+        break;
+      }
+      if (offset >= 0 && offset < 24 && !bucketDate) {
+        bucketDate = a.assignmentDate;
+      }
+    }
+    if (inShift) p.inShiftActions++;
+    else p.outOfShiftActions++;
+    const bd = bucketDate ?? (h.actionTime?.slice(0, 10) ?? null);
+    if (bd) {
+      let day = dailyMap.get(bd);
+      if (!day) {
+        day = { date: bd, drivers: 0, totalCost: 0, totalActions: 0, inShift: 0, outOfShift: 0 };
+        dailyMap.set(bd, day);
+      }
+      day.totalActions++;
+      if (inShift) day.inShift++;
+      else day.outOfShift++;
+    }
+  }
+  for (const a of assignmentsPlus) {
+    let day = dailyMap.get(a.assignmentDate);
+    if (!day) {
+      day = { date: a.assignmentDate, drivers: 0, totalCost: 0, totalActions: 0, inShift: 0, outOfShift: 0 };
+      dailyMap.set(a.assignmentDate, day);
+    }
+    day.totalCost += a.cost;
+    day.drivers++;
+  }
+  const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  const byPerson = Array.from(personByName.values()).map((p) => ({
+    personName: p.personName,
+    resolvedAgentName: p.resolvedAgentName,
+    isTeamLeader: p.isTeamLeader,
+    daysWorked: p.daysWorked.size,
+    hoursPaid: Math.round(p.hoursPaid * 100) / 100,
+    totalCost: Math.round(p.totalCost * 100) / 100,
+    totalActions: p.totalActions,
+    inShiftActions: p.inShiftActions,
+    outOfShiftActions: p.outOfShiftActions,
+    byType: p.byType,
+    costPerAction: p.totalActions > 0 ? p.totalCost / p.totalActions : 0
+  }));
+  byPerson.sort((a, b) => b.totalActions - a.totalActions);
+  const totalCost = daily.reduce((s, d) => s + d.totalCost, 0);
+  const totalActions = byPerson.reduce((s, p) => s + p.totalActions, 0);
+  const totalInShift = byPerson.reduce((s, p) => s + p.inShiftActions, 0);
+  const totalOut = byPerson.reduce((s, p) => s + p.outOfShiftActions, 0);
+  const totalByType = {};
+  for (const p of byPerson) {
+    for (const [k, v] of Object.entries(p.byType)) totalByType[k] = (totalByType[k] ?? 0) + v;
+  }
+  return {
+    startDate,
+    endDate,
+    daily,
+    byPerson,
+    totals: {
+      days: daily.length,
+      drivers: byPerson.length,
+      totalCost: Math.round(totalCost * 100) / 100,
+      totalActions,
+      inShift: totalInShift,
+      outOfShift: totalOut,
+      byType: totalByType,
+      costPerAction: totalActions > 0 ? totalCost / totalActions : 0
+    }
+  };
+}
+var init_multiparkEvaluation = __esm({
+  "server/multiparkEvaluation.ts"() {
+    "use strict";
+    init_schema();
+    init_db();
+    init_schema();
+    init_extrasDia();
+    init_extrasDia();
+  }
+});
+
+// server/_core/api-entry.ts
+import express from "express";
+
+// shared/const.ts
+var COOKIE_NAME = "app_session_id";
+var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
+var UNAUTHED_ERR_MSG = "Please login (10001)";
+var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+
+// server/_core/oauth.ts
+init_db();
+import crypto2 from "node:crypto";
 
 // server/_core/cookies.ts
 function isSecureRequest(req) {
@@ -4411,9 +9103,10 @@ var HttpError = class extends Error {
 var ForbiddenError = (msg) => new HttpError(403, msg);
 
 // server/_core/sdk.ts
+init_db();
+init_env();
 import { parse as parseCookieHeader } from "cookie";
 import { SignJWT, jwtVerify } from "jose";
-init_env();
 var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 var GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 var GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
@@ -4458,7 +9151,6 @@ var OAuthService = class {
   }
 };
 var SDKServer = class {
-  oauthService;
   constructor() {
     this.oauthService = new OAuthService();
   }
@@ -4531,7 +9223,7 @@ var SDKServer = class {
     }
     await upsertUser({
       openId: user.openId,
-      lastSignedIn: /* @__PURE__ */ new Date()
+      lastSignedIn: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
     });
     return user;
   }
@@ -4539,9 +9231,66 @@ var SDKServer = class {
 var sdk = new SDKServer();
 
 // server/_core/oauth.ts
+var SESSION_MAX_MS = (() => {
+  const n = parseInt(process.env.SESSION_MAX_DAYS ?? "30", 10);
+  return (Number.isFinite(n) && n > 0 ? n : 30) * 24 * 60 * 60 * 1e3;
+})();
+var OAUTH_STATE_COOKIE = "app_oauth_state";
+var OAUTH_STATE_MAX_MS = 10 * 60 * 1e3;
+function getStateCookieOptions(req) {
+  const base = getSessionCookieOptions(req);
+  return {
+    ...base,
+    // A cookie de state é lida no callback OAuth, que vem via cross-site
+    // redirect da Google — com SameSite=Strict o browser NÃO enviaria a
+    // cookie. Lax é o mínimo necessário para este fluxo funcionar.
+    sameSite: "lax",
+    maxAge: OAUTH_STATE_MAX_MS
+  };
+}
+function renderErrorPage(title, message, details) {
+  return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>${title}</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:4rem auto;padding:0 1.5rem;color:#1f2937;line-height:1.6}
+h1{color:#dc2626;margin-bottom:.5rem}code{background:#f3f4f6;padding:.15rem .4rem;border-radius:4px;font-size:.9em}
+pre{background:#f3f4f6;padding:1rem;border-radius:6px;overflow-x:auto;font-size:.85em}
+a{color:#2563eb}</style></head><body>
+<h1>${title}</h1><p>${message}</p>${details ? `<pre>${details}</pre>` : ""}
+<p><a href="/">\u2190 Voltar ao in\xEDcio</a></p></body></html>`;
+}
 function registerOAuthRoutes(app2) {
+  app2.get("/api/oauth/_diag", (req, res) => {
+    res.json({
+      origin: getOrigin(req),
+      redirectUri: `${getOrigin(req)}/api/oauth/callback`,
+      env: {
+        GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+        JWT_SECRET: !!process.env.JWT_SECRET,
+        DATABASE_URL: !!process.env.DATABASE_URL,
+        NODE_ENV: process.env.NODE_ENV ?? null
+      },
+      headers: {
+        host: req.headers.host,
+        "x-forwarded-host": req.headers["x-forwarded-host"],
+        "x-forwarded-proto": req.headers["x-forwarded-proto"]
+      },
+      hint: "Copia o valor de 'redirectUri' e regista-o na Google Cloud Console \u2192 Credentials \u2192 OAuth Client \u2192 Authorized redirect URIs."
+    });
+  });
   if (process.env.NODE_ENV !== "production") {
     app2.get("/api/dev-login", async (req, res) => {
+      const expected = process.env.DEV_LOGIN_TOKEN;
+      const provided = (typeof req.query.token === "string" ? req.query.token : void 0) ?? (typeof req.headers["x-dev-login-token"] === "string" ? req.headers["x-dev-login-token"] : void 0);
+      if (!expected) {
+        res.status(403).json({
+          error: "Dev login desativado: define a vari\xE1vel de ambiente DEV_LOGIN_TOKEN para ativar."
+        });
+        return;
+      }
+      if (!provided || provided.length < 16 || !safeEquals(provided, expected)) {
+        res.status(401).json({ error: "Token de dev-login inv\xE1lido" });
+        return;
+      }
       try {
         const openId = "dev_admin_local";
         const name = "Admin Dev";
@@ -4552,28 +9301,46 @@ function registerOAuthRoutes(app2) {
           email,
           loginMethod: "google",
           role: "super_admin",
-          lastSignedIn: /* @__PURE__ */ new Date()
+          lastSignedIn: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
         });
         const sessionToken = await sdk.createSessionToken(openId, {
           name,
-          expiresInMs: ONE_YEAR_MS
+          expiresInMs: SESSION_MAX_MS
         });
         const cookieOptions = getSessionCookieOptions(req);
-        res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        res.cookie(COOKIE_NAME, sessionToken, {
+          ...cookieOptions,
+          maxAge: SESSION_MAX_MS
+        });
         res.redirect(302, "/");
       } catch (error) {
         console.error("[Dev Login] Failed", error);
-        res.status(500).json({ error: "Dev login failed", details: String(error) });
+        res.status(500).json({ error: "Dev login failed" });
       }
     });
   }
-  app2.get("/api/oauth/login", (_req, res) => {
+  app2.get("/api/oauth/login", (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      res.status(500).json({ error: "GOOGLE_CLIENT_ID not configured" });
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const jwtSecret = process.env.JWT_SECRET;
+    const missing = [];
+    if (!clientId) missing.push("GOOGLE_CLIENT_ID");
+    if (!clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+    if (!jwtSecret) missing.push("JWT_SECRET");
+    if (missing.length > 0) {
+      console.error("[OAuth] Login bloqueado \u2014 env vars em falta:", missing);
+      res.status(500).type("html").send(
+        renderErrorPage(
+          "Configura\xE7\xE3o de autentica\xE7\xE3o incompleta",
+          `As seguintes vari\xE1veis de ambiente n\xE3o est\xE3o definidas no servidor: <code>${missing.join("</code>, <code>")}</code>.`,
+          "Adiciona-as em Vercel \u2192 Settings \u2192 Environment Variables e faz redeploy.\n\nV\xEA o diagn\xF3stico completo em: /api/oauth/_diag"
+        )
+      );
       return;
     }
-    const redirectUri = `${getOrigin(_req)}/api/oauth/callback`;
+    const state = crypto2.randomBytes(32).toString("base64url");
+    res.cookie(OAUTH_STATE_COOKIE, state, getStateCookieOptions(req));
+    const redirectUri = `${getOrigin(req)}/api/oauth/callback`;
     const scope = "openid email profile";
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", clientId);
@@ -4582,12 +9349,53 @@ function registerOAuthRoutes(app2) {
     url.searchParams.set("scope", scope);
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
+    url.searchParams.set("state", state);
     res.redirect(302, url.toString());
   });
   app2.get("/api/oauth/callback", async (req, res) => {
+    const googleError = typeof req.query.error === "string" ? req.query.error : void 0;
+    if (googleError) {
+      const description = typeof req.query.error_description === "string" ? req.query.error_description : "(sem descri\xE7\xE3o)";
+      console.error("[OAuth] Google devolveu erro:", googleError, description);
+      res.status(400).type("html").send(
+        renderErrorPage(
+          "A Google rejeitou o pedido de autentica\xE7\xE3o",
+          `C\xF3digo: <code>${googleError}</code>`,
+          `${description}
+
+Causa t\xEDpica: o redirect_uri enviado n\xE3o corresponde aos URIs autorizados na Google Cloud Console. Confirma em /api/oauth/_diag qual \xE9 o redirect_uri usado.`
+        )
+      );
+      return;
+    }
     const code = typeof req.query.code === "string" ? req.query.code : void 0;
+    const returnedState = typeof req.query.state === "string" ? req.query.state : void 0;
     if (!code) {
-      res.status(400).json({ error: "Authorization code is required" });
+      res.status(400).type("html").send(
+        renderErrorPage(
+          "Falta o c\xF3digo de autoriza\xE7\xE3o",
+          "O callback da Google chegou sem o par\xE2metro <code>code</code>.",
+          "Tenta de novo a partir de /api/oauth/login. Se persistir, verifica /api/oauth/_diag."
+        )
+      );
+      return;
+    }
+    const savedState = readCookie(req, OAUTH_STATE_COOKIE);
+    res.clearCookie(OAUTH_STATE_COOKIE, {
+      ...getSessionCookieOptions(req)
+    });
+    if (!savedState || !returnedState || !safeEquals(savedState, returnedState)) {
+      console.error("[OAuth] State inv\xE1lido:", {
+        hasSaved: !!savedState,
+        hasReturned: !!returnedState
+      });
+      res.status(400).type("html").send(
+        renderErrorPage(
+          "Estado OAuth inv\xE1lido ou expirado",
+          "O cookie de prote\xE7\xE3o CSRF n\xE3o foi recebido ou n\xE3o corresponde ao esperado.",
+          "Causas t\xEDpicas:\n\u2022 Passaram mais de 10 minutos entre clicar em 'Entrar' e voltar da Google\n\u2022 O dom\xEDnio do login \xE9 diferente do dom\xEDnio do callback (ex: preview vs production)\n\u2022 Cookies de terceiros bloqueados no browser\n\nFecha a janela, abre nova e tenta de novo a partir de /."
+        )
+      );
       return;
     }
     try {
@@ -4595,7 +9403,12 @@ function registerOAuthRoutes(app2) {
       const tokenResponse = await sdk.exchangeCodeForToken(code, redirectUri);
       const userInfo = await sdk.getUserInfo(tokenResponse.access_token);
       if (!userInfo.sub) {
-        res.status(400).json({ error: "Google user ID missing" });
+        res.status(400).type("html").send(
+          renderErrorPage(
+            "Resposta da Google sem identificador",
+            "A Google n\xE3o devolveu o <code>sub</code> (ID do utilizador)."
+          )
+        );
         return;
       }
       const openId = `google_${userInfo.sub}`;
@@ -4604,18 +9417,35 @@ function registerOAuthRoutes(app2) {
         name: userInfo.name || null,
         email: userInfo.email ?? null,
         loginMethod: "google",
-        lastSignedIn: /* @__PURE__ */ new Date()
+        lastSignedIn: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
       });
       const sessionToken = await sdk.createSessionToken(openId, {
         name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS
+        expiresInMs: SESSION_MAX_MS
       });
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.cookie(COOKIE_NAME, sessionToken, {
+        ...cookieOptions,
+        maxAge: SESSION_MAX_MS
+      });
       res.redirect(302, "/");
     } catch (error) {
+      const msg = error?.message || String(error);
       console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
+      res.status(500).type("html").send(
+        renderErrorPage(
+          "Falha ao concluir autentica\xE7\xE3o",
+          "Ocorreu um erro ao trocar o c\xF3digo por um token ou ao gravar o utilizador.",
+          `${msg}
+
+Verifica:
+\u2022 GOOGLE_CLIENT_SECRET est\xE1 correto no Vercel?
+\u2022 DATABASE_URL aponta para uma BD acess\xEDvel?
+\u2022 As tabelas (users) existem? Corre as migra\xE7\xF5es Drizzle.
+
+Diagn\xF3stico: /api/oauth/_diag \xB7 Sa\xFAde: /api/health`
+        )
+      );
     }
   });
 }
@@ -4623,6 +9453,25 @@ function getOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
   const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
   return `${proto}://${host}`;
+}
+function safeEquals(a, b) {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto2.timingSafeEqual(ab, bb);
+}
+function readCookie(req, name) {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  for (const pair of raw.split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx < 0) continue;
+    const k = pair.slice(0, idx).trim();
+    if (k === name) {
+      return decodeURIComponent(pair.slice(idx + 1).trim());
+    }
+  }
+  return null;
 }
 
 // server/routers.ts
@@ -5075,8 +9924,143 @@ function getLanguageName(langCode) {
 
 // server/routers.ts
 init_multipark();
+init_extrasDia();
+
+// server/extrasImport.ts
+init_db();
+var NIVEL_TO_EXTRA = {
+  junior: 1,
+  j\u00FAnior: 1,
+  senior: 2,
+  s\u00E9nior: 2,
+  terminal: 3,
+  master: 4
+};
+var KNOWN_COLUMNS = /* @__PURE__ */ new Set([
+  "nome",
+  "nivel",
+  "n\xEDvel",
+  "salario_mensal",
+  "sal\xE1rio_mensal",
+  "subsidio_alim_dia",
+  "subs\xEDdio_alim_dia",
+  "nif",
+  "nib",
+  "telefone",
+  "email",
+  "morada",
+  "nacionalidade",
+  "data_nascimento"
+]);
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (c === "," && !inQuotes) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+function normHeader(h) {
+  return h.toLowerCase().trim().replace(/\s+/g, "_");
+}
+function pick(row, ...keys) {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === "string" && v.trim().length > 0) return v.trim();
+  }
+  return void 0;
+}
+function parseDecimal(s) {
+  if (!s) return null;
+  const normalized = s.replace(",", ".");
+  const n = parseFloat(normalized);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n.toFixed(2);
+}
+async function importExtrasFromCsv(csvText, createdById) {
+  const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  const report = { parsed: 0, created: 0, errors: [], unknownColumns: [] };
+  if (lines.length < 2) {
+    report.errors.push({ rowIndex: 0, reason: "CSV vazio ou sem linhas de dados." });
+    return report;
+  }
+  const headers = parseCsvLine(lines[0]).map(normHeader);
+  for (const h of headers) {
+    if (!KNOWN_COLUMNS.has(h)) report.unknownColumns.push(h);
+  }
+  if (!headers.includes("nome")) {
+    report.errors.push({ rowIndex: 0, reason: "Falta coluna obrigat\xF3ria 'nome'." });
+    return report;
+  }
+  if (!headers.includes("nivel") && !headers.includes("n\xEDvel")) {
+    report.errors.push({ rowIndex: 0, reason: "Falta coluna obrigat\xF3ria 'nivel'." });
+    return report;
+  }
+  for (let i = 1; i < lines.length; i++) {
+    report.parsed++;
+    const cols = parseCsvLine(lines[i]);
+    const row = {};
+    for (let j = 0; j < headers.length; j++) row[headers[j]] = cols[j] ?? "";
+    const nome = pick(row, "nome");
+    if (!nome) {
+      report.errors.push({ rowIndex: i + 1, reason: "Nome em falta." });
+      continue;
+    }
+    const nivelRaw = pick(row, "nivel", "n\xEDvel")?.toLowerCase() ?? "";
+    const extraLevel = NIVEL_TO_EXTRA[nivelRaw];
+    if (!extraLevel) {
+      report.errors.push({
+        rowIndex: i + 1,
+        nome,
+        reason: `N\xEDvel inv\xE1lido '${nivelRaw}'. Usa junior, senior, terminal ou master.`
+      });
+      continue;
+    }
+    try {
+      await createEmployee({
+        fullName: nome,
+        email: pick(row, "email") ?? null,
+        phone: pick(row, "telefone") ?? null,
+        nif: pick(row, "nif") ?? null,
+        nib: pick(row, "nib") ?? null,
+        address: pick(row, "morada") ?? null,
+        birthDate: pick(row, "data_nascimento") ?? null,
+        nationality: pick(row, "nacionalidade") ?? null,
+        position: "extra",
+        extraLevel,
+        contractType: "extra",
+        monthlySalary: parseDecimal(pick(row, "salario_mensal", "sal\xE1rio_mensal")),
+        mealAllowancePerDay: parseDecimal(pick(row, "subsidio_alim_dia", "subs\xEDdio_alim_dia")),
+        isActive: 1
+      });
+      report.created++;
+    } catch (err) {
+      report.errors.push({ rowIndex: i + 1, nome, reason: err.message || String(err) });
+    }
+  }
+  return report;
+}
+
+// server/routers.ts
+init_db();
 
 // server/payrollPdf.ts
+init_db();
 import PDFDocument from "pdfkit";
 var MONTH_NAMES = [
   "Janeiro",
@@ -5267,6 +10251,7 @@ async function generatePayrollPdf(year, month) {
 }
 
 // server/payslipPdf.ts
+init_db();
 import PDFDocument2 from "pdfkit";
 var MONTH_NAMES2 = [
   "Janeiro",
@@ -5385,16 +10370,16 @@ async function generatePayslipPdf(year, month, employeeId) {
         rows.push([`  1/12 do sal\xE1rio base`, "", false]);
       }
     }
-    rows.forEach(([desc2, val, isBold], idx) => {
+    rows.forEach(([desc3, val, isBold], idx) => {
       const bgColor = idx % 2 === 0 ? "#ffffff" : "#f8f9fa";
       const rowH = 22;
       doc.save();
       doc.rect(startX, y, pageW, rowH).fillColor(bgColor).fill();
       doc.restore();
       if (isBold === false) {
-        doc.fontSize(8).font("Helvetica").fillColor("#888").text(desc2, startX + 10, y + 6, { width: pageW * 0.55 });
+        doc.fontSize(8).font("Helvetica").fillColor("#888").text(desc3, startX + 10, y + 6, { width: pageW * 0.55 });
       } else {
-        doc.fontSize(9).font("Helvetica").fillColor("#333").text(desc2, startX + 10, y + 6, { width: pageW * 0.55 });
+        doc.fontSize(9).font("Helvetica").fillColor("#333").text(desc3, startX + 10, y + 6, { width: pageW * 0.55 });
       }
       if (val) {
         doc.fontSize(9).font("Helvetica").fillColor("#333").text(val, startX + pageW * 0.55, y + 6, { width: pageW * 0.4, align: "right" });
@@ -5447,170 +10432,11 @@ async function generateAllPayslipsPdf(year, month) {
 
 // server/routers.ts
 init_multipark();
-
-// server/jobs/multiparkBookingSync.ts
-init_multipark();
-var projectMapCache = null;
-var projectMapCacheTime = 0;
-var CACHE_TTL = 5 * 60 * 1e3;
-async function getProjectMap() {
-  if (projectMapCache && Date.now() - projectMapCacheTime < CACHE_TTL) {
-    return projectMapCache;
-  }
-  const projects2 = await getProjects();
-  const map = /* @__PURE__ */ new Map();
-  for (const p of projects2) {
-    const key = p.name.toLowerCase().trim();
-    map.set(key, p.id);
-  }
-  projectMapCache = map;
-  projectMapCacheTime = Date.now();
-  return map;
-}
-function findProjectId(parkName, city, projectMap) {
-  if (!parkName) return void 0;
-  const parkLower = parkName.toLowerCase().trim();
-  const parkNorm = parkLower.replace(/\s*-\s*/g, " ");
-  if (city) {
-    const cityLower = city.toLowerCase().trim();
-    const composite = `${parkNorm} ${cityLower}`;
-    if (projectMap.has(composite)) return projectMap.get(composite);
-    const composite2 = `${parkLower} ${cityLower}`;
-    if (projectMap.has(composite2)) return projectMap.get(composite2);
-  }
-  if (projectMap.has(parkNorm)) return projectMap.get(parkNorm);
-  if (projectMap.has(parkLower)) return projectMap.get(parkLower);
-  let bestMatch = null;
-  for (const [key, id] of projectMap) {
-    if (key.includes(parkNorm) || parkNorm.includes(key)) {
-      if (!bestMatch || key.length > bestMatch.key.length) {
-        bestMatch = { key, id };
-      }
-    }
-  }
-  if (bestMatch) return bestMatch.id;
-  if (city) {
-    const cityLower = city.toLowerCase().trim();
-    for (const [key, id] of projectMap) {
-      if (key.includes(parkNorm) && key.includes(cityLower)) return id;
-    }
-  }
-  return void 0;
-}
-function parseMultiparkDate(dateStr) {
-  if (!dateStr) return null;
-  const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
-  if (match) {
-    const [, day, month, year, hours, minutes] = match;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
-  }
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
-}
-function bookingToRecord(booking, projectMap) {
-  const client = booking.customer || booking.client;
-  const pricing = booking.pricing;
-  const park = booking.park;
-  const parkName = park?.name || booking.parkName;
-  const city = park?.city;
-  const projectId = findProjectId(parkName, city, projectMap);
-  return {
-    externalId: booking.id,
-    bookingNumber: booking.bookingNumber || booking.allocation || null,
-    status: booking.status || null,
-    checkIn: parseMultiparkDate(booking.checkInDate || booking.checkIn),
-    checkOut: parseMultiparkDate(booking.checkOutDate || booking.checkOut),
-    checkInTime: booking.checkInTime || null,
-    checkOutTime: booking.checkOutTime || null,
-    parkingType: booking.parkingType || park?.types?.[0] || null,
-    vehicleType: booking.vehicle?.type || booking.vehicleType || null,
-    clientFirstName: client?.firstName || null,
-    clientLastName: client?.lastName || null,
-    clientEmail: client?.email || null,
-    clientPhone: client?.phoneNumber || null,
-    clientNif: client?.nif || null,
-    licensePlate: booking.vehicle?.licensePlate || null,
-    vehicleBrand: booking.vehicle?.brand || null,
-    vehicleModel: booking.vehicle?.model || null,
-    vehicleColor: booking.vehicle?.color || null,
-    totalPrice: pricing?.totalPrice?.toString() ?? pricing?.total?.toString() ?? null,
-    currency: pricing?.currency || "EUR",
-    parkId: park?.id || booking.parkId || null,
-    parkName: parkName || null,
-    city: city || null,
-    projectId: projectId || null,
-    deliveryService: booking.deliveryService ? 1 : 0,
-    deliveryAddress: booking.deliveryAddress || null,
-    pickupAddress: booking.pickupAddress || null,
-    campaign: booking.partnerName || booking.discountCode || booking.campaign || null,
-    parkingPrice: pricing?.parkingPrice?.toString() ?? null,
-    deliveryCharges: pricing?.deliveryCharges?.toString() ?? null,
-    extrasTotal: pricing?.extraServicesTotal?.toString() ?? null,
-    discount: pricing?.discount?.toString() ?? null,
-    remainingToPay: pricing?.remainingToPay?.toString() ?? null,
-    arrivalFlight: booking.flightInfo?.arrivalFlight || booking.arrivalFlight || null,
-    departureFlight: booking.flightInfo?.departureFlight || booking.departureFlight || null,
-    cancelledAt: parseMultiparkDate(booking.cancelledAt),
-    cancelReason: booking.cancelReason || null,
-    notes: booking.notes || null,
-    rawJson: JSON.stringify(booking),
-    bookingCreatedAt: parseMultiparkDate(booking.createdAt)
-  };
-}
-async function syncBookings(opts) {
-  const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
-  const projectMap = await getProjectMap();
-  let totalProcessed = 0;
-  let totalCreated = 0;
-  let totalUpdated = 0;
-  const errors = [];
-  const parks = getConfiguredParks();
-  const parksToSync = parks.length > 0 ? parks : [null];
-  for (const park of parksToSync) {
-    const apiKey = park ? getParkApiKey(park) : void 0;
-    const parkLabel = park ? `${park.name} ${park.city}` : "global";
-    for (const actionType of actionTypes) {
-      try {
-        const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
-        if (!report?.bookings?.length) continue;
-        for (const booking of report.bookings) {
-          try {
-            const record = bookingToRecord(booking, projectMap);
-            const result = await upsertMultiparkBooking(record);
-            totalProcessed++;
-            if (result?.action === "created") totalCreated++;
-            else totalUpdated++;
-          } catch (err) {
-            errors.push(`Booking ${booking.id}: ${err.message}`);
-          }
-        }
-      } catch (err) {
-        errors.push(`${parkLabel}/${actionType}: ${err.message}`);
-      }
-    }
-  }
-  await createSyncLog({
-    syncType: "api_sync",
-    status: errors.length === 0 ? "success" : "partial",
-    recordsProcessed: totalProcessed,
-    recordsCreated: totalCreated,
-    recordsUpdated: totalUpdated - totalCreated,
-    errorMessage: errors.length > 0 ? errors.join("; ") : null,
-    triggeredById: opts.triggeredById || null
-  });
-  return {
-    success: errors.length === 0,
-    processed: totalProcessed,
-    created: totalCreated,
-    updated: totalUpdated - totalCreated,
-    errors
-  };
-}
-var SYNC_INTERVAL = 15 * 60 * 1e3;
+init_multiparkBookingSync();
 
 // server/zello.ts
 init_env();
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 var NETWORK = process.env.ZELLO_NETWORK ?? "airpark";
 var BASE_URL = `https://${NETWORK}.zellowork.com`;
 var USERNAME = process.env.ZELLO_USERNAME ?? "";
@@ -5630,9 +10456,9 @@ async function authenticate() {
   if (!USERNAME) throw new Error("ZELLO_USERNAME not configured");
   if (!PASSWORD) throw new Error("ZELLO_PASSWORD not configured");
   const { token, sid } = await getToken();
-  const md5pass = crypto2.createHash("md5").update(PASSWORD).digest("hex");
+  const md5pass = crypto3.createHash("md5").update(PASSWORD).digest("hex");
   const combined = md5pass + token + apiKey;
-  const authHash = crypto2.createHash("md5").update(combined).digest("hex");
+  const authHash = crypto3.createHash("md5").update(combined).digest("hex");
   const params = new URLSearchParams({ username: USERNAME, password: authHash });
   const res = await fetch(`${BASE_URL}/user/login?sid=${sid}`, {
     method: "POST",
@@ -5734,6 +10560,7 @@ async function getZelloUserLocation(username) {
 }
 
 // server/jobs/dailyDriverCollection.ts
+init_db();
 init_storage();
 init_notification();
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -5857,11 +10684,11 @@ async function collectDailyDriverData(targetDate) {
     }
     const users2 = await getZelloUsers();
     const nonAdminUsers = users2.filter((u) => !u.admin);
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay2 = new Date(targetDate);
+    startOfDay2.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
-    const startTs = Math.floor(startOfDay.getTime() / 1e3);
+    const startTs = Math.floor(startOfDay2.getTime() / 1e3);
     const endTs = Math.floor(endOfDay.getTime() / 1e3);
     const speedLimit = await getDefaultSpeedLimit();
     const threshold = speedLimit ? speedLimit.maxSpeed * (1 + speedLimit.tolerancePercent / 100) : 999;
@@ -5895,7 +10722,7 @@ async function collectDailyDriverData(targetDate) {
         await createDailyDriverHistory({
           zelloUsername: user.name,
           displayName: user.fullName || user.name,
-          date: targetDate,
+          date: targetDate.toISOString().slice(0, 19).replace("T", " "),
           totalKm: String(metrics.totalKm),
           hoursWorked: String(metrics.hoursWorked),
           hoursStopped: String(metrics.hoursStopped),
@@ -5915,8 +10742,8 @@ async function collectDailyDriverData(targetDate) {
             displayName: user.fullName || user.name,
             alertType: "gps_off",
             message: `${user.fullName || user.name} tinha o GPS desligado em ${dateStr}`,
-            notificationSent: true,
-            occurredAt: targetDate
+            notificationSent: 1,
+            occurredAt: targetDate.toISOString().slice(0, 19).replace("T", " ")
           });
         }
       } catch (userError) {
@@ -5955,11 +10782,186 @@ function requireRole(userRole, minRole) {
     throw new TRPCError3({ code: "FORBIDDEN", message: "Acesso n\xE3o autorizado." });
   }
 }
+async function applyMigration0044() {
+  const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+  const { MIGRATION_0044_STATEMENTS: MIGRATION_0044_STATEMENTS2, IDEMPOTENT_ERROR_CODES: IDEMPOTENT_ERROR_CODES2 } = await Promise.resolve().then(() => (init_migration_0044(), migration_0044_exports));
+  const { sql: sql5 } = await import("drizzle-orm");
+  const db = await getDb3();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors = [];
+  for (const stmt of MIGRATION_0044_STATEMENTS2) {
+    try {
+      await db.execute(sql5.raw(stmt));
+      ok += 1;
+    } catch (err) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES2.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
 var appRouter = router({
   system: systemRouter,
+  // ── ADMIN (one-shot migrations) ───────────────────────────────────────────
+  admin: router({
+    runMigration0044: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0044();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0044_rh_revamp: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`
+      });
+      return report;
+    }),
+    // Apaga um batch de duplicados em multipark_bookings. Cliente itera até
+    // deleted === 0. Evita timeout do Vercel.
+    fixMultiparkDuplicatesBatch: protectedProcedure.input(z2.object({ batchSize: z2.number().int().min(100).max(5e3).optional() }).optional()).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql5 } = await import("drizzle-orm");
+      const db = await getDb3();
+      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const batch = input?.batchSize ?? 1e3;
+      const beforeRes = await db.execute(sql5`SELECT COUNT(*) AS total FROM multipark_bookings`);
+      const before = Array.isArray(beforeRes[0]) ? beforeRes[0] : beforeRes;
+      const totalBefore = Number(before[0]?.total ?? 0);
+      const delRes = await db.execute(sql5`
+          DELETE FROM multipark_bookings WHERE id IN (
+            SELECT id FROM (
+              SELECT b1.id FROM multipark_bookings b1
+              INNER JOIN multipark_bookings b2
+                ON b1.externalId = b2.externalId
+               AND (
+                     b1.updatedAt < b2.updatedAt
+                  OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id)
+               )
+              LIMIT ${sql5.raw(String(batch))}
+            ) AS t
+          )
+        `);
+      const meta = Array.isArray(delRes[0]) ? delRes[0] : delRes;
+      const affectedRows = Number(meta?.affectedRows ?? 0);
+      const afterRes = await db.execute(sql5`SELECT COUNT(*) AS total FROM multipark_bookings`);
+      const after = Array.isArray(afterRes[0]) ? afterRes[0] : afterRes;
+      const totalAfter = Number(after[0]?.total ?? 0);
+      return {
+        totalBefore,
+        totalAfter,
+        deleted: affectedRows || totalBefore - totalAfter,
+        batchSize: batch
+      };
+    }),
+    // Backfill: atribui um projeto fallback (default = "Multipark" se existir,
+    // senão o primeiro grupo top-level) a todos os colaboradores activos sem
+    // projectId. Devolve quantos foram afectados e qual o projeto usado.
+    backfillEmployeeProject: protectedProcedure.input(z2.object({ projectId: z2.number().optional() }).optional()).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql5, isNull: isNull3, and: andOp, eq: eq7 } = await import("drizzle-orm");
+      const { employees: employees2, projects: projects2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const db = await getDb3();
+      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      let fallbackId = input?.projectId;
+      let fallbackName = "";
+      if (!fallbackId) {
+        const allProjects = await db.select().from(projects2);
+        const mp = allProjects.find((p) => /^multipark$/i.test(p.name.trim()));
+        if (mp) {
+          fallbackId = mp.id;
+          fallbackName = mp.name;
+        } else {
+          const top = allProjects.find((p) => p.level === "group");
+          if (top) {
+            fallbackId = top.id;
+            fallbackName = top.name;
+          }
+        }
+      } else {
+        const [p] = await db.select({ name: projects2.name }).from(projects2).where(eq7(projects2.id, fallbackId)).limit(1);
+        fallbackName = p?.name ?? "";
+      }
+      if (!fallbackId) {
+        throw new TRPCError3({
+          code: "PRECONDITION_FAILED",
+          message: "N\xE3o h\xE1 projeto fallback. Cria um projeto top-level 'Multipark' ou indica projectId no input."
+        });
+      }
+      const beforeRes = await db.select({ c: sql5`COUNT(*)` }).from(employees2).where(andOp(eq7(employees2.isActive, 1), isNull3(employees2.projectId)));
+      const before = Number(beforeRes[0]?.c ?? 0);
+      await db.update(employees2).set({ projectId: fallbackId }).where(andOp(eq7(employees2.isActive, 1), isNull3(employees2.projectId)));
+      await logActivity({
+        userId: ctx.user.id,
+        action: "backfill",
+        entity: "employee",
+        details: `Backfill projectId=${fallbackId} (${fallbackName}) em ${before} colaboradores`
+      });
+      return { affected: before, projectId: fallbackId, projectName: fallbackName };
+    }),
+    // Reforça o UNIQUE depois dos batches terminarem.
+    enforceMultiparkUnique: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql5 } = await import("drizzle-orm");
+      const db = await getDb3();
+      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const steps = [];
+      try {
+        await db.execute(sql5`ALTER TABLE multipark_bookings DROP INDEX multipark_bookings_externalId_unique`);
+        steps.push({ step: "drop_index", ok: true });
+      } catch (e) {
+        steps.push({ step: "drop_index", ok: false, error: e?.code ?? e?.message });
+      }
+      try {
+        await db.execute(sql5`ALTER TABLE multipark_bookings ADD UNIQUE INDEX multipark_bookings_externalId_unique (externalId)`);
+        steps.push({ step: "create_unique", ok: true });
+      } catch (e) {
+        steps.push({ step: "create_unique", ok: false, error: e?.code ?? e?.message });
+      }
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `enforceMultiparkUnique: ${JSON.stringify(steps)}`
+      });
+      return { steps };
+    })
+  }),
   // ── AUTH ────────────────────────────────────────────────────────────────────
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      const u = opts.ctx.user;
+      if (!u) return u;
+      try {
+        const emp = await getEmployeeByUserId(u.id);
+        if (!emp) return { ...u, employee: null, docsStatus: null };
+        let docsStatus = null;
+        if (emp.employee.position === "extra") {
+          docsStatus = await checkExtraDocsCompliance(emp.employee.id);
+        }
+        return {
+          ...u,
+          employee: {
+            id: emp.employee.id,
+            fullName: emp.employee.fullName,
+            position: emp.employee.position,
+            loginBlocked: Boolean(emp.employee.loginBlocked),
+            loginBlockedReason: emp.employee.loginBlockedReason
+          },
+          docsStatus
+        };
+      } catch {
+        return u;
+      }
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -6080,16 +11082,16 @@ var appRouter = router({
     acceptInvite: publicProcedure.input(z2.object({ token: z2.string() })).query(async ({ input }) => {
       const invite = await getInviteByToken(input.token);
       if (!invite) return { valid: false, reason: "Token inv\xE1lido" };
-      if (invite.status === "accepted") return { valid: false, reason: "Este convite j\xE1 foi utilizado" };
-      if (/* @__PURE__ */ new Date() > invite.expiresAt) return { valid: false, reason: "Este convite expirou" };
+      if (invite.inviteStatus === "accepted") return { valid: false, reason: "Este convite j\xE1 foi utilizado" };
+      if (/* @__PURE__ */ new Date() > new Date(invite.expiresAt)) return { valid: false, reason: "Este convite expirou" };
       return { valid: true, email: invite.email, userId: invite.userId };
     }),
     completeInvite: publicProcedure.input(z2.object({ token: z2.string() })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED", message: "Tens de fazer login primeiro" });
       const invite = await getInviteByToken(input.token);
       if (!invite) throw new TRPCError3({ code: "NOT_FOUND", message: "Token inv\xE1lido" });
-      if (invite.status === "accepted") throw new TRPCError3({ code: "BAD_REQUEST", message: "Convite j\xE1 utilizado" });
-      if (/* @__PURE__ */ new Date() > invite.expiresAt) throw new TRPCError3({ code: "BAD_REQUEST", message: "Convite expirado" });
+      if (invite.inviteStatus === "accepted") throw new TRPCError3({ code: "BAD_REQUEST", message: "Convite j\xE1 utilizado" });
+      if (/* @__PURE__ */ new Date() > new Date(invite.expiresAt)) throw new TRPCError3({ code: "BAD_REQUEST", message: "Convite expirado" });
       await linkInviteToOAuthUser(
         invite.userId,
         ctx.user.openId,
@@ -6180,7 +11182,10 @@ var appRouter = router({
   }),
   // ── TASKS (KANBAN) ────────────────────────────────────────────────────────────
   tasks: router({
-    list: protectedProcedure.input(z2.object({ projectId: z2.number().optional(), assigneeId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ input }) => getTasks(input ?? {})),
+    list: protectedProcedure.input(z2.object({ projectId: z2.number().optional(), assigneeId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ input }) => {
+      const { getTasksWithAssignees: getTasksWithAssignees2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getTasksWithAssignees2(input ?? {});
+    }),
     getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
       const task = await getTaskById(input.id);
       if (!task) return null;
@@ -6198,22 +11203,21 @@ var appRouter = router({
       priority: z2.enum(["low", "medium", "high", "urgent"]).default("medium"),
       dueDate: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      const result = await createTask({
+      const primaryAssignee = input.assigneeIds?.[0] ?? input.assigneeId ?? null;
+      const newId = await createTask({
         title: input.title,
         description: input.description ?? null,
         projectId: input.projectId ?? null,
-        assigneeId: input.assigneeId ?? null,
+        assigneeId: primaryAssignee,
         createdById: ctx.user.id,
         taskPriority: input.priority,
-        dueDate: input.dueDate ? new Date(input.dueDate) : null
+        dueDate: input.dueDate ? new Date(input.dueDate).toISOString().slice(0, 19).replace("T", " ") : null
       });
       if (input.assigneeIds && input.assigneeIds.length > 0) {
-        const tasks2 = await getTasks({});
-        const newest = tasks2[0];
-        if (newest) await setTaskAssignees(newest.id, input.assigneeIds);
+        await setTaskAssignees(newId, input.assigneeIds);
       }
-      await logActivity({ userId: ctx.user.id, action: "create", entity: "task", details: input.title });
-      return { success: true };
+      await logActivity({ userId: ctx.user.id, action: "create", entity: "task", entityId: newId, details: input.title });
+      return { id: newId };
     }),
     update: protectedProcedure.input(z2.object({
       id: z2.number(),
@@ -6230,10 +11234,15 @@ var appRouter = router({
       const data = { ...rest };
       if (status !== void 0) data.taskStatus = status;
       if (priority !== void 0) data.taskPriority = priority;
-      if (dueDate !== void 0) data.dueDate = dueDate ? new Date(dueDate) : null;
+      if (dueDate !== void 0) {
+        data.dueDate = dueDate ? new Date(dueDate).toISOString().slice(0, 19).replace("T", " ") : null;
+      }
       if (status === "done") {
-        data.completedAt = /* @__PURE__ */ new Date();
-        data.notifiedComplete = false;
+        data.completedAt = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+        data.notifiedComplete = 0;
+      }
+      if (assigneeIds !== void 0) {
+        data.assigneeId = assigneeIds[0] ?? null;
       }
       await updateTask(id, data);
       if (assigneeIds !== void 0) {
@@ -6250,7 +11259,45 @@ var appRouter = router({
     // Check and send notifications for overdue/completed tasks
     checkNotifications: protectedProcedure.mutation(async ({ ctx }) => {
       requireRole(ctx.user.role, "admin");
+      const { createNotification: createNotification2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_notification(), notification_exports));
       const results = [];
+      async function notifyAssignees(taskTitle, taskId, assignees, kind) {
+        const link = `/tarefas?focus=${taskId}`;
+        const title = kind === "overdue" ? `\u26A0\uFE0F Tarefa em atraso: ${taskTitle}` : `\u2705 Tarefa conclu\xEDda: ${taskTitle}`;
+        for (const a of assignees) {
+          const emp = a.employee;
+          if (!emp) continue;
+          if (emp.userId) {
+            try {
+              await createNotification2({
+                userId: emp.userId,
+                title,
+                body: kind === "overdue" ? `A tarefa "${taskTitle}" ultrapassou o prazo.` : `A tarefa "${taskTitle}" foi marcada como conclu\xEDda.`,
+                kind: "task",
+                link
+              });
+            } catch (e) {
+              console.warn("[tasks notify] in-app:", e);
+            }
+          }
+          if (emp.email) {
+            try {
+              await sendEmail2({
+                to: emp.email,
+                subject: title,
+                text: kind === "overdue" ? `Ol\xE1 ${emp.fullName ?? ""},
+
+A tarefa "${taskTitle}" ultrapassou o prazo. Por favor verifica o seu estado.` : `Ol\xE1 ${emp.fullName ?? ""},
+
+A tarefa "${taskTitle}" foi marcada como conclu\xEDda. Obrigado!`
+              });
+            } catch (e) {
+              console.warn("[tasks notify] email:", e);
+            }
+          }
+        }
+      }
       const overdue = await getOverdueTasks();
       for (const task of overdue) {
         const assignees = await getTaskAssignees(task.id);
@@ -6271,6 +11318,7 @@ var appRouter = router({
 Respons\xE1veis: ${assigneeNames || "Nenhum"}
 Hierarquia: ${managers.join(" \u2192 ") || "N/A"}`
         });
+        await notifyAssignees(task.title, task.id, assignees, "overdue");
         await markTaskNotified(task.id, "notifiedOverdue");
         results.push(`Overdue: ${task.title}`);
       }
@@ -6284,6 +11332,7 @@ Hierarquia: ${managers.join(" \u2192 ") || "N/A"}`
 Respons\xE1veis: ${assigneeNames || "Nenhum"}
 Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateString("pt-PT") : "agora"}`
         });
+        await notifyAssignees(task.title, task.id, assignees, "complete");
         await markTaskNotified(task.id, "notifiedComplete");
         results.push(`Completed: ${task.title}`);
       }
@@ -6341,7 +11390,10 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         expenseDate: z2.string(),
         paymentDueDate: z2.string().nullable().optional(),
         categoryId: z2.number().optional(),
-        projectId: z2.number().optional(),
+        // projectId obrigatório: cada despesa tem de ir para um centro
+        // de custos (grupo / cidade / marca / projeto). O rollup
+        // hierárquico do ProjectCostsDashboard agrega para cima.
+        projectId: z2.number(),
         buyerId: z2.number().optional(),
         invoiceImageUrl: z2.string().optional(),
         invoiceImageKey: z2.string().optional(),
@@ -6355,15 +11407,15 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         amount: input.amount,
         currency: input.currency,
         paymentMethod: input.paymentMethod ?? null,
-        expenseDate: new Date(input.expenseDate),
-        paymentDueDate: input.paymentDueDate && input.paymentDueDate !== "null" ? new Date(input.paymentDueDate) : null,
+        expenseDate: new Date(input.expenseDate).toISOString().slice(0, 19).replace("T", " "),
+        paymentDueDate: input.paymentDueDate && input.paymentDueDate !== "null" ? new Date(input.paymentDueDate).toISOString().slice(0, 19).replace("T", " ") : null,
         categoryId: input.categoryId ?? null,
-        projectId: input.projectId ?? null,
+        projectId: input.projectId,
         buyerId: input.buyerId ?? null,
         insertedById: ctx.user.id,
         invoiceImageUrl: input.invoiceImageUrl ?? null,
         invoiceImageKey: input.invoiceImageKey ?? null,
-        extractedByAi: input.extractedByAi,
+        extractedByAi: input.extractedByAi ? 1 : 0,
         notes: input.notes ?? null,
         status: "pending"
       });
@@ -6577,7 +11629,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         await notifyOwner({
           title: `\u26A0\uFE0F ${overdue.length} despesa(s) em atraso`,
           content: overdue.map(
-            (o) => `\u2022 ${o.expense.supplier ?? "Sem fornecedor"}: ${o.expense.amount}\u20AC (venceu em ${o.expense.paymentDueDate?.toLocaleDateString("pt-PT")})`
+            (o) => `\u2022 ${o.expense.supplier ?? "Sem fornecedor"}: ${o.expense.amount}\u20AC (venceu em ${o.expense.paymentDueDate ? new Date(o.expense.paymentDueDate).toLocaleDateString("pt-PT") : "\u2014"})`
           ).join("\n")
         });
       }
@@ -6586,9 +11638,18 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
   }),
   // ── LOGSS ───────────────────────────────────────────────────────────────────────────────────
   logs: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
+    list: protectedProcedure.input(z2.object({
+      limit: z2.number().int().min(1).max(2e3).optional(),
+      entity: z2.string().optional(),
+      action: z2.string().optional(),
+      userId: z2.number().optional()
+    }).optional()).query(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "super_admin");
-      return getActivityLogs(200);
+      return getActivityLogs(input?.limit ?? 500, {
+        entity: input?.entity,
+        action: input?.action,
+        userId: input?.userId
+      });
     })
   }),
   // ── RH ───────────────────────────────────────────────────────────────────────────────────────
@@ -6596,6 +11657,58 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // ── MY PROFILE (for extra/low-role users) ──────────────────────────────────────────────────
     me: protectedProcedure.query(async ({ ctx }) => {
       return getEmployeeByUserId(ctx.user.id);
+    }),
+    // Resumo do mês actual para o próprio colaborador: horas + valor a receber.
+    // Admin pode ver de outros passando employeeId; o próprio só vê o seu.
+    myMonthSummary: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), year: z2.number().optional(), month: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      let employeeId = input?.employeeId;
+      if (!employeeId) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
+        employeeId = me.employee.id;
+      }
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me || me.employee.id !== employeeId) {
+          throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+        }
+      }
+      const now = /* @__PURE__ */ new Date();
+      const year = input?.year ?? now.getFullYear();
+      const month = input?.month ?? now.getMonth() + 1;
+      const payroll = await getPayrollData(year, month);
+      const row = payroll.find((r) => r.employeeId === employeeId);
+      if (!row) return null;
+      return {
+        year,
+        month,
+        fullName: row.fullName,
+        isExtra: row.isExtra,
+        totalHours: row.totalHours,
+        daysWorked: row.daysWorked,
+        hourlyRate: row.hourlyRate,
+        baseSalary: row.baseSalary,
+        extraPayment: row.extraPayment,
+        overtimePayment: row.overtimePayment,
+        nightPayment: row.nightPayment,
+        weekendPayment: row.weekendPayment,
+        mealAllowance: row.mealAllowance,
+        totalPayment: row.totalPayment,
+        tsuEmployee: row.tsuEmployee,
+        irsEstimate: row.irsEstimate,
+        netEstimate: row.netEstimate
+      };
+    }),
+    // ── ROSTER MÍNIMO ──────────────────────────────────────────────────────────────────────────
+    // Lista pública (id + fullName) para selectors em qualquer página
+    // (atribuir responsáveis, condutores envolvidos, etc.). Sem requireRole
+    // para que frontoffice/team_leader/extra possam usar dropdowns também.
+    roster: protectedProcedure.input(z2.object({ activeOnly: z2.boolean().optional() }).optional()).query(async ({ input }) => {
+      const rows = await getAllEmployees({ isActive: input?.activeOnly ?? true });
+      return rows.map((row) => ({
+        id: row.employee.id,
+        fullName: row.employee.fullName
+      }));
     }),
     // ── STATS ──────────────────────────────────────────────────────────────────────────────────
     stats: protectedProcedure.query(async ({ ctx }) => {
@@ -6619,7 +11732,8 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     }),
     create: protectedProcedure.input(z2.object({
       fullName: z2.string().min(1),
-      email: z2.string().email().optional(),
+      email: z2.string().email(),
+      multiparkAgentName: z2.string().min(1, "Nome Multipark \xE9 obrigat\xF3rio"),
       phone: z2.string().optional(),
       nif: z2.string().optional(),
       nib: z2.string().optional(),
@@ -6627,9 +11741,9 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       birthDate: z2.string().optional(),
       nationality: z2.string().optional(),
       position: z2.enum(["director", "supervisor", "team_leader", "backoffice", "frontoffice", "senior_driver", "driver", "extra"]),
-      extraLevel: z2.number().min(1).max(5).optional(),
+      extraLevel: z2.number().min(1).max(4).optional(),
       department: z2.string().optional(),
-      projectId: z2.number().optional(),
+      projectId: z2.number({ message: "Centro de custos obrigat\xF3rio" }),
       contractType: z2.enum(["permanent", "fixed_term", "extra"]).optional(),
       contractStart: z2.string().optional(),
       contractEnd: z2.string().optional(),
@@ -6638,29 +11752,56 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       userId: z2.number().optional()
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "admin");
+      let userId = input.userId ?? null;
+      if (!userId) {
+        const existing = await getUserByEmail(input.email);
+        if (existing) {
+          userId = existing.id;
+        } else {
+          const role = input.position === "extra" ? "extra" : "user";
+          const created = await createManualUser({
+            name: input.fullName,
+            email: input.email,
+            role
+          });
+          userId = created?.id ?? null;
+        }
+      }
       await createEmployee({
         fullName: input.fullName,
-        email: input.email ?? null,
+        email: input.email,
+        multiparkAgentName: input.multiparkAgentName,
         phone: input.phone ?? null,
         nif: input.nif ?? null,
         nib: input.nib ?? null,
         address: input.address ?? null,
-        birthDate: input.birthDate ? new Date(input.birthDate) : null,
+        birthDate: input.birthDate ? new Date(input.birthDate).toISOString().slice(0, 19).replace("T", " ") : null,
         nationality: input.nationality ?? null,
         position: input.position,
         extraLevel: input.extraLevel ?? null,
         department: input.department ?? null,
-        projectId: input.projectId ?? null,
+        projectId: input.projectId,
         contractType: input.contractType ?? "permanent",
-        contractStart: input.contractStart ? new Date(input.contractStart) : null,
-        contractEnd: input.contractEnd ? new Date(input.contractEnd) : null,
+        contractStart: input.contractStart ? new Date(input.contractStart).toISOString().slice(0, 19).replace("T", " ") : null,
+        contractEnd: input.contractEnd ? new Date(input.contractEnd).toISOString().slice(0, 19).replace("T", " ") : null,
         monthlySalary: input.monthlySalary ?? null,
         mealAllowancePerDay: input.mealAllowancePerDay ?? null,
-        userId: input.userId ?? null,
-        isActive: true
+        userId,
+        isActive: 1
       });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "employee", details: `Colaborador criado: ${input.fullName}` });
-      return { success: true };
+      return { success: true, userId };
+    }),
+    importExtras: protectedProcedure.input(z2.object({ csv: z2.string().min(1) })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const report = await importExtrasFromCsv(input.csv, ctx.user.id);
+      await logActivity({
+        userId: ctx.user.id,
+        action: "import",
+        entity: "employee",
+        details: `Import extras CSV: ${report.created} criados, ${report.errors.length} erros (de ${report.parsed} linhas)`
+      });
+      return report;
     }),
     update: protectedProcedure.input(z2.object({
       id: z2.number(),
@@ -6811,7 +11952,12 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         isWorkDay: z2.boolean()
       })).mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
-        await upsertSchedule(input);
+        await upsertSchedule({ ...input, isWorkDay: input.isWorkDay ? 1 : 0 });
+        return { success: true };
+      }),
+      delete: protectedProcedure.input(z2.object({ employeeId: z2.number(), weekday: z2.number().min(0).max(6) })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await deleteSchedule(input.employeeId, input.weekday);
         return { success: true };
       })
     }),
@@ -6834,7 +11980,20 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         locationName: z2.string().optional(),
         notes: z2.string().optional()
       })).mutation(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) {
+            throw new TRPCError3({ code: "FORBIDDEN", message: "S\xF3 podes picar o teu pr\xF3prio ponto" });
+          }
+        }
+        const recent = await getTimeRecords(input.employeeId);
+        const last = recent[0];
+        if (last && last.type === "check_in") {
+          throw new TRPCError3({
+            code: "BAD_REQUEST",
+            message: "J\xE1 tens uma entrada em aberto. Faz check-out primeiro."
+          });
+        }
         let photoUrl = null;
         let photoKey = null;
         if (input.photoBase64 && input.mimeType) {
@@ -6849,7 +12008,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         await createTimeRecord({
           employeeId: input.employeeId,
           type: "check_in",
-          recordedAt: /* @__PURE__ */ new Date(),
+          recordedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
           photoUrl,
           photoKey,
           latitude: input.latitude ?? null,
@@ -6869,7 +12028,20 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         locationName: z2.string().optional(),
         notes: z2.string().optional()
       })).mutation(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) {
+            throw new TRPCError3({ code: "FORBIDDEN", message: "S\xF3 podes picar o teu pr\xF3prio ponto" });
+          }
+        }
+        const records = await getTimeRecords(input.employeeId);
+        const last = records[0];
+        if (!last || last.type !== "check_in") {
+          throw new TRPCError3({
+            code: "BAD_REQUEST",
+            message: "N\xE3o tens entrada em aberto. Faz check-in primeiro."
+          });
+        }
         let photoUrl = null;
         let photoKey = null;
         if (input.photoBase64 && input.mimeType) {
@@ -6881,17 +12053,12 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
           photoUrl = result.url;
           photoKey = key;
         }
-        const records = await getTimeRecords(input.employeeId);
-        const lastCheckIn = records.find((r) => r.type === "check_in");
-        let hoursWorked = null;
-        if (lastCheckIn) {
-          const diff = ((/* @__PURE__ */ new Date()).getTime() - new Date(lastCheckIn.recordedAt).getTime()) / 36e5;
-          hoursWorked = diff.toFixed(2);
-        }
+        const diff = ((/* @__PURE__ */ new Date()).getTime() - new Date(last.recordedAt).getTime()) / 36e5;
+        const hoursWorked = diff.toFixed(2);
         await createTimeRecord({
           employeeId: input.employeeId,
           type: "check_out",
-          recordedAt: /* @__PURE__ */ new Date(),
+          recordedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
           photoUrl,
           photoKey,
           latitude: input.latitude ?? null,
@@ -6904,7 +12071,12 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         return { success: true, hoursWorked };
       }),
       monthlyHours: protectedProcedure.input(z2.object({ employeeId: z2.number(), year: z2.number(), month: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) {
+            throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+          }
+        }
         return getMonthlyHours(input.employeeId, input.year, input.month);
       })
     }),
@@ -6920,7 +12092,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       const fileName = `folha_ordenados_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
       const key = `payroll/${fileName}_${Date.now()}.pdf`;
       const { url } = await storagePut2(key, pdfBuffer, "application/pdf");
-      await savePayslipRecord({ year: input.year, month: input.month, type: "payroll", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+      await savePayslipRecord({ year: input.year, month: input.month, payslipType: "payroll", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
       return { url, fileName };
     }),
     payslipPdf: protectedProcedure.input(z2.object({ year: z2.number(), month: z2.number().min(1).max(12), employeeId: z2.number() })).mutation(async ({ ctx, input }) => {
@@ -6933,7 +12105,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       const fileName = `recibo_${empName.replace(/[^a-zA-Z0-9]/g, "_")}_${input.year}_${String(input.month).padStart(2, "0")}.pdf`;
       const key = `payslips/${fileName}_${Date.now()}.pdf`;
       const { url } = await storagePut2(key, pdfBuffer, "application/pdf");
-      await savePayslipRecord({ employeeId: input.employeeId, employeeName: empName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+      await savePayslipRecord({ employeeId: input.employeeId, employeeName: empName, year: input.year, month: input.month, payslipType: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
       return { url };
     }),
     allPayslipsPdf: protectedProcedure.input(z2.object({ year: z2.number(), month: z2.number().min(1).max(12) })).mutation(async ({ ctx, input }) => {
@@ -6947,7 +12119,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         const key = `payslips/${fileName}_${Date.now()}.pdf`;
         const { url } = await storagePut2(key, ps.buffer, "application/pdf");
         results.push({ employeeId: ps.employeeId, fullName: ps.fullName, url });
-        await savePayslipRecord({ employeeId: ps.employeeId, employeeName: ps.fullName, year: input.year, month: input.month, type: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
+        await savePayslipRecord({ employeeId: ps.employeeId, employeeName: ps.fullName, year: input.year, month: input.month, payslipType: "individual", url, fileName, generatedById: ctx.user.id, generatedByName: ctx.user.name ?? "Admin" });
       }
       return { payslips: results, count: results.length };
     }),
@@ -6967,6 +12139,90 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
 Link do PDF: ${url}`
       });
       return { url, email: input.email, monthName, year: input.year };
+    }),
+    // ── FÉRIAS / BAIXAS ────────────────────────────────────────────────────
+    leaves: router({
+      list: protectedProcedure.input(z2.object({ employeeId: z2.number(), year: z2.number().optional() })).query(async ({ ctx, input }) => {
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+        }
+        return getEmployeeLeaves(input.employeeId, input.year);
+      }),
+      create: protectedProcedure.input(z2.object({
+        employeeId: z2.number(),
+        leaveType: z2.enum(["vacation", "sick", "unpaid", "other"]),
+        fromDate: z2.string(),
+        toDate: z2.string(),
+        notes: z2.string().optional()
+      })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await createEmployeeLeave({ ...input, createdById: ctx.user.id });
+        await logActivity({ userId: ctx.user.id, action: "create", entity: "employee_leave", entityId: input.employeeId, details: `${input.leaveType} ${input.fromDate}\u2192${input.toDate}` });
+        return { success: true };
+      }),
+      delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        await deleteEmployeeLeave(input.id);
+        return { success: true };
+      })
+    }),
+    // ── HISTÓRICO SALARIAL ─────────────────────────────────────────────────
+    salaryHistory: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me || me.employee.id !== input.employeeId) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+      }
+      return getEmployeeSalaryHistory(input.employeeId);
+    }),
+    // ── PENALIZAÇÕES ───────────────────────────────────────────────────────
+    penalties: router({
+      list: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me || me.employee.id !== input.employeeId) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+        }
+        return getOpenPenalties(input.employeeId);
+      }),
+      clear: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "supervisor");
+        await clearPenalty(input.id, ctx.user.id);
+        await logActivity({ userId: ctx.user.id, action: "clear", entity: "employee_penalty", entityId: input.id });
+        return { success: true };
+      }),
+      processNoShows: protectedProcedure.input(z2.object({ date: z2.string() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const report = await processExtraDiaNoShows(input.date);
+        await logActivity({ userId: ctx.user.id, action: "process_noshows", entity: "extras_dia", details: `${input.date}: ${report.created} penalties` });
+        return report;
+      })
+    }),
+    // ── BLOQUEIO LOGIN ─────────────────────────────────────────────────────
+    unblock: protectedProcedure.input(z2.object({ employeeId: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "supervisor");
+      await unblockEmployeeLogin(input.employeeId, ctx.user.id);
+      return { success: true };
+    }),
+    checkDocs: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me || me.employee.id !== input.employeeId) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+      }
+      return checkExtraDocsCompliance(input.employeeId);
+    }),
+    // ── DASHBOARD RH (super_admin) ─────────────────────────────────────────
+    dashboard: protectedProcedure.input(z2.object({
+      year: z2.number().optional(),
+      month: z2.number().min(1).max(12).optional(),
+      monthsLookback: z2.number().min(1).max(12).optional()
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const now = /* @__PURE__ */ new Date();
+      return getRhDashboardSummary(
+        input?.year ?? now.getFullYear(),
+        input?.month ?? now.getMonth() + 1,
+        input?.monthsLookback ?? 3
+      );
     }),
     // ── EXTRA RATES ─────────────────────────────────────────────────────────────────────────────────
     extraRates: router({
@@ -7019,9 +12275,9 @@ Link do PDF: ${url}`
           name: input.name,
           platform: input.platform,
           projectId: input.projectId ?? null,
-          status: input.status ?? "active",
-          startDate: input.startDate ? new Date(input.startDate) : null,
-          endDate: input.endDate ? new Date(input.endDate) : null,
+          campaignStatus: input.status ?? "active",
+          startDate: input.startDate ? new Date(input.startDate).toISOString().slice(0, 19).replace("T", " ") : null,
+          endDate: input.endDate ? new Date(input.endDate).toISOString().slice(0, 19).replace("T", " ") : null,
           budget: input.budget ?? null,
           notes: input.notes ?? null,
           createdById: ctx.user.id
@@ -7063,7 +12319,7 @@ Link do PDF: ${url}`
         return getCampaignStats(input.campaignId);
       }),
       all: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "super_admin");
+        requireRole(ctx.user.role, "admin");
         const from = input?.from ? new Date(input.from) : void 0;
         const to = input?.to ? new Date(input.to) : void 0;
         return getAllDailyStats({ from, to, projectId: input?.projectId });
@@ -7082,7 +12338,7 @@ Link do PDF: ${url}`
         requireRole(ctx.user.role, "admin");
         const rows = input.rows.map((r) => ({
           campaignId: input.campaignId,
-          date: new Date(r.date),
+          date: new Date(r.date).toISOString().slice(0, 19).replace("T", " "),
           spend: r.spend,
           impressions: r.impressions ?? 0,
           clicks: r.clicks ?? 0,
@@ -7134,7 +12390,7 @@ Link do PDF: ${url}`
               const id = await createCampaign({
                 name: c.name,
                 platform: "google_ads",
-                status: c.status,
+                campaignStatus: c.status,
                 budget: c.budget > 0 ? String(c.budget) : null,
                 notes: `Tipo: ${c.campaignType}`,
                 createdById: ctx.user.id
@@ -7149,9 +12405,9 @@ Link do PDF: ${url}`
             const id = await createCampaign({
               name: c.name,
               platform: "google_ads",
-              status: c.status,
-              startDate,
-              endDate,
+              campaignStatus: c.status,
+              startDate: startDate.toISOString().slice(0, 19).replace("T", " "),
+              endDate: endDate.toISOString().slice(0, 19).replace("T", " "),
               budget: c.budget > 0 ? String(c.budget) : null,
               notes: `Tipo: ${c.campaignType}`,
               createdById: ctx.user.id
@@ -7160,7 +12416,7 @@ Link do PDF: ${url}`
             details.push(`\u2705 Campanha criada: ${c.name}`);
           } else {
             await updateCampaign(campaign.id, {
-              status: c.status,
+              campaignStatus: c.status,
               budget: c.budget > 0 ? String(c.budget) : campaign.budget
             });
           }
@@ -7168,28 +12424,45 @@ Link do PDF: ${url}`
             skipped++;
             continue;
           }
+          const daysMs = 864e5;
+          const dayCount = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / daysMs) + 1);
+          const spendPerDay = c.cost / dayCount;
+          const impressionsPerDay = Math.floor(c.impressions / dayCount);
+          const clicksPerDay = Math.floor(c.clicks / dayCount);
+          const conversionsPerDay = c.conversions / dayCount;
+          const valuePerDay = c.conversions * c.costPerConversion / dayCount;
           const existing = await getExistingStatsForCampaignAndDateRange(campaign.id, startDate, endDate);
-          if (existing.length > 0) {
-            details.push(`\u26A0\uFE0F Dados j\xE1 existem para ${c.name} (${input.dateRange.start} a ${input.dateRange.end}) \u2014 ignorado`);
+          const existingDays = new Set(
+            existing.map((e) => new Date(e.date).toISOString().slice(0, 10))
+          );
+          const newRows = [];
+          for (let i = 0; i < dayCount; i++) {
+            const d = new Date(startDate.getTime() + i * daysMs);
+            const dayKey = d.toISOString().slice(0, 10);
+            if (existingDays.has(dayKey)) continue;
+            newRows.push({
+              campaignId: campaign.id,
+              date: d.toISOString().slice(0, 19).replace("T", " "),
+              spend: spendPerDay.toFixed(2),
+              impressions: impressionsPerDay,
+              clicks: clicksPerDay,
+              conversions: Math.round(conversionsPerDay),
+              conversionValue: valuePerDay.toFixed(2),
+              cpc: c.cpc > 0 ? String(c.cpc) : null,
+              ctr: c.ctr > 0 ? String(c.ctr) : null,
+              costPerConversion: c.costPerConversion > 0 ? String(c.costPerConversion) : null,
+              importedById: ctx.user.id
+            });
+          }
+          if (newRows.length === 0) {
+            details.push(`\u26A0\uFE0F ${c.name}: todos os dias do per\xEDodo j\xE1 existiam \u2014 ignorado`);
             skipped++;
             continue;
           }
-          await importDailyStats([{
-            campaignId: campaign.id,
-            date: endDate,
-            // use end date as reference
-            spend: String(c.cost),
-            impressions: c.impressions,
-            clicks: c.clicks,
-            conversions: Math.round(c.conversions),
-            conversionValue: String(c.conversions),
-            cpc: c.cpc > 0 ? String(c.cpc) : null,
-            ctr: c.ctr > 0 ? String(c.ctr) : null,
-            costPerConversion: c.costPerConversion > 0 ? String(c.costPerConversion) : null,
-            importedById: ctx.user.id
-          }]);
+          await importDailyStats(newRows);
           created++;
-          details.push(`\u{1F4CA} Dados importados: ${c.name} \u2014 ${c.cost.toFixed(2)}\u20AC, ${c.clicks} cliques, ${c.impressions} impress\xF5es`);
+          const skippedDays = dayCount - newRows.length;
+          details.push(`\u{1F4CA} ${c.name}: ${newRows.length}/${dayCount} dias importados (${c.cost.toFixed(2)}\u20AC total, ${c.clicks} cliques)${skippedDays > 0 ? ` \u2014 ${skippedDays} dias j\xE1 existiam` : ""}`);
         }
         await logActivity({
           userId: ctx.user.id,
@@ -7224,9 +12497,9 @@ Link do PDF: ${url}`
         requireRole(ctx.user.role, "admin");
         const id = await createMarketingExpense({
           description: input.description,
-          category: input.category,
+          mktCategory: input.category,
           amount: input.amount,
-          date: new Date(input.date),
+          date: new Date(input.date).toISOString().slice(0, 19).replace("T", " "),
           projectId: input.projectId ?? null,
           supplier: input.supplier ?? null,
           notes: input.notes ?? null,
@@ -7272,7 +12545,7 @@ Link do PDF: ${url}`
           model: input.model ?? null,
           year: input.year ?? null,
           color: input.color ?? null,
-          status: input.status ?? "active",
+          vehicleStatus: input.status ?? "active",
           projectId: input.projectId ?? null,
           notes: input.notes ?? null
         });
@@ -7293,7 +12566,8 @@ Link do PDF: ${url}`
         })
       })).mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
-        await updateVehicle(input.id, input.data);
+        const { status, ...rest } = input.data;
+        await updateVehicle(input.id, { ...rest, ...status !== void 0 && { vehicleStatus: status } });
         await logActivity({ userId: ctx.user.id, action: "update", entity: "vehicle", entityId: input.id, details: "Viatura atualizada" });
         return { success: true };
       }),
@@ -7323,7 +12597,7 @@ Link do PDF: ${url}`
         const id = await createVehicleMovement({
           vehicleId: input.vehicleId,
           employeeId: input.employeeId,
-          type: input.type,
+          movementType: input.type,
           kmReading: input.kmReading ?? null,
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
@@ -7378,6 +12652,7 @@ Link do PDF: ${url}`
         vehicleId: z2.number().optional(),
         duration: z2.number().optional()
       })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "team_leader");
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: "pt" });
         if ("error" in result) {
           throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: `Transcri\xE7\xE3o falhou: ${result.error}` });
@@ -7397,7 +12672,7 @@ Link do PDF: ${url}`
           employeeId: input.employeeId ?? null,
           vehicleId: input.vehicleId ?? null,
           duration: input.duration ?? null,
-          transcribedAt: /* @__PURE__ */ new Date(),
+          transcribedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
           createdById: ctx.user.id
         });
         await logActivity({ userId: ctx.user.id, action: "create", entity: "radio_transcription", entityId: id, details: "Transcri\xE7\xE3o de r\xE1dio" });
@@ -7443,7 +12718,7 @@ Link do PDF: ${url}`
             name: input.name,
             maxSpeed: input.maxSpeed,
             tolerancePercent: input.tolerancePercent,
-            isDefault: input.isDefault
+            isDefault: input.isDefault ? 1 : 0
           });
           await logActivity({ userId: ctx.user.id, action: "create", entity: "speed_limit", entityId: id, details: `Limite ${input.name}: ${input.maxSpeed}km/h` });
           return { id };
@@ -7459,7 +12734,11 @@ Link do PDF: ${url}`
           })
         })).mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
-          await updateSpeedLimit(input.id, input.data);
+          const { isDefault, isActive, ...rest } = input.data;
+          const patch = { ...rest };
+          if (isDefault !== void 0) patch.isDefault = isDefault ? 1 : 0;
+          if (isActive !== void 0) patch.isActive = isActive ? 1 : 0;
+          await updateSpeedLimit(input.id, patch);
           return { success: true };
         }),
         delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
@@ -7521,8 +12800,8 @@ Link do PDF: ${url}`
               latitude: loc.latitude ? String(loc.latitude) : null,
               longitude: loc.longitude ? String(loc.longitude) : null,
               heading: loc.heading ? String(loc.heading) : null,
-              notificationSent: true,
-              occurredAt: /* @__PURE__ */ new Date()
+              notificationSent: 1,
+              occurredAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
             });
             violationCount++;
             await notifyOwner({
@@ -7691,8 +12970,8 @@ Link do PDF: ${url}`
               displayName: user.fullName || user.name,
               alertType: "gps_off",
               message: `${user.fullName || user.name} tem o GPS desligado no Zello`,
-              notificationSent: true,
-              occurredAt: /* @__PURE__ */ new Date()
+              notificationSent: 1,
+              occurredAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
             });
             alertsCreated++;
             await notifyOwner({
@@ -7713,8 +12992,8 @@ Link do PDF: ${url}`
                 latitude: String(loc.latitude),
                 longitude: String(loc.longitude),
                 batteryLevel: loc.batteryLevel,
-                notificationSent: true,
-                occurredAt: /* @__PURE__ */ new Date()
+                notificationSent: 1,
+                occurredAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
               });
               alertsCreated++;
             }
@@ -7740,9 +13019,9 @@ Link do PDF: ${url}`
       const key = `mp_${nanoid(32)}`;
       const id = await createApiKey({
         name: input.name,
-        key,
+        apiKey: key,
         permissions: input.permissions ? JSON.stringify(input.permissions) : null,
-        active: true,
+        active: 1,
         createdById: ctx.user.id
       });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "api_key", entityId: id, details: `API Key: ${input.name}` });
@@ -7812,7 +13091,7 @@ Link do PDF: ${url}`
       assignedToId: z2.number().optional()
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const slaDeadline = input.slaHours ? new Date(Date.now() + input.slaHours * 36e5) : null;
+      const slaDeadline = input.slaHours ? new Date(Date.now() + input.slaHours * 36e5).toISOString().slice(0, 19).replace("T", " ") : null;
       const id = await createComplaint({
         title: input.title,
         description: input.description ?? null,
@@ -7823,8 +13102,8 @@ Link do PDF: ${url}`
         clientEmail: input.clientEmail ?? null,
         clientPhone: input.clientPhone ?? null,
         reservationRef: input.reservationRef ?? null,
-        reservationStart: input.reservationStart ? new Date(input.reservationStart) : null,
-        reservationEnd: input.reservationEnd ? new Date(input.reservationEnd) : null,
+        reservationStart: input.reservationStart ? new Date(input.reservationStart).toISOString().slice(0, 19).replace("T", " ") : null,
+        reservationEnd: input.reservationEnd ? new Date(input.reservationEnd).toISOString().slice(0, 19).replace("T", " ") : null,
         vehicleId: input.vehicleId ?? null,
         vehiclePlate: input.vehiclePlate ?? null,
         driversInvolved: input.driversInvolved ?? null,
@@ -7834,7 +13113,75 @@ Link do PDF: ${url}`
         createdById: ctx.user.id
       });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "complaint", entityId: id, details: `Reclama\xE7\xE3o: ${input.title}` });
+      try {
+        const { notifyComplaintCreated: notifyComplaintCreated2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+        await notifyComplaintCreated2(id);
+      } catch (err) {
+        console.warn("[complaint create] notify failed:", err);
+      }
       return { id };
+    }),
+    // ── Drivers em serviço (cruza com extras-dia + history) ────────────────
+    findDriversOnDuty: protectedProcedure.input(z2.object({ complaintId: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { findDriversOnDuty: findDriversOnDuty2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      return findDriversOnDuty2(input.complaintId);
+    }),
+    attachDriver: protectedProcedure.input(z2.object({
+      complaintId: z2.number(),
+      employeeId: z2.number().nullable().optional(),
+      employeeName: z2.string().min(1).max(256),
+      roleAtTime: z2.string().max(64).nullable().optional(),
+      source: z2.enum(["assignment", "history", "manual"]),
+      notes: z2.string().max(512).nullable().optional()
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { attachDriverToComplaint: attachDriverToComplaint2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      await attachDriverToComplaint2(input);
+      return { success: true };
+    }),
+    listAttachedDrivers: protectedProcedure.input(z2.object({ complaintId: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { listComplaintDrivers: listComplaintDrivers2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      return listComplaintDrivers2(input.complaintId);
+    }),
+    detachDriver: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { detachComplaintDriver: detachComplaintDriver2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      await detachComplaintDriver2(input.id);
+      return { success: true };
+    }),
+    // ── Penalty config ──────────────────────────────────────────────────────
+    listPenaltyConfig: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { listPenaltyConfig: listPenaltyConfig2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      return listPenaltyConfig2();
+    }),
+    updatePenaltyConfig: protectedProcedure.input(z2.object({ complaintType: z2.string().max(32), basePoints: z2.number().int() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { updatePenaltyConfig: updatePenaltyConfig2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      await updatePenaltyConfig2(input.complaintType, input.basePoints);
+      return { success: true };
+    }),
+    // ── Email ao cliente ───────────────────────────────────────────────────
+    sendEmailToClient: protectedProcedure.input(z2.object({
+      complaintId: z2.number(),
+      subject: z2.string().min(1).max(255),
+      body: z2.string().min(1)
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { sendComplaintEmailToClient: sendComplaintEmailToClient2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      const r = await sendComplaintEmailToClient2(input);
+      if (r.ok) {
+        await logActivity({
+          userId: ctx.user.id,
+          action: "email_sent",
+          entity: "complaint",
+          entityId: input.complaintId,
+          details: `Email para cliente: ${input.subject}`
+        });
+      }
+      return r;
     }),
     update: protectedProcedure.input(z2.object({
       id: z2.number(),
@@ -7848,15 +13195,19 @@ Link do PDF: ${url}`
       clientPhone: z2.string().optional(),
       assignedToId: z2.number().nullable().optional(),
       driversInvolved: z2.string().optional(),
-      slaHours: z2.number().optional()
+      slaHours: z2.number().optional(),
+      penaltyPoints: z2.number().int().optional()
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const { id, slaHours, type, status, priority, ...rest } = input;
+      const { id, slaHours, type, status, priority, penaltyPoints, ...rest } = input;
       const updateData = { ...rest };
       if (type) updateData.complaintType = type;
       if (status) updateData.complaintStatus = status;
       if (priority) updateData.complaintPriority = priority;
-      if (slaHours) updateData.slaDeadline = new Date(Date.now() + slaHours * 36e5);
+      if (penaltyPoints !== void 0) updateData.penaltyPoints = penaltyPoints;
+      if (slaHours !== void 0) {
+        updateData.slaDeadline = slaHours > 0 ? new Date(Date.now() + slaHours * 36e5) : null;
+      }
       if (status === "resolved") updateData.resolvedAt = /* @__PURE__ */ new Date();
       await updateComplaint(id, updateData);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "complaint", entityId: id, details: `Reclama\xE7\xE3o atualizada` });
@@ -7873,10 +13224,11 @@ Link do PDF: ${url}`
       message: z2.string().min(1),
       isInternal: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const id = await addComplaintMessage({
         complaintId: input.complaintId,
         message: input.message,
-        isInternal: input.isInternal ?? false,
+        isInternal: input.isInternal ? 1 : 0,
         authorId: ctx.user.id,
         authorName: ctx.user.name ?? "Desconhecido"
       });
@@ -7919,6 +13271,27 @@ Link do PDF: ${url}`
       return getBookingHistory(input.bookingId);
     })
   }),
+  // ─── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────
+  notifications: router({
+    list: protectedProcedure.input(z2.object({ unreadOnly: z2.boolean().optional(), limit: z2.number().int().min(1).max(200).optional() }).optional()).query(async ({ ctx, input }) => {
+      const { listNotifications: listNotifications2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      return listNotifications2(ctx.user.id, input?.unreadOnly ?? false, input?.limit ?? 50);
+    }),
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      const { unreadCount: unreadCount2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      return { count: await unreadCount2(ctx.user.id) };
+    }),
+    markRead: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      const { markNotificationRead: markNotificationRead2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      await markNotificationRead2(ctx.user.id, input.id);
+      return { success: true };
+    }),
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      const { markAllNotificationsRead: markAllNotificationsRead2 } = await Promise.resolve().then(() => (init_complaintsExtended(), complaintsExtended_exports));
+      await markAllNotificationsRead2(ctx.user.id);
+      return { success: true };
+    })
+  }),
   // ─── GOOGLE REVIEWS ───────────────────────────────────────────────────────
   reviews: router({
     list: protectedProcedure.input(z2.object({
@@ -7943,7 +13316,8 @@ Link do PDF: ${url}`
       projectId: z2.number().optional(),
       vehiclePlate: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      const reviewDate = input.reviewDate ? new Date(input.reviewDate) : /* @__PURE__ */ new Date();
+      requireRole(ctx.user.role, "frontoffice");
+      const reviewDate = (input.reviewDate ? new Date(input.reviewDate) : /* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
       const id = await createGoogleReview({
         ...input,
         reviewDate,
@@ -7980,13 +13354,13 @@ Link do PDF: ${url}`
 "${input.reviewText || "Sem texto"}"
 
 Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.reviewerEmail : ""}${input.vehiclePlate ? "\nMatr\xEDcula: " + input.vehiclePlate : ""}`,
-            type: "other",
-            priority: input.rating === 1 ? "urgent" : "high",
+            complaintType: "other",
+            complaintPriority: input.rating === 1 ? "urgent" : "high",
             clientName: input.reviewerName,
             clientEmail: input.reviewerEmail || void 0,
             vehiclePlate: input.vehiclePlate || void 0,
             projectId: input.projectId || void 0,
-            slaDeadline: new Date(Date.now() + 24 * 60 * 60 * 1e3),
+            slaDeadline: new Date(Date.now() + 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " "),
             // 24h SLA
             createdById: ctx.user.id
           });
@@ -8004,9 +13378,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       aiResponse: z2.string().optional(),
       status: z2.enum(["pending_response", "ai_responded", "manually_responded", "converted_complaint", "dismissed"]).optional()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       if (data.status === "manually_responded" || data.aiResponse) {
-        data.respondedAt = /* @__PURE__ */ new Date();
+        data.respondedAt = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
         data.respondedBy = ctx.user.id;
       }
       await updateGoogleReview(id, data);
@@ -8016,6 +13391,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     generateResponse: protectedProcedure.input(z2.object({
       id: z2.number()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const review = await getGoogleReviewById(input.id);
       if (!review) throw new TRPCError3({ code: "NOT_FOUND" });
       const response = await invokeLLM({
@@ -8038,11 +13414,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       name: z2.string().optional(),
       email: z2.string().optional(),
       plate: z2.string().optional()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return searchClientHistory(input.name, input.email, input.plate);
     }),
     approveResponse: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      await updateGoogleReview(input.id, { aiResponseApproved: true, respondedAt: /* @__PURE__ */ new Date(), respondedBy: ctx.user.id, status: "manually_responded" });
+      requireRole(ctx.user.role, "frontoffice");
+      await updateGoogleReview(input.id, { aiResponseApproved: 1, respondedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), respondedBy: ctx.user.id, status: "manually_responded" });
       await logActivity({ userId: ctx.user.id, action: "approve", entity: "google_review", entityId: input.id, details: "Resposta aprovada" });
       return { success: true };
     }),
@@ -8056,21 +13434,23 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         message: "A sincroniza\xE7\xE3o Gmail corre automaticamente 2x/dia (0h e 12h). Para for\xE7ar manualmente, contacta o administrador."
       };
     }),
-    // Checkout drivers ranking from Multipark API
+    // Checkout drivers ranking (DB local — alimentada pelo sync da API Multipark)
     checkoutDrivers: protectedProcedure.input(z2.object({
       startDate: z2.string(),
       endDate: z2.string()
     })).query(async ({ input }) => {
-      return getCheckoutDrivers(input.startDate, input.endDate);
+      const { getCheckoutDriversFromDb: getCheckoutDriversFromDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getCheckoutDriversFromDb2(input.startDate, input.endDate);
     }),
-    // Agent performance history from Multipark API
+    // Agent performance history (DB local — alimentada pelo sync da API Multipark)
     agentHistory: protectedProcedure.input(z2.object({
       startDate: z2.string(),
       endDate: z2.string(),
       agentName: z2.string().optional(),
       userId: z2.string().optional()
     })).query(async ({ input }) => {
-      return getAgentHistory({
+      const { getAgentHistoryFromDb: getAgentHistoryFromDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getAgentHistoryFromDb2({
         startDate: input.startDate,
         endDate: input.endDate,
         agentName: input.agentName,
@@ -8165,8 +13545,16 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Quiz
-    quizQuestions: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ input }) => {
+    // ADMIN: tem acesso à correctOption (para edição)
+    quizQuestions: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        throw new TRPCError3({ code: "FORBIDDEN", message: "Usa quizQuestionsForPlayer" });
+      }
       return getQuizQuestions(input.categoryId);
+    }),
+    // PLAYER: sem correctOption (qualquer user pode jogar)
+    quizQuestionsForPlayer: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ input }) => {
+      return getQuizQuestionsForPlayer(input.categoryId);
     }),
     createQuizQuestion: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), question: z2.string(), optionA: z2.string(), optionB: z2.string(), optionC: z2.string(), optionD: z2.string(), correctOption: z2.enum(["A", "B", "C", "D"]), explanation: z2.string().optional(), difficulty: z2.enum(["easy", "medium", "hard"]).optional(), points: z2.number().optional() })).mutation(async ({ ctx, input }) => {
       if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError3({ code: "FORBIDDEN" });
@@ -8179,7 +13567,9 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       await deleteQuizQuestion(input.id);
       return { success: true };
     }),
-    submitQuiz: protectedProcedure.input(z2.object({ employeeId: z2.number(), answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+    submitQuiz: protectedProcedure.input(z2.object({ answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+      const me = await getEmployeeByUserId(ctx.user.id);
+      if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador. Pede ao admin para te cadastrar primeiro." });
       const questions = await getQuizQuestions();
       const questionMap = new Map(questions.map((q) => [q.id, q]));
       let correct = 0;
@@ -8191,7 +13581,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
           score += q.points;
         }
       }
-      const result = await saveQuizAttempt({ employeeId: input.employeeId, totalQuestions: input.answers.length, correctAnswers: correct, score, timeSpentSeconds: input.timeSpentSeconds });
+      const result = await saveQuizAttempt({ employeeId: me.employee.id, totalQuestions: input.answers.length, correctAnswers: correct, score, timeSpentSeconds: input.timeSpentSeconds });
       return { ...result, correct, score, total: input.answers.length };
     }),
     quizRanking: protectedProcedure.query(async () => {
@@ -8212,15 +13602,23 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       await deleteCareerExam(input.id);
       return { success: true };
     }),
-    careerExamQuestions: protectedProcedure.input(z2.object({ examId: z2.number() })).query(async ({ input }) => {
+    careerExamQuestions: protectedProcedure.input(z2.object({ examId: z2.number() })).query(async ({ ctx, input }) => {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        throw new TRPCError3({ code: "FORBIDDEN", message: "Usa careerExamQuestionsForPlayer" });
+      }
       return getCareerExamQuestions(input.examId);
+    }),
+    careerExamQuestionsForPlayer: protectedProcedure.input(z2.object({ examId: z2.number() })).query(async ({ input }) => {
+      return getCareerExamQuestionsForPlayer(input.examId);
     }),
     createCareerExamQuestion: protectedProcedure.input(z2.object({ examId: z2.number(), question: z2.string(), optionA: z2.string(), optionB: z2.string(), optionC: z2.string(), optionD: z2.string(), correctOption: z2.enum(["A", "B", "C", "D"]), explanation: z2.string().optional(), points: z2.number().optional() })).mutation(async ({ ctx, input }) => {
       if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError3({ code: "FORBIDDEN" });
       const result = await createCareerExamQuestion(input);
       return result;
     }),
-    submitCareerExam: protectedProcedure.input(z2.object({ examId: z2.number(), employeeId: z2.number(), answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+    submitCareerExam: protectedProcedure.input(z2.object({ examId: z2.number(), answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+      const me = await getEmployeeByUserId(ctx.user.id);
+      if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
       const questions = await getCareerExamQuestions(input.examId);
       const exams = await getCareerExams();
       const exam = exams.find((e) => e.id === input.examId);
@@ -8238,11 +13636,16 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       }
       const percentage = totalPoints > 0 ? Math.round(score / totalPoints * 100) : 0;
       const passed = percentage >= exam.passingScore;
-      const result = await saveCareerExamAttempt({ examId: input.examId, employeeId: input.employeeId, totalQuestions: questions.length, correctAnswers: correct, score: percentage, passed, timeSpentSeconds: input.timeSpentSeconds });
+      const result = await saveCareerExamAttempt({ examId: input.examId, employeeId: me.employee.id, totalQuestions: questions.length, correctAnswers: correct, score: percentage, passed, timeSpentSeconds: input.timeSpentSeconds });
       if (passed) {
-        await notifyOwner({ title: `Exame aprovado: ${exam.title}`, content: `Colaborador #${input.employeeId} passou no exame "${exam.title}" com ${percentage}% (m\xEDnimo: ${exam.passingScore}%)` });
+        await notifyOwner({ title: `Exame aprovado: ${exam.title}`, content: `${me.employee.fullName} passou no exame "${exam.title}" com ${percentage}% (m\xEDnimo: ${exam.passingScore}%)` });
       }
       return { ...result, correct, score: percentage, total: questions.length, passed, passingScore: exam.passingScore };
+    }),
+    myCareerExamAttempts: protectedProcedure.query(async ({ ctx }) => {
+      const me = await getEmployeeByUserId(ctx.user.id);
+      if (!me) return [];
+      return getCareerExamAttempts(me.employee.id);
     }),
     careerExamAttempts: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), examId: z2.number().optional() })).query(async ({ input }) => {
       return getCareerExamAttempts(input.employeeId, input.examId);
@@ -8269,7 +13672,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       estimatedValue: z2.number().optional(),
       priority: z2.enum(["low", "medium", "high"]).optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const id = await createLostFoundItem({ ...input, createdBy: ctx.user.id, status: "new", priority: input.priority || "medium" });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "lost_found", entityId: id || 0, details: `Perdido/Achado: ${input.description}` });
       const admins = await getSuperAdmins();
@@ -8293,7 +13696,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       description: z2.string().optional(),
       estimatedValue: z2.number().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       await updateLostFoundItem(id, data);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "lost_found", entityId: id, details: `Atualizado: ${JSON.stringify(data)}` });
@@ -8314,7 +13717,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       base64: z2.string(),
       filename: z2.string(),
       caption: z2.string().optional()
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const buffer = Buffer.from(input.base64, "base64");
       const ext = input.filename.split(".").pop() || "jpg";
       const key = `lost-found/${input.itemId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -8329,62 +13733,19 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       message: z2.string().min(1),
       isInternal: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
-      await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal ?? true });
+      requireRole(ctx.user.role, "frontoffice");
+      await addLostFoundMessage({ itemId: input.itemId, userId: ctx.user.id, userName: ctx.user.name || "Utilizador", message: input.message, isInternal: input.isInternal === false ? 0 : 1 });
       return { success: true };
     }),
     // Driver ranking (cruzamento de dados)
     driverRanking: protectedProcedure.query(() => getLostFoundDriverRanking()),
-    // Vehicle driver history (reuse from operational)
-    vehicleDrivers: protectedProcedure.input(z2.object({ plate: z2.string() })).query(async ({ input }) => {
-      const allVehicles = await getVehicles();
-      const vehicle = allVehicles.find((v) => v.plate === input.plate);
-      if (!vehicle) return [];
-      return getVehicleDriverHistory(vehicle.id);
+    // Agentes Multipark que mexeram na matrícula. Sinaliza os que tocaram
+    // especificamente na reserva do caso aberto (currentBookingRef).
+    vehicleAgents: protectedProcedure.input(z2.object({ plate: z2.string(), currentBookingRef: z2.string().optional() })).query(async ({ input }) => {
+      const { getVehicleAgentsByPlate: getVehicleAgentsByPlate2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getVehicleAgentsByPlate2(input.plate, input.currentBookingRef);
     }),
-    // ── Booking History (imported from Excel) ──
-    importBookingHistory: protectedProcedure.input(z2.object({ fileBase64: z2.string(), filename: z2.string() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
-      const buffer = Buffer.from(input.fileBase64, "base64");
-      const wb = XLSX.read(buffer, { type: "buffer" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      if (!ws) throw new Error("Ficheiro Excel vazio");
-      const raw = XLSX.utils.sheet_to_json(ws);
-      if (raw.length === 0) throw new Error("Sem dados no ficheiro");
-      const rows = raw.map((r) => {
-        let actionDate = null;
-        const rawDate = r["Data da A\xE7\xE3o"] || r["Data da Acao"] || r["actionDate"];
-        if (typeof rawDate === "number") {
-          const d = new Date((rawDate - 25569) * 86400 * 1e3);
-          actionDate = d.toISOString().slice(0, 19).replace("T", " ");
-        } else if (rawDate) {
-          const d = new Date(rawDate);
-          if (!isNaN(d.getTime())) actionDate = d.toISOString().slice(0, 19).replace("T", " ");
-        }
-        const str = (v) => v != null && String(v).trim() !== "" ? String(v).trim() : null;
-        return {
-          historyId: str(r["ID do Hist\xF3rico"] ?? r["ID do Historico"] ?? r["historyId"]) || `gen_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-          bookingId: str(r["ID da Reserva"] ?? r["bookingId"]) || "",
-          changeType: str(r["Tipo de Altera\xE7\xE3o"] ?? r["Tipo de Alteracao"] ?? r["changeType"]) || "",
-          userName: str(r["Nome do Utilizador"] ?? r["userName"]),
-          userLastName: str(r["Apelido do Utilizador"] ?? r["userLastName"]),
-          userEmail: str(r["Email do Utilizador"] ?? r["userEmail"]),
-          remarks: str(r["Observa\xE7\xF5es"] ?? r["Observacoes"] ?? r["remarks"]),
-          actionDate,
-          parkName: str(r["Parque"] ?? r["parkName"]),
-          licensePlate: str(r["Matr\xEDcula"] ?? r["Matricula"] ?? r["licensePlate"]),
-          bookingStatus: str(r["Estado da Reserva"] ?? r["bookingStatus"])
-        };
-      }).filter((r) => r.bookingId);
-      const result = await importBookingHistory(rows);
-      await logActivity({
-        userId: ctx.user.id,
-        action: "import",
-        entity: "booking_history",
-        details: `Importados ${result.imported} registos (${result.skipped} duplicados) de ${input.filename}`
-      });
-      return { ...result, total: rows.length };
-    }),
+    // ── Booking History (Multipark DB local, sincronizado pelo cron job) ──
     bookingHistory: protectedProcedure.input(z2.object({ bookingId: z2.string().optional(), plate: z2.string().optional(), search: z2.string().optional() })).query(async ({ input }) => {
       if (input.bookingId) return getBookingHistoryByBookingId(input.bookingId);
       if (input.plate) return getBookingHistoryByPlate(input.plate);
@@ -8393,7 +13754,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     }),
     bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
     bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
-    // Booking timeline from Multipark API
+    // Booking timeline directo da API Multipark (para o caso aberto)
     bookingTimeline: protectedProcedure.input(z2.object({
       bookingId: z2.string()
     })).query(async ({ input }) => {
@@ -8418,7 +13779,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       severity: z2.enum(["low", "medium", "high", "critical"]),
       description: z2.string().min(1)
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const id = await createIncident({ ...input, reportedBy: ctx.user.id, status: "open" });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "incident", entityId: id || 0, details: `Ocorr\xEAncia: ${input.description}` });
       if (input.severity === "critical") {
@@ -8436,10 +13797,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       vehiclePlate: z2.string().optional(),
       employeeId: z2.number().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       if (data.status === "resolved") {
-        data.resolvedAt = /* @__PURE__ */ new Date();
+        data.resolvedAt = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
         data.resolvedBy = ctx.user.id;
       }
       await updateIncident(id, data);
@@ -8447,7 +13808,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "super_admin");
       await deleteIncident(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "incident", entityId: input.id });
       return { success: true };
@@ -8456,7 +13817,26 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       weekNumber: z2.number().optional(),
       yearNumber: z2.number().optional()
     }).optional()).query(({ input }) => getIncidentStats(input?.weekNumber, input?.yearNumber)),
-    byEmployee: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId))
+    byEmployee: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId)),
+    // Sincroniza ocorrências a partir do multipark_booking_history (remarks
+    // dos agentes nos check-in/out/movements). Dedup por sourceEmailId.
+    syncFromMultipark: protectedProcedure.input(z2.object({ lookbackDays: z2.number().int().min(1).max(180).optional() }).optional()).mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "frontoffice");
+      const { syncIncidentsFromMultiparkHistory: syncIncidentsFromMultiparkHistory2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const r = await syncIncidentsFromMultiparkHistory2({
+        lookbackDays: input?.lookbackDays ?? 30,
+        reportedById: ctx.user.id
+      });
+      await logActivity({
+        userId: ctx.user.id,
+        action: "sync",
+        entity: "incident",
+        entityId: 0,
+        details: `Multipark sync: ${r.imported} importadas, ${r.skipped} j\xE1 existiam, ${r.scanned} analisadas`
+      });
+      return r;
+    })
   }),
   // ─── AVALIAÇÃO DE DESEMPENHO ─────────────────────────────────────────────
   performance: router({
@@ -8469,23 +13849,26 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       weekNumber: z2.number(),
       yearNumber: z2.number()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       const results = await generateWeeklyEvaluation(input.weekNumber, input.yearNumber);
-      await logActivity({ userId: ctx.user.id, action: "generate", entity: "performance_evaluation", details: `Semana ${input.weekNumber}/${input.yearNumber}` });
+      await logActivity({ userId: ctx.user.id, action: "generate", entity: "performance_evaluation", details: `Semana ${input.weekNumber}/${input.yearNumber}: ${results.length} linhas` });
       return results;
     }),
     update: protectedProcedure.input(z2.object({
       id: z2.number(),
       positivePoints: z2.number().optional(),
       negativePoints: z2.number().optional(),
-      notes: z2.string().optional()
+      notes: z2.string().nullable().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       const { id, ...data } = input;
-      if (data.positivePoints !== void 0 || data.negativePoints !== void 0) {
-        data.totalPoints = (data.positivePoints || 0) - (data.negativePoints || 0);
-      }
+      const current = await getPerformanceEvaluations({});
+      const row = current.find((r) => r.id === id);
+      const pos = data.positivePoints ?? row?.positivePoints ?? 0;
+      const neg = data.negativePoints ?? row?.negativePoints ?? 0;
+      data.totalPoints = pos - neg;
       await updatePerformanceEvaluation(id, data);
+      await logActivity({ userId: ctx.user.id, action: "update", entity: "performance_evaluation", entityId: id });
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
@@ -8516,7 +13899,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       notes: z2.string().optional(),
       serviceDate: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = { ...input, serviceDate: input.serviceDate ? new Date(input.serviceDate) : /* @__PURE__ */ new Date() };
       const id = await createService(data);
       await logActivity({ userId: ctx.user.id, action: "create", entity: "service", entityId: id || 0, details: `Servi\xE7o: ${input.serviceType}` });
@@ -8529,13 +13912,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       commission: z2.number().optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateService(id, data);
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "super_admin");
       await deleteService(input.id);
       return { success: true };
     }),
@@ -8626,7 +14009,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       month: z2.number().optional(),
       year: z2.number().optional()
     }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
+    // Diagnóstico cru: várias somas e breakdowns para isolar discrepâncias
+    diagnose: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string(), projectId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { diagnoseBilling: diagnoseBilling2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return diagnoseBilling2(input);
+    }),
     billing: protectedProcedure.input(z2.object({
+      granularity: z2.enum(["day", "week", "month", "year"]).optional(),
       from: z2.string(),
       to: z2.string(),
       projectId: z2.number().optional()
@@ -8651,7 +14041,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     create: protectedProcedure.input(z2.object({
       name: z2.string().min(1),
       campaignKey: z2.string().optional(),
-      partnerType: z2.enum(["aggregator", "agency", "pro_client", "other", "corporate", "retainer"]),
+      partnerType: z2.string().min(1).max(64),
       contactName: z2.string().optional(),
       contactEmail: z2.string().optional(),
       contactPhone: z2.string().optional(),
@@ -8671,6 +14061,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       id: z2.number(),
       name: z2.string().optional(),
       campaignKey: z2.string().optional(),
+      partnerType: z2.string().min(1).max(64).optional(),
       contactName: z2.string().optional(),
       contactEmail: z2.string().optional(),
       contactPhone: z2.string().optional(),
@@ -8678,7 +14069,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       monthlyFee: z2.number().optional(),
       nif: z2.string().optional(),
       billingAgreement: z2.string().optional(),
-      status: z2.string().optional(),
+      partnerStatus: z2.enum(["active", "inactive", "pending"]).optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
       if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
@@ -8691,6 +14082,64 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
       await deletePartnership(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership", entityId: input.id });
+      return { success: true };
+    }),
+    // ── Inferência de parceiros a partir das reservas Multipark ──────────────
+    inferList: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      return inferPartnersFromBookings();
+    }),
+    addAlias: protectedProcedure.input(z2.object({
+      partnershipId: z2.number(),
+      aliasType: z2.enum(["multipark_partner_id", "payment_method"]),
+      aliasValue: z2.string().min(1).max(128),
+      applyToBookings: z2.boolean().default(true)
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const updated = await addPartnerAlias(
+        input.partnershipId,
+        input.aliasType,
+        input.aliasValue,
+        input.applyToBookings
+      );
+      await logActivity({
+        userId: ctx.user.id,
+        action: "alias_add",
+        entity: "partnership",
+        entityId: input.partnershipId,
+        details: `${input.aliasType}=${input.aliasValue} (${updated} reservas actualizadas)`
+      });
+      return { updated };
+    }),
+    listAliases: protectedProcedure.input(z2.object({ partnershipId: z2.number() })).query(({ input }) => listPartnerAliases(input.partnershipId)),
+    // Aliases agregados por parceiro — mostra quantos códigos cada parceiro
+    // já tem associados (cada parceiro tem normalmente 1 código por
+    // cidade × marca, logo vários).
+    aliasCounts: protectedProcedure.query(async () => {
+      const { aliasCountsByPartner: aliasCountsByPartner2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return aliasCountsByPartner2();
+    }),
+    // Sumário de faturação por parceiro: a faturar / faturado / pendente / em atraso
+    invoicingSummary: protectedProcedure.input(z2.object({
+      from: z2.string(),
+      to: z2.string(),
+      partnerType: z2.string().optional()
+    })).query(async ({ input }) => {
+      const { getPartnerInvoicingSummary: getPartnerInvoicingSummary2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getPartnerInvoicingSummary2(input);
+    }),
+    // Detalhe por tipo de parceiro — com colunas específicas do chargeModel
+    invoicingDetailByType: protectedProcedure.input(z2.object({
+      from: z2.string(),
+      to: z2.string(),
+      partnerType: z2.string()
+    })).query(async ({ input }) => {
+      const { getPartnerInvoicingDetailByType: getPartnerInvoicingDetailByType2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      return getPartnerInvoicingDetailByType2(input);
+    }),
+    deleteAlias: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      await deletePartnerAlias(input.id);
       return { success: true };
     }),
     // Transactions
@@ -8813,10 +14262,41 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
   }),
   // ── MULTIPARK INTEGRATION ──────────────────────────────────────────────────
   multipark: router({
+    // Pesquisa partilhada de reservas — usada por reclamações, perdidos/achados,
+    // ocorrências e críticas Google. Procura por nº reserva / externalId /
+    // matrícula / email / nome do cliente. DB local.
+    searchBooking: protectedProcedure.input(z2.object({ search: z2.string().min(2) })).query(async ({ input }) => {
+      return searchBookingByRef(input.search);
+    }),
+    // Detalhe de uma reserva específica via API Multipark
+    fetchBookingDetails: protectedProcedure.input(z2.object({ externalId: z2.string() })).query(async ({ input }) => {
+      const { getBooking: getBooking2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
+      try {
+        return await getBooking2(input.externalId);
+      } catch {
+        return null;
+      }
+    }),
     // Test API connection
     testConnection: protectedProcedure.query(async ({ ctx }) => {
       requireRole(ctx.user.role, "admin");
       return testConnection();
+    }),
+    // Inspect raw booking JSON from API (tries all parks). Admin-only debug tool.
+    inspectBooking: protectedProcedure.input(z2.object({ externalId: z2.string().min(1) })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const found = await getBookingTryAllParks(input.externalId);
+      if (!found) {
+        throw new TRPCError3({
+          code: "NOT_FOUND",
+          message: "Reserva n\xE3o encontrada em nenhum parque (ou chaves de API em falta)."
+        });
+      }
+      return {
+        park: `${found.parkConfig.name} (${found.parkConfig.city})`,
+        parkId: found.parkConfig.id,
+        booking: found.booking
+      };
     }),
     // Check availability
     checkAvailability: protectedProcedure.input(z2.object({
@@ -8925,11 +14405,11 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       for (const row of rows) {
         const createdDate = parseDate(row[colMap.createdAt]);
         if (!createdDate) continue;
-        const dateKey = createdDate.toISOString().slice(0, 10);
+        const dateKey2 = createdDate.toISOString().slice(0, 10);
         const parkName = String(row[colMap.parkName] || "Desconhecido").trim();
         const city = String(row[colMap.city] || "Desconhecida").trim();
         const status = String(row[colMap.status] || "").toLowerCase();
-        const groupKey = `${dateKey}|${parkName}|${city}`;
+        const groupKey = `${dateKey2}|${parkName}|${city}`;
         if (!grouped[groupKey]) {
           grouped[groupKey] = {
             date: createdDate,
@@ -8972,7 +14452,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       let created = 0, updated = 0;
       for (const g of Object.values(grouped)) {
         const result = await upsertDailySnapshot({
-          snapshotDate: /* @__PURE__ */ new Date(g.date.toISOString().slice(0, 10) + "T00:00:00.000Z"),
+          snapshotDate: (/* @__PURE__ */ new Date(g.date.toISOString().slice(0, 10) + "T00:00:00.000Z")).toISOString().slice(0, 19).replace("T", " "),
           parkName: g.parkName,
           city: g.city,
           totalBookings: g.total,
@@ -9049,6 +14529,101 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         return { success: false, processed: 0, created: 0, updated: 0, errors: [error.message] };
       }
     }),
+    // Enrich a batch of unenriched bookings with /bookings/:id details
+    // (deliveryType, returnFlight, departingFlight, remarks).
+    enrichBatch: protectedProcedure.input(z2.object({ limit: z2.number().int().min(1).max(300).default(200) }).optional()).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const result = await enrichBookingsBatch(input?.limit ?? 200);
+      await logActivity({
+        userId: ctx.user.id,
+        action: "enrich",
+        entity: "multipark_bookings",
+        details: `Enriquecidas ${result.enriched}/${result.scanned} (${result.errors} erros API, ${result.noKey} sem chave)`
+      });
+      return result;
+    }),
+    // Fetch history (timeline) das reservas recentes ou futuras 30d
+    syncHistoryBatch: protectedProcedure.input(z2.object({ limit: z2.number().int().min(1).max(100).default(50) }).optional()).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const result = await syncBookingHistoryBatch(input?.limit ?? 50);
+      await logActivity({
+        userId: ctx.user.id,
+        action: "history_sync",
+        entity: "multipark_bookings",
+        details: `History: ${result.fetched}/${result.scanned} reservas (${result.errors} erros, ${result.noKey} sem chave)`
+      });
+      return result;
+    }),
+    // Buscar history de um agente (por nome) num dia (chama /agent/history
+    // por cada parque configurado e agrega resultados na DB).
+    fetchAgentHistory: protectedProcedure.input(z2.object({
+      agentName: z2.string().min(1).max(256),
+      date: z2.string()
+      // YYYY-MM-DD
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { fetchAgentHistoryByName: fetchAgentHistoryByName2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+      return fetchAgentHistoryByName2(input.agentName, input.date);
+    }),
+    // Avaliação operacional do dia: por extra (com métricas) + agregado
+    // por turno + agregado total. TL recebe também score da equipa.
+    dayEvaluation: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+      const { evaluateDay: evaluateDay2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
+      return evaluateDay2(input.date);
+    }),
+    // Dashboard por intervalo: daily series + per-person summary com
+    // in-shift vs out-of-shift actions
+    dashboardRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ input }) => {
+      const { getDashboardRange: getDashboardRange2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
+      return getDashboardRange2(input.startDate, input.endDate);
+    }),
+    // Set multipark mapping para um empregado (nome curto + userId)
+    setMultiparkAgentMapping: protectedProcedure.input(z2.object({
+      employeeId: z2.number(),
+      multiparkAgentName: z2.string().max(256).nullable().optional(),
+      multiparkAgentUserId: z2.string().max(128).nullable().optional()
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const db = await getDb3();
+      if (!db) return { success: false };
+      const { employees: employees2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { eq: deq } = await import("drizzle-orm");
+      const patch = {};
+      if (input.multiparkAgentName !== void 0) patch.multiparkAgentName = input.multiparkAgentName;
+      if (input.multiparkAgentUserId !== void 0) patch.multiparkAgentUserId = input.multiparkAgentUserId;
+      await db.update(employees2).set(patch).where(deq(employees2.id, input.employeeId));
+      return { success: true };
+    }),
+    // Lista summary do que está guardado em multipark_booking_history para
+    // um agente num dia (após fetchAgentHistory).
+    agentHistorySummary: protectedProcedure.input(z2.object({
+      agentName: z2.string().min(1).max(256),
+      date: z2.string()
+    })).query(async ({ input }) => {
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const db = await getDb3();
+      if (!db) return null;
+      const { multiparkBookingHistory: multiparkBookingHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { sql: dsql, and: dand, eq: deq, gte: dgte, lt: dlt } = await import("drizzle-orm");
+      const start = `${input.date} 00:00:00`;
+      const end = /* @__PURE__ */ new Date(input.date + "T00:00:00");
+      end.setDate(end.getDate() + 1);
+      const endStr = end.toISOString().slice(0, 19).replace("T", " ");
+      const rows = await db.select().from(multiparkBookingHistory2).where(
+        dand(
+          deq(multiparkBookingHistory2.agentName, input.agentName),
+          dgte(multiparkBookingHistory2.actionTime, start),
+          dlt(multiparkBookingHistory2.actionTime, endStr)
+        )
+      ).orderBy(multiparkBookingHistory2.actionTime);
+      const byType = {};
+      for (const r of rows) {
+        const k = r.changeType ?? "?";
+        byType[k] = (byType[k] ?? 0) + 1;
+      }
+      return { total: rows.length, byType, items: rows };
+    }),
     // List synced bookings with filters
     bookings: protectedProcedure.input(z2.object({
       status: z2.string().optional(),
@@ -9064,8 +14639,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return getMultiparkBookings({
         status: input?.status,
         parkingType: input?.parkingType,
-        from: input?.from,
-        to: input?.to,
+        from: input?.from ? new Date(input.from) : void 0,
+        to: input?.to ? new Date(input.to) : void 0,
         search: input?.search,
         limit: input?.limit
       });
@@ -9122,6 +14697,76 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         bookings
       };
     })
+  }),
+  // ── EXTRAS DIA — Daily forecast & driver allocation (Lisboa) ────────────────
+  extrasDia: router({
+    forecast: protectedProcedure.input(z2.object({ baseDate: z2.string().optional() }).optional()).query(async ({ input }) => {
+      return getExtrasDiaForecast(input?.baseDate);
+    }),
+    candidates: protectedProcedure.query(async () => {
+      return listDriverCandidates();
+    }),
+    assignments: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+      return listAssignments(input.date);
+    }),
+    upsertAssignment: protectedProcedure.input(
+      z2.object({
+        id: z2.number().optional(),
+        assignmentDate: z2.string(),
+        employeeId: z2.number().nullable().optional(),
+        personName: z2.string().min(1).max(128),
+        level: z2.enum(["junior", "senior", "terminal", "master"]).nullable().optional(),
+        isTeamLeader: z2.boolean().optional(),
+        shift: z2.enum(["morning", "night"]),
+        startHour: z2.number().int().min(0).max(27),
+        endHour: z2.number().int().min(1).max(27),
+        sentHomeHour: z2.number().int().min(0).max(27).nullable().optional(),
+        notes: z2.string().max(255).nullable().optional()
+      })
+    ).mutation(async ({ ctx, input }) => {
+      if (input.endHour <= input.startHour) {
+        throw new TRPCError3({ code: "BAD_REQUEST", message: "Fim tem de ser depois do in\xEDcio" });
+      }
+      const span = input.endHour - input.startHour;
+      if (span < 3) throw new TRPCError3({ code: "BAD_REQUEST", message: "M\xEDnimo 3h por turno" });
+      if (span > 12) throw new TRPCError3({ code: "BAD_REQUEST", message: "M\xE1ximo 12h por turno" });
+      if (input.sentHomeHour != null) {
+        if (input.sentHomeHour < input.startHour || input.sentHomeHour > input.endHour) {
+          throw new TRPCError3({
+            code: "BAD_REQUEST",
+            message: "Hora 'mandar para casa' tem de estar dentro do turno"
+          });
+        }
+      }
+      if (input.isTeamLeader && !input.employeeId) {
+        throw new TRPCError3({
+          code: "BAD_REQUEST",
+          message: "Team Leader tem de ser um funcion\xE1rio registado (sal\xE1rio usado no custo)."
+        });
+      }
+      try {
+        return await upsertAssignment({ ...input, createdById: ctx.user.id });
+      } catch (err) {
+        throw new TRPCError3({ code: "BAD_REQUEST", message: err.message || "Erro ao guardar" });
+      }
+    }),
+    deleteAssignment: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
+      await deleteAssignment(input.id);
+      return { success: true };
+    }),
+    costForRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ input }) => {
+      return getExtrasDiaCostForRange(input.startDate, input.endDate);
+    }),
+    bookingsInSlot: protectedProcedure.input(
+      z2.object({
+        date: z2.string(),
+        hour: z2.number().int().min(3).max(26),
+        slot: z2.number().int().min(0).max(2),
+        type: z2.enum(["checkin", "checkout"])
+      })
+    ).query(async ({ input }) => {
+      return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
+    })
   })
 });
 
@@ -9144,8 +14789,9 @@ async function createContext(opts) {
 init_schema();
 init_notification();
 import { Router } from "express";
-import { eq as eq2, and as and2 } from "drizzle-orm";
+import { eq as eq6, and as and5 } from "drizzle-orm";
 import { drizzle as drizzle2 } from "drizzle-orm/mysql2";
+init_db();
 var _db2 = null;
 async function getDb2() {
   if (!_db2 && process.env.DATABASE_URL) {
@@ -9164,12 +14810,12 @@ async function validateApiKey(req, res, next) {
     res.status(500).json({ error: "Database unavailable" });
     return;
   }
-  const result = await db.select().from(apiKeys).where(and2(eq2(apiKeys.apiKey, key), eq2(apiKeys.active, true))).limit(1);
+  const result = await db.select().from(apiKeys).where(and5(eq6(apiKeys.apiKey, key), eq6(apiKeys.active, 1))).limit(1);
   if (result.length === 0) {
     res.status(403).json({ error: "Invalid or inactive API key" });
     return;
   }
-  await db.update(apiKeys).set({ lastUsedAt: /* @__PURE__ */ new Date() }).where(eq2(apiKeys.id, result[0].id));
+  await db.update(apiKeys).set({ lastUsedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") }).where(eq6(apiKeys.id, result[0].id));
   req.apiKeyInfo = result[0];
   next();
 }
@@ -9203,7 +14849,7 @@ function createExternalApiRouter() {
       if (!resolvedVehicleId && plate) {
         const db = await getDb2();
         if (db) {
-          const veh = await db.select().from(vehicles).where(eq2(vehicles.plate, plate)).limit(1);
+          const veh = await db.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
           if (veh.length > 0) resolvedVehicleId = veh[0].id;
         }
       }
@@ -9242,7 +14888,7 @@ function createExternalApiRouter() {
       if (!resolvedVehicleId && plate) {
         const db = await getDb2();
         if (db) {
-          const veh = await db.select().from(vehicles).where(eq2(vehicles.plate, plate)).limit(1);
+          const veh = await db.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
           if (veh.length > 0) resolvedVehicleId = veh[0].id;
         }
       }
@@ -9253,7 +14899,7 @@ function createExternalApiRouter() {
       const id = await createVehicleMovement({
         vehicleId: resolvedVehicleId,
         employeeId: Number(employeeId),
-        type,
+        movementType: type,
         kmReading: kmReading ? Number(kmReading) : null,
         latitude: latitude ? String(latitude) : null,
         longitude: longitude ? String(longitude) : null,
@@ -9296,7 +14942,7 @@ function createExternalApiRouter() {
         employeeId: employeeId ? Number(employeeId) : null,
         vehicleId: vehicleId ? Number(vehicleId) : null,
         duration: duration ? Number(duration) : null,
-        transcribedAt: /* @__PURE__ */ new Date(),
+        transcribedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
         createdById: null
       });
       await logActivity({ userId: 0, action: "create", entity: "radio_transcription", entityId: id, details: `[API] Transcri\xE7\xE3o autom\xE1tica` });
@@ -9378,7 +15024,7 @@ function createExternalApiRouter() {
               gpsLatitude: occ.gpsLatitude || void 0,
               gpsLongitude: occ.gpsLongitude || void 0,
               reservationLink: occ.reservationLink || void 0,
-              importedAt: now
+              importedAt: now.toISOString().slice(0, 19).replace("T", " ")
             });
             result.incidentsImported++;
             result.details.push(`Ocorr\xEAncia: ${occ.description?.substring(0, 60) || "sem descri\xE7\xE3o"}`);
@@ -9401,10 +15047,10 @@ function createExternalApiRouter() {
               reviewerName: rev.reviewerName || "An\xF3nimo",
               rating: rev.rating || 5,
               reviewText: rev.reviewText || "",
-              reviewDate: /* @__PURE__ */ new Date(),
+              reviewDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
               status: "pending_response",
               sourceEmailId: rev.sourceEmailId || void 0,
-              importedAt: /* @__PURE__ */ new Date()
+              importedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ")
             });
             if (id && rev.aiResponse) {
               await updateGoogleReview(id, { aiResponse: rev.aiResponse, status: "ai_responded" });
@@ -9439,6 +15085,7 @@ function createExternalApiRouter() {
 
 // server/_core/api-entry.ts
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+init_multipark();
 var app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "50mb" }));
@@ -9458,8 +15105,160 @@ try {
   initError = err.stack || err.message || String(err);
   console.error("[API Init Error]", initError);
 }
+app.get("/api/debug/booking", async (req, res) => {
+  try {
+    const user = await sdk.authenticateRequest(req);
+    if (!user || user.role !== "admin" && user.role !== "super_admin") {
+      return res.status(403).json({ error: "Forbidden \u2014 admin only" });
+    }
+    const id = String(req.query.id ?? "").trim();
+    if (!id) return res.status(400).json({ error: "Missing ?id=<externalId>" });
+    const found = await getBookingTryAllParks(id);
+    if (!found) {
+      return res.status(404).json({
+        error: "Reserva n\xE3o encontrada em nenhum parque",
+        triedKeys: Object.keys(process.env).filter((k) => k.startsWith("MULTIPARK_API_KEY_"))
+      });
+    }
+    return res.json({
+      park: `${found.parkConfig.name} (${found.parkConfig.city})`,
+      parkId: found.parkConfig.id,
+      booking: found.booking
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
+app.get("/api/debug/probe-partner", async (req, res) => {
+  try {
+    const user = await sdk.authenticateRequest(req);
+    if (!user || user.role !== "admin" && user.role !== "super_admin") {
+      return res.status(403).json({ error: "Forbidden \u2014 admin only" });
+    }
+    const id = String(req.query.id ?? "").trim();
+    if (!id) return res.status(400).json({ error: "Missing ?id=<externalId>" });
+    const { getBookingTryAllParks: getBookingTryAllParks2, PARK_CONFIGS: PARK_CONFIGS2, getParkApiKey: getParkApiKey2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
+    const found = await getBookingTryAllParks2(id);
+    if (!found) return res.status(404).json({ error: "Reserva n\xE3o encontrada" });
+    const apiKey = getParkApiKey2(found.parkConfig);
+    if (!apiKey) return res.status(500).json({ error: "Sem API key para o parque" });
+    const partnerId = found.booking.partnerId;
+    const base = process.env.MULTIPARK_API_URL || "https://api.multipark.pt/api/v1/bookings-api";
+    const baseRoot = base.replace(/\/bookings-api$/, "");
+    const probes = [
+      { name: "GET /partners/:partnerId", url: `${base}/partners/${partnerId}` },
+      { name: "GET /partner/:partnerId", url: `${base}/partner/${partnerId}` },
+      { name: "GET /users/:partnerId", url: `${base}/users/${partnerId}` },
+      { name: "GET /agents/:partnerId", url: `${base}/agents/${partnerId}` },
+      { name: "GET /agent/:partnerId", url: `${base}/agent/${partnerId}` },
+      { name: "GET /bookings/:id?include=partner", url: `${base}/bookings/${id}?include=partner` },
+      { name: "GET /bookings/:id?expand=partner", url: `${base}/bookings/${id}?expand=partner` },
+      { name: "GET /bookings/:id?fields=*", url: `${base}/bookings/${id}?fields=*` },
+      { name: "GET /bookings/:id/partner", url: `${base}/bookings/${id}/partner` },
+      { name: "GET /bookings/:id/details", url: `${base}/bookings/${id}/details` },
+      { name: "GET /partners (lista)", url: `${base}/partners` },
+      { name: "GET (root)/partners/:partnerId", url: `${baseRoot}/partners/${partnerId}` },
+      { name: "GET (root)/users/:partnerId", url: `${baseRoot}/users/${partnerId}` }
+    ];
+    const results = [];
+    for (const probe of probes) {
+      try {
+        const r = await fetch(probe.url, {
+          headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" }
+        });
+        const status = r.status;
+        let body = null;
+        try {
+          body = await r.json();
+        } catch {
+        }
+        results.push({
+          probe: probe.name,
+          url: probe.url,
+          status,
+          ok: r.ok,
+          body: r.ok ? body : body?.message ?? body?.error ?? "\u2014"
+        });
+      } catch (err) {
+        results.push({ probe: probe.name, url: probe.url, error: err.message });
+      }
+    }
+    return res.json({
+      bookingId: id,
+      partnerId,
+      partnerNameFromReport: found.booking.partnerName,
+      probes: results
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
+function cronAuthOk(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+  return req.headers["authorization"] === `Bearer ${secret}`;
+}
+app.get("/api/cron/multipark-sync", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { runRecentCronSync: runRecentCronSync2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+    const result = await runRecentCronSync2(30);
+    res.json({ ok: true, ranAt: (/* @__PURE__ */ new Date()).toISOString(), ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+app.get("/api/cron/multipark-future", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { runFutureCronSync: runFutureCronSync2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+    const result = await runFutureCronSync2(4);
+    res.json({ ok: true, ranAt: (/* @__PURE__ */ new Date()).toISOString(), ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+app.get("/api/cron/multipark-cleanup", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const { sql: sql5 } = await import("drizzle-orm");
+    const db = await getDb3();
+    if (!db) return res.status(500).json({ ok: false, error: "DB not available" });
+    const result = await db.execute(sql5`
+      DELETE FROM multipark_bookings WHERE id IN (
+        SELECT id FROM (
+          SELECT b1.id FROM multipark_bookings b1
+          INNER JOIN multipark_bookings b2
+            ON b1.externalId = b2.externalId
+           AND (
+                 b1.updatedAt < b2.updatedAt
+              OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id)
+           )
+          LIMIT 5000
+        ) AS t
+      )
+    `);
+    const meta = Array.isArray(result[0]) ? result[0] : result;
+    const deleted = Number(meta?.affectedRows ?? 0);
+    res.json({ ok: true, ranAt: (/* @__PURE__ */ new Date()).toISOString(), deleted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: !initError, error: initError, env: !!process.env.DATABASE_URL });
+  res.json({
+    ok: !initError,
+    error: initError,
+    env: {
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      JWT_SECRET: !!process.env.JWT_SECRET,
+      GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+      VITE_APP_ID: !!process.env.VITE_APP_ID,
+      NODE_ENV: process.env.NODE_ENV ?? null
+    }
+  });
 });
 var handler = async (req, res) => {
   if (initError && !req.url.includes("/api/health")) {
