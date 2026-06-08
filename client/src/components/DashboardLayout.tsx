@@ -70,7 +70,6 @@ import {
   CalendarCheck,
   SlidersHorizontal,
   Bell,
-  Home,
   Calendar,
   X,
 } from "lucide-react";
@@ -127,12 +126,7 @@ const menuGroups: MenuGroup[] = [
     label: "Geral",
     minRole: "frontoffice",
     items: [
-      { icon: Home, label: "Dashboard", path: "/dashboard" },
-      { icon: BarChart3, label: "Financeiro", path: "/financeiro" },
-      { icon: BarChart3, label: "Operações", path: "/operacoes-dashboard" },
-      { icon: BarChart3, label: "Pessoas", path: "/pessoas-dashboard" },
-      { icon: BarChart3, label: "Suporte", path: "/suporte-dashboard" },
-      { icon: BarChart3, label: "Marketing", path: "/marketing-dashboard" },
+      { icon: BarChart3, label: "Dashboards", path: "/dashboards" },
     ],
   },
   {

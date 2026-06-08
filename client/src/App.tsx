@@ -37,6 +37,7 @@ import MultiparkInspectPage from "./pages/MultiparkInspectPage";
 import InvitePage from "./pages/InvitePage";
 import ProjectCostsDashboard from "./pages/ProjectCostsDashboard";
 import DashboardPage from "./pages/DashboardPage";
+import DashboardsPage from "./pages/DashboardsPage";
 import FinanceiroDashboard from "./pages/FinanceiroDashboard";
 import OperacoesDashboard from "./pages/OperacoesDashboard";
 import PessoasDashboard from "./pages/PessoasDashboard";
@@ -50,6 +51,13 @@ function Router() {
     <Switch>
       <Route path="/convite/:token" component={InvitePage} />
       <Route path="/" component={Home} />
+      <Route path="/dashboards">
+        {() => (
+          <DashboardLayout>
+            <DashboardsPage />
+          </DashboardLayout>
+        )}
+      </Route>
       <Route path="/dashboard">
         {() => (
           <DashboardLayout>
