@@ -25,6 +25,7 @@ import {
 } from "../multipark";
 import {
   upsertMultiparkBooking,
+  upsertBookingExtras,
   createSyncLog,
   getProjects,
   getDb,
@@ -252,6 +253,13 @@ function bookingToRecord(
     paymentMethod: typeof (pricing as any)?.paymentMethod === "string"
       ? (pricing as any).paymentMethod.slice(0, 128)
       : null,
+    totalPaid: (pricing as any)?.totalPaid?.toString() ?? null,
+    pro: (booking as any).pro ? 1 : 0,
+    partnerId: (booking as any).partnerId ? String((booking as any).partnerId).slice(0, 128) : null,
+    campaignId: (booking as any).campaignId ? String((booking as any).campaignId).slice(0, 128) : null,
+    cashValidatedByName: typeof (booking as any).cashValidatedByName === "string" ? (booking as any).cashValidatedByName.slice(0, 256) : null,
+    driverValidatedByName: typeof (booking as any).driverValidatedByName === "string" ? (booking as any).driverValidatedByName.slice(0, 256) : null,
+    cashierClosedByName: typeof (booking as any).cashierClosedByName === "string" ? (booking as any).cashierClosedByName.slice(0, 256) : null,
     ...classifyAllocation((booking as any).allocation),
   };
 }
@@ -738,6 +746,7 @@ export async function syncBookings(opts: {
           try {
             const record = bookingToRecord(booking, projectMap, aliasResolver);
             const result = await upsertMultiparkBooking(record);
+            await upsertBookingExtras(booking.id, (booking as any).extraServices);
             processed++;
             if (result?.action === "created") created++;
             else updated++;

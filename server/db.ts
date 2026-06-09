@@ -62,6 +62,7 @@ import {
   partnershipInvoices,
   annualReports,
   multiparkBookings,
+  multiparkBookingExtras,
   multiparkSyncLogs,
   InsertMultiparkBooking,
   multiparkDailySnapshots,
@@ -5407,6 +5408,31 @@ export async function upsertMultiparkBooking(data: InsertMultiparkBooking) {
     .where(eq(multiparkBookings.externalId, externalId))
     .limit(1);
   return { id: row?.id, action: "created" as const };
+}
+
+/**
+ * Persiste os extraServices itemizados de uma reserva na tabela-filha.
+ * Substitui o conjunto (delete + insert) para manter o estado `done` actual
+ * em re-syncs. Não faz nada se a reserva não trouxer extras.
+ */
+export async function upsertBookingExtras(
+  bookingExternalId: string,
+  extras: Array<{ id?: string; name?: string; description?: string; price?: number; done?: boolean }> | null | undefined,
+) {
+  const db = await getDb();
+  if (!db) return;
+  if (!Array.isArray(extras) || extras.length === 0) return;
+  await db.delete(multiparkBookingExtras).where(eq(multiparkBookingExtras.bookingExternalId, bookingExternalId));
+  await db.insert(multiparkBookingExtras).values(
+    extras.map((e) => ({
+      bookingExternalId,
+      extraId: e.id ? String(e.id).slice(0, 128) : null,
+      name: typeof e.name === "string" ? e.name.slice(0, 256) : null,
+      description: typeof e.description === "string" ? e.description.slice(0, 512) : null,
+      price: e.price != null ? String(e.price) : null,
+      done: e.done ? 1 : 0,
+    })),
+  );
 }
 
 export async function getMultiparkBookingStats(filters?: { from?: string; to?: string; projectId?: number }) {

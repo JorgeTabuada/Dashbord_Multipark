@@ -619,6 +619,13 @@ export const multiparkBookings = mysqlTable("multipark_bookings", {
 	spotType: mysqlEnum(['covered','uncovered','indoor','unknown']),
 	parkBrand: varchar({ length: 16 }),
 	paymentMethod: varchar({ length: 128 }),
+	totalPaid: decimal({ precision: 10, scale: 2 }),
+	pro: tinyint().default(0),
+	partnerId: varchar({ length: 128 }),
+	campaignId: varchar({ length: 128 }),
+	cashValidatedByName: varchar({ length: 256 }),
+	driverValidatedByName: varchar({ length: 256 }),
+	cashierClosedByName: varchar({ length: 256 }),
 	cancelledAt: timestamp({ mode: 'string' }),
 	cancelReason: text(),
 	notes: text(),
@@ -629,6 +636,20 @@ export const multiparkBookings = mysqlTable("multipark_bookings", {
 },
 (table) => [
 	uniqueIndex("multipark_bookings_externalId_unique").on(table.externalId),
+]);
+
+export const multiparkBookingExtras = mysqlTable("multipark_booking_extras", {
+	id: int().autoincrement().primaryKey(),
+	bookingExternalId: varchar({ length: 128 }).notNull(),
+	extraId: varchar({ length: 128 }),
+	name: varchar({ length: 256 }),
+	description: varchar({ length: 512 }),
+	price: decimal({ precision: 10, scale: 2 }),
+	done: tinyint().default(0),
+	syncedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_mp_booking_extras_booking").on(table.bookingExternalId),
 ]);
 
 export const multiparkDailySnapshots = mysqlTable("multipark_daily_snapshots", {

@@ -390,6 +390,32 @@ async function applyMigration0044(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0046(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0046_STATEMENTS, IDEMPOTENT_ERROR_CODES_0046 } = await import("./migrations/migration_0046");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0046_STATEMENTS) {
+    try {
+      await db.execute(sql.raw(stmt));
+      ok += 1;
+    } catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0046.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -403,6 +429,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0044_rh_revamp: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0046: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0046();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0046_multipark_report_extra_fields: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),

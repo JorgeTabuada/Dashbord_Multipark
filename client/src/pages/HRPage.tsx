@@ -1603,6 +1603,30 @@ function RunMigration0044Button() {
   );
 }
 
+// ─── MIGRATION 0046 ONE-SHOT BUTTON (super_admin only) ────────────────────────
+function RunMigration0046Button() {
+  const run = trpc.admin.runMigration0046.useMutation({
+    onSuccess: (r) => {
+      if (r.failed > 0) toast.error(`Migration falhou em ${r.failed} statements: ${r.errors[0] ?? ""}`);
+      else toast.success(`Migration aplicada: ${r.ok} ok, ${r.skipped} já existiam`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Aplicar a migration 0046 (campos novos do /report + tabela multipark_booking_extras)?")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A aplicar..." : "DB: 0046"}
+    </Button>
+  );
+}
+
 function BackfillEmployeeProjectButton() {
   const utils = trpc.useUtils();
   const { data: projectsList = [] } = trpc.projects.list.useQuery();
@@ -2263,6 +2287,7 @@ export default function HRPage() {
         <p className="text-muted-foreground text-sm">Gestão de colaboradores, ponto e documentação</p>
         <div className="flex items-center gap-2 flex-wrap">
           {userRole === "super_admin" && <BackfillEmployeeProjectButton />}
+          {userRole === "super_admin" && <RunMigration0046Button />}
           {userRole === "super_admin" && (
             <Button variant="outline" size="sm" onClick={() => setShowDashboard(true)}>
               <BarChart3 className="w-4 h-4 mr-2" /> Dashboard
