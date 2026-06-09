@@ -1701,15 +1701,48 @@ export async function getMarketingDashboardStats(filters: { from?: Date; to?: Da
   const campQ = db.select({ count: sql<number>`COUNT(*)` }).from(campaigns);
   const campCount = campConditions.length > 0 ? await campQ.where(and(...campConditions)) : await campQ;
 
-  const totalSpend = parseFloat(s.totalSpend || "0");
-  const totalReservations = s.totalReservations || 0;
+  // ── Gasto estimado (orçamento diário × dias) + reservas REAIS por link ──
+  // O Dashboard deixa de depender só de campaign_daily_stats (que pode estar
+  // vazio): usa o orçamento das campanhas e atribui reservas reais via os links
+  // (internal_campaign_keys campaignType='ad').
+  const periodDays = filters.from && filters.to
+    ? Math.max(1, Math.floor((filters.to.getTime() - filters.from.getTime()) / 86400000) + 1)
+    : 30;
+  const campRowsQ = db.select({ id: campaigns.id, budget: campaigns.budget }).from(campaigns);
+  const campRows = campConditions.length > 0 ? await campRowsQ.where(and(...campConditions)) : await campRowsQ;
+  const campIdSet = new Set(campRows.map((c) => c.id));
+  const budgetSpend = campRows.reduce((acc, c) => acc + parseFloat((c.budget as any) || "0"), 0) * periodDays;
+
+  const keysRaw: any = await db.execute(sql`SELECT campaignId, keyType, keyValue FROM internal_campaign_keys WHERE campaignType = 'ad'`);
+  const keys = ((Array.isArray(keysRaw[0]) ? keysRaw[0] : keysRaw) as any[]).filter((k) => campIdSet.has(k.campaignId));
+  let linkReservations = 0, linkRevenue = 0;
+  if (keys.length) {
+    const conds: any[] = [];
+    const names = keys.filter((k) => k.keyType === "campaign_name").map((k) => k.keyValue);
+    if (names.length) conds.push(sql`campaignName IN (${sql.join(names.map((v: string) => sql`${v}`), sql`, `)})`);
+    for (const k of keys.filter((k) => k.keyType === "campaign_id")) conds.push(sql`originUrl LIKE ${"%campaignId=" + k.keyValue + "%"}`);
+    for (const k of keys.filter((k) => k.keyType === "url_pattern")) conds.push(sql`originUrl LIKE ${k.keyValue}`);
+    if (conds.length) {
+      const dateC = filters.from && filters.to ? sql` AND checkIn >= ${toMysqlDateTime(filters.from)} AND checkIn <= ${toMysqlDateTime(filters.to)}` : sql``;
+      const r: any = await db.execute(sql`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql.join(conds, sql` OR `)})${dateC}`);
+      const row = (Array.isArray(r[0]) ? r[0] : r)[0];
+      linkReservations = Number(row?.c ?? 0); linkRevenue = Number(row?.rev ?? 0);
+    }
+  }
+
+  const realSpend = parseFloat(s.totalSpend || "0"); // de campaign_daily_stats (real, quando importado do Google Ads)
+  const totalSpend = realSpend > 0 ? realSpend : budgetSpend; // senão estima por orçamento
+  const totalReservations = linkReservations > 0 ? linkReservations : (s.totalReservations || 0);
+  const conversionValue = linkRevenue > 0 ? linkRevenue : parseFloat(s.totalConversionValue || "0");
   const totalMktExpenses = parseFloat(mktResult[0].total || "0");
 
   return {
     totalSpend,
+    spendEstimated: realSpend === 0 && budgetSpend > 0,
     totalReservations,
+    totalRevenue: conversionValue,
     costPerReservation: totalReservations > 0 ? (totalSpend + totalMktExpenses) / totalReservations : 0,
-    avgConversionValue: totalReservations > 0 ? parseFloat(s.totalConversionValue || "0") / totalReservations : 0,
+    avgConversionValue: totalReservations > 0 ? conversionValue / totalReservations : 0,
     totalMktExpenses,
     campaignCount: campCount[0].count,
     totalImpressions: s.totalImpressions || 0,
