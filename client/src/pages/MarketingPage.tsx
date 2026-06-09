@@ -1232,6 +1232,7 @@ function InternalCampaignsTab() {
   const [target, setTarget] = useState<string>("");
   const [newName, setNewName] = useState("");
   const [newProject, setNewProject] = useState<string>("");
+  const [newBudget, setNewBudget] = useState("");
   const [costInputs, setCostInputs] = useState<Record<string, { date: string; amount: string }>>({});
 
   const refresh = () => {
@@ -1267,7 +1268,8 @@ function InternalCampaignsTab() {
               <SelectContent>{sortedProjects.map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <Button disabled={!newName || create.isPending} onClick={() => { create.mutate({ name: newName, projectId: newProject ? Number(newProject) : undefined }); setNewProject(""); }}>Criar</Button>
+          <div><Label className="text-xs">Orçamento (€/dia)</Label><Input type="number" className="w-28" value={newBudget} onChange={e => setNewBudget(e.target.value)} placeholder="opcional" /></div>
+          <Button disabled={!newName || create.isPending} onClick={() => { create.mutate({ name: newName, projectId: newProject ? Number(newProject) : undefined, dailyBudget: newBudget ? Number(newBudget) : undefined }); setNewProject(""); setNewBudget(""); }}>Criar</Button>
         </CardContent>
       </Card>
 
@@ -1320,6 +1322,7 @@ function InternalCampaignsTab() {
                     <h3 className="font-semibold">{c.name}</h3>
                     <Badge className="text-[10px]" variant={c.campaignType === "ad" ? "default" : "secondary"}>{c.campaignType === "ad" ? "Ad" : "Interna"}</Badge>
                     {c.projectName && <Badge variant="outline" className="text-[10px]">📁 {c.projectName}</Badge>}
+                    {c.dailyBudget != null && <Badge variant="outline" className="text-[10px]">{Number(c.dailyBudget).toFixed(0)} €/dia</Badge>}
                     {c.city && <Badge variant="outline" className="text-[10px]">{c.city}</Badge>}
                     {c.brand && <Badge variant="outline" className="text-[10px]">{c.brand}</Badge>}
                   </div>
@@ -1328,7 +1331,7 @@ function InternalCampaignsTab() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                   <div><div className="text-xs text-muted-foreground">Reservas</div><div className="font-semibold">{c.bookings}</div></div>
                   <div><div className="text-xs text-muted-foreground">Receita</div><div className="font-semibold">{Number(c.revenue).toFixed(0)} €</div></div>
-                  <div><div className="text-xs text-muted-foreground">Gasto</div><div className="font-semibold">{Number(c.spend).toFixed(0)} €</div></div>
+                  <div><div className="text-xs text-muted-foreground">Gasto{c.spendEstimated ? " (est.)" : ""}</div><div className="font-semibold">{Number(c.spend).toFixed(0)} €</div></div>
                   <div><div className="text-xs text-muted-foreground">Custo/reserva</div><div className="font-semibold">{Number(c.costPerBooking).toFixed(2)} €</div></div>
                   <div><div className="text-xs text-muted-foreground">ROAS</div><div className="font-semibold">{c.roas != null ? Number(c.roas).toFixed(1) + "x" : "—"}</div></div>
                 </div>

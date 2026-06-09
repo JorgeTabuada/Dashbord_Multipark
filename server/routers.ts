@@ -2290,7 +2290,10 @@ export const appRouter = router({
           SELECT originUrl AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
           FROM multipark_bookings
           WHERE originUrl IS NOT NULL AND originUrl <> ''
-            AND originUrl NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='url_pattern')
+            AND NOT EXISTS (
+              SELECT 1 FROM internal_campaign_keys k
+              WHERE k.keyType = 'url_pattern' AND multipark_bookings.originUrl LIKE k.keyValue
+            )
           GROUP BY originUrl ORDER BY bookings DESC LIMIT 250`);
         const namesRes: any = await db.execute(sql`
           SELECT campaignName AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
@@ -2313,10 +2316,14 @@ export const appRouter = router({
           if (!db) return [];
           const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
           // Campanhas vêm de DUAS fontes: internal_campaigns + campaigns (ad).
-          const internal = rows(await db.execute(sql`SELECT id, name, projectId, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
+          const internal = rows(await db.execute(sql`SELECT id, name, projectId, dailyBudget, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
             .map((c) => ({ ...c, campaignType: "internal" as const }));
           const ad = rows(await db.execute(sql`SELECT id, name, projectId, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
-            .map((c) => ({ ...c, city: null, campaignType: "ad" as const }));
+            .map((c) => ({ ...c, city: null, dailyBudget: null, campaignType: "ad" as const }));
+          // nº de dias do período (para estimar gasto via dailyBudget)
+          const periodDays = input?.from && input?.to
+            ? Math.max(1, Math.floor((Date.parse(input.to) - Date.parse(input.from)) / 86400000) + 1)
+            : 0;
           const projs = rows(await db.execute(sql`SELECT id, name FROM projects`));
           const projName = new Map(projs.map((p) => [p.id, p.name]));
           const camps = [...internal, ...ad].map((c) => ({ ...c, projectName: c.projectId ? projName.get(c.projectId) ?? null : null }));
@@ -2338,8 +2345,11 @@ export const appRouter = router({
               bookings = Number(m?.c ?? 0); revenue = Number(m?.rev ?? 0);
             }
             const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
-            const spend = Number(costRow?.spend ?? 0);
-            out.push({ ...c, keys, bookings, revenue, spend, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
+            const manualSpend = Number(costRow?.spend ?? 0);
+            // Gasto: custos reais manuais se houver; senão estima dailyBudget × dias do período.
+            const budgetSpend = c.dailyBudget && periodDays > 0 ? Number(c.dailyBudget) * periodDays : 0;
+            const spend = manualSpend > 0 ? manualSpend : budgetSpend;
+            out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated: manualSpend === 0 && budgetSpend > 0, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
           }
           // Campanhas com chaves ou métricas primeiro
           out.sort((a, b) => (b.keys.length || b.bookings) - (a.keys.length || a.bookings));
@@ -2347,19 +2357,19 @@ export const appRouter = router({
         }),
 
       create: protectedProcedure
-        .input(z.object({ name: z.string().min(1), projectId: z.number().optional(), city: z.string().optional(), brand: z.string().optional() }))
+        .input(z.object({ name: z.string().min(1), projectId: z.number().optional(), dailyBudget: z.number().optional(), city: z.string().optional(), brand: z.string().optional() }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");
           const { internalCampaigns } = await import("../drizzle/schema");
           const db = await getDb();
           if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-          await db.insert(internalCampaigns).values({ name: input.name, projectId: input.projectId ?? null, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id } as any);
+          await db.insert(internalCampaigns).values({ name: input.name, projectId: input.projectId ?? null, dailyBudget: input.dailyBudget != null ? String(input.dailyBudget) : null, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id } as any);
           return { success: true };
         }),
 
       update: protectedProcedure
-        .input(z.object({ id: z.number(), name: z.string().optional(), projectId: z.number().nullable().optional(), city: z.string().optional(), brand: z.string().optional(), campaignStatus: z.enum(["active", "paused", "completed"]).optional() }))
+        .input(z.object({ id: z.number(), name: z.string().optional(), projectId: z.number().nullable().optional(), dailyBudget: z.number().nullable().optional(), city: z.string().optional(), brand: z.string().optional(), campaignStatus: z.enum(["active", "paused", "completed"]).optional() }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");

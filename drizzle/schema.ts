@@ -77,6 +77,7 @@ export const internalCampaigns = mysqlTable("internal_campaigns", {
 	id: int().autoincrement().primaryKey(),
 	name: varchar({ length: 256 }).notNull(),
 	projectId: int(), // "para onde vai" — projeto/centro de custos
+	dailyBudget: decimal({ precision: 10, scale: 2 }), // orçamento diário (Google Ads); gasto estimado = dailyBudget × dias
 	city: varchar({ length: 64 }),
 	brand: varchar({ length: 32 }),
 	campaignStatus: mysqlEnum(['active','paused','completed']).default('active').notNull(),
