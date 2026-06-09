@@ -2273,6 +2273,173 @@ export const appRouter = router({
       }),
     }),
 
+    // ── CAMPANHAS INTERNAS (das reservas Multipark) ──
+    // Campanha lógica agrupa várias chaves (campaignId do link, nome, ou padrão
+    // de URL). Atribuição "uma vez": detecta chaves novas, utilizador atribui.
+    internalCampaigns: router({
+      // Chaves ainda NÃO atribuídas: campaignId (do originUrl) + campaignName não-parceiro.
+      detect: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return { ids: [], names: [] };
+        const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
+        const idsRes: any = await db.execute(sql`
+          SELECT cid AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          FROM (
+            SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(originUrl, 'campaignId=', -1), '&', 1) AS cid, totalPrice
+            FROM multipark_bookings WHERE originUrl LIKE '%campaignId=%'
+          ) t
+          WHERE cid REGEXP '^[A-Za-z0-9_-]+$'
+            AND cid NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='campaign_id')
+          GROUP BY cid ORDER BY bookings DESC`);
+        const namesRes: any = await db.execute(sql`
+          SELECT campaignName AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          FROM multipark_bookings
+          WHERE campaignName IS NOT NULL AND campaignName <> ''
+            AND campaignName NOT IN (SELECT name FROM partnerships)
+            AND campaignName NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='campaign_name')
+          GROUP BY campaignName ORDER BY bookings DESC`);
+        return { ids: rows(idsRes), names: rows(namesRes) };
+      }),
+
+      // Campanhas lógicas + chaves + custos + métricas (reservas/receita/gasto).
+      list: protectedProcedure
+        .input(z.object({ from: z.string().optional(), to: z.string().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { sql } = await import("drizzle-orm");
+          const db = await getDb();
+          if (!db) return [];
+          const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
+          const camps = rows(await db.execute(sql`SELECT * FROM internal_campaigns ORDER BY name`));
+          const allKeys = rows(await db.execute(sql`SELECT * FROM internal_campaign_keys`));
+          const dateCond = input?.from && input?.to
+            ? sql` AND checkIn >= ${input.from + " 00:00:00"} AND checkIn <= ${input.to + " 23:59:59"}`
+            : sql``;
+          const out: any[] = [];
+          for (const c of camps) {
+            const keys = allKeys.filter((k) => k.campaignId === c.id);
+            const conds: any[] = [];
+            const names = keys.filter((k) => k.keyType === "campaign_name").map((k) => k.keyValue);
+            if (names.length) conds.push(sql`campaignName IN (${sql.join(names.map((v: string) => sql`${v}`), sql`, `)})`);
+            for (const k of keys.filter((k) => k.keyType === "campaign_id")) conds.push(sql`originUrl LIKE ${"%campaignId=" + k.keyValue + "%"}`);
+            for (const k of keys.filter((k) => k.keyType === "url_pattern")) conds.push(sql`originUrl LIKE ${k.keyValue}`);
+            let bookings = 0, revenue = 0;
+            if (conds.length) {
+              const m = rows(await db.execute(sql`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql.join(conds, sql` OR `)})${dateCond}`))[0];
+              bookings = Number(m?.c ?? 0); revenue = Number(m?.rev ?? 0);
+            }
+            const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
+            const spend = Number(costRow?.spend ?? 0);
+            out.push({ ...c, keys, bookings, revenue, spend, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
+          }
+          return out;
+        }),
+
+      create: protectedProcedure
+        .input(z.object({ name: z.string().min(1), city: z.string().optional(), brand: z.string().optional() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { internalCampaigns } = await import("../drizzle/schema");
+          const db = await getDb();
+          if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          await db.insert(internalCampaigns).values({ name: input.name, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id } as any);
+          return { success: true };
+        }),
+
+      update: protectedProcedure
+        .input(z.object({ id: z.number(), name: z.string().optional(), city: z.string().optional(), brand: z.string().optional(), campaignStatus: z.enum(["active", "paused", "completed"]).optional() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { internalCampaigns } = await import("../drizzle/schema");
+          const { eq } = await import("drizzle-orm");
+          const db = await getDb();
+          if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          const { id, ...rest } = input;
+          await db.update(internalCampaigns).set(rest as any).where(eq(internalCampaigns.id, id));
+          return { success: true };
+        }),
+
+      remove: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { internalCampaigns, internalCampaignKeys, internalCampaignCosts } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db.delete(internalCampaignKeys).where(eq(internalCampaignKeys.campaignId, input.id));
+        await db.delete(internalCampaignCosts).where(eq(internalCampaignCosts.campaignId, input.id));
+        await db.delete(internalCampaigns).where(eq(internalCampaigns.id, input.id));
+        return { success: true };
+      }),
+
+      // Atribui uma chave detetada a uma campanha (a tal "atribuição uma vez").
+      assignKey: protectedProcedure
+        .input(z.object({ campaignId: z.number(), keyType: z.enum(["campaign_id", "campaign_name", "url_pattern"]), keyValue: z.string().min(1) }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { internalCampaignKeys } = await import("../drizzle/schema");
+          const db = await getDb();
+          if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          await db.insert(internalCampaignKeys).values({ campaignId: input.campaignId, keyType: input.keyType, keyValue: input.keyValue } as any);
+          return { success: true };
+        }),
+
+      removeKey: protectedProcedure.input(z.object({ keyId: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { internalCampaignKeys } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db.delete(internalCampaignKeys).where(eq(internalCampaignKeys.id, input.keyId));
+        return { success: true };
+      }),
+
+      addCost: protectedProcedure
+        .input(z.object({ campaignId: z.number(), costDate: z.string(), amount: z.number(), notes: z.string().optional() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { sql } = await import("drizzle-orm");
+          const db = await getDb();
+          if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          // upsert por (campaignId, costDate)
+          await db.execute(sql`
+            INSERT INTO internal_campaign_costs (campaignId, costDate, amount, notes, createdById)
+            VALUES (${input.campaignId}, ${input.costDate}, ${input.amount}, ${input.notes ?? null}, ${ctx.user.id})
+            ON DUPLICATE KEY UPDATE amount = ${input.amount}, notes = ${input.notes ?? null}`);
+          return { success: true };
+        }),
+
+      costs: protectedProcedure.input(z.object({ campaignId: z.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { internalCampaignCosts } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return [];
+        return db.select().from(internalCampaignCosts).where(eq(internalCampaignCosts.campaignId, input.campaignId)).orderBy(desc(internalCampaignCosts.costDate));
+      }),
+
+      removeCost: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { internalCampaignCosts } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db.delete(internalCampaignCosts).where(eq(internalCampaignCosts.id, input.id));
+        return { success: true };
+      }),
+    }),
+
     // ── DAILY STATS ──
     stats: router({
       byCampaign: protectedProcedure.input(z.object({ campaignId: z.number() })).query(async ({ ctx, input }) => {

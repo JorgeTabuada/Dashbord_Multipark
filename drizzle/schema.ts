@@ -71,6 +71,48 @@ export const campaigns = mysqlTable("campaigns", {
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── Campanhas internas (das reservas Multipark) ──────────────────────────────
+// Campanha lógica: agrupa vários campaignId/nomes/links sob um nome.
+export const internalCampaigns = mysqlTable("internal_campaigns", {
+	id: int().autoincrement().primaryKey(),
+	name: varchar({ length: 256 }).notNull(),
+	city: varchar({ length: 64 }),
+	brand: varchar({ length: 32 }),
+	campaignStatus: mysqlEnum(['active','paused','completed']).default('active').notNull(),
+	notes: text(),
+	createdById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+});
+
+// Chaves que pertencem a uma campanha lógica (atribuição "uma vez").
+// type: campaign_id (do originUrl) | campaign_name | url_pattern (LIKE no originUrl)
+export const internalCampaignKeys = mysqlTable("internal_campaign_keys", {
+	id: int().autoincrement().primaryKey(),
+	campaignId: int().notNull(), // FK -> internal_campaigns.id
+	keyType: mysqlEnum(['campaign_id','campaign_name','url_pattern']).notNull(),
+	keyValue: varchar({ length: 512 }).notNull(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	uniqueIndex("internal_campaign_keys_type_value_unique").on(table.keyType, table.keyValue),
+	index("idx_internal_campaign_keys_campaign").on(table.campaignId),
+]);
+
+// Gasto por dia de uma campanha lógica.
+export const internalCampaignCosts = mysqlTable("internal_campaign_costs", {
+	id: int().autoincrement().primaryKey(),
+	campaignId: int().notNull(), // FK -> internal_campaigns.id
+	costDate: varchar({ length: 10 }).notNull(), // YYYY-MM-DD
+	amount: decimal({ precision: 10, scale: 2 }).notNull(),
+	notes: varchar({ length: 255 }),
+	createdById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	uniqueIndex("internal_campaign_costs_campaign_date_unique").on(table.campaignId, table.costDate),
+]);
+
 export const careerExamAttempts = mysqlTable("career_exam_attempts", {
 	id: int().autoincrement().primaryKey(),
 	examId: int().notNull(),

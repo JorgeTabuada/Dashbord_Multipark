@@ -66,11 +66,13 @@ export default function MarketingPage() {
           <TabsList>
             <TabsTrigger value="dashboard"><BarChart3 className="w-4 h-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="campaigns"><Megaphone className="w-4 h-4 mr-1" />Campanhas</TabsTrigger>
+            <TabsTrigger value="internal"><Target className="w-4 h-4 mr-1" />Campanhas Internas</TabsTrigger>
             <TabsTrigger value="expenses"><Receipt className="w-4 h-4 mr-1" />Despesas Mkt</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard"><DashboardTab /></TabsContent>
           <TabsContent value="campaigns"><CampaignsTab /></TabsContent>
+          <TabsContent value="internal"><InternalCampaignsTab /></TabsContent>
           <TabsContent value="expenses"><MktExpensesTab /></TabsContent>
         </Tabs>
       </div>
@@ -1218,5 +1220,124 @@ function GoogleAdsImportDialog({ onClose }: { onClose: () => void }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── CAMPANHAS INTERNAS ───────────────────────────────────────────────────────
+function InternalCampaignsTab() {
+  const utils = trpc.useUtils();
+  const { data: detected } = trpc.marketing.internalCampaigns.detect.useQuery();
+  const { data: campaigns = [] } = trpc.marketing.internalCampaigns.list.useQuery();
+  const [target, setTarget] = useState<string>("");
+  const [newName, setNewName] = useState("");
+  const [newCity, setNewCity] = useState("");
+  const [costInputs, setCostInputs] = useState<Record<number, { date: string; amount: string }>>({});
+
+  const refresh = () => {
+    utils.marketing.internalCampaigns.detect.invalidate();
+    utils.marketing.internalCampaigns.list.invalidate();
+  };
+  const create = trpc.marketing.internalCampaigns.create.useMutation({ onSuccess: () => { setNewName(""); setNewCity(""); refresh(); toast.success("Campanha criada"); }, onError: (e) => toast.error(e.message) });
+  const assignKey = trpc.marketing.internalCampaigns.assignKey.useMutation({ onSuccess: () => { refresh(); toast.success("Atribuído"); }, onError: (e) => toast.error(e.message) });
+  const removeKey = trpc.marketing.internalCampaigns.removeKey.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
+  const remove = trpc.marketing.internalCampaigns.remove.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
+  const addCost = trpc.marketing.internalCampaigns.addCost.useMutation({ onSuccess: () => { refresh(); toast.success("Custo registado"); }, onError: (e) => toast.error(e.message) });
+
+  const assign = (keyType: "campaign_id" | "campaign_name", keyValue: string) => {
+    if (!target) { toast.error("Escolhe a campanha-alvo primeiro"); return; }
+    assignKey.mutate({ campaignId: Number(target), keyType, keyValue });
+  };
+  const ids = (detected?.ids ?? []) as any[];
+  const names = (detected?.names ?? []) as any[];
+
+  return (
+    <div className="space-y-4">
+      {/* Nova campanha */}
+      <Card>
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Plus className="w-4 h-4" /> Nova campanha lógica</CardTitle></CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div><Label className="text-xs">Nome</Label><Input className="w-56" value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex: Skypark Faro" /></div>
+          <div><Label className="text-xs">Cidade</Label><Input className="w-32" value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="opcional" /></div>
+          <Button disabled={!newName || create.isPending} onClick={() => create.mutate({ name: newName, city: newCity || undefined })}>Criar</Button>
+        </CardContent>
+      </Card>
+
+      {/* Por atribuir */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Por atribuir ({ids.length + names.length})</CardTitle>
+          <p className="text-xs text-muted-foreground">Escolhe a campanha-alvo e atribui cada link/nome detetado. Fica atribuído para sempre.</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Campanha-alvo:</Label>
+            <Select value={target} onValueChange={setTarget}>
+              <SelectTrigger className="w-64"><SelectValue placeholder="Escolher campanha..." /></SelectTrigger>
+              <SelectContent>{campaigns.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {ids.length > 0 && <div className="text-xs font-medium text-muted-foreground">Links (campaignId)</div>}
+          {ids.map((r) => (
+            <div key={"id-" + r.value} className="flex items-center gap-2 text-sm border-b py-1">
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{r.value}</code>
+              <span className="text-muted-foreground">{Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</span>
+              <Button size="sm" variant="outline" className="ml-auto h-7" disabled={assignKey.isPending} onClick={() => assign("campaign_id", r.value)}>Atribuir →</Button>
+            </div>
+          ))}
+          {names.length > 0 && <div className="text-xs font-medium text-muted-foreground mt-2">Nomes de campanha</div>}
+          {names.map((r) => (
+            <div key={"nm-" + r.value} className="flex items-center gap-2 text-sm border-b py-1">
+              <span>{r.value}</span>
+              <span className="text-muted-foreground">{Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</span>
+              <Button size="sm" variant="outline" className="ml-auto h-7" disabled={assignKey.isPending} onClick={() => assign("campaign_name", r.value)}>Atribuir →</Button>
+            </div>
+          ))}
+          {ids.length + names.length === 0 && <p className="text-sm text-muted-foreground">Tudo atribuído ✓</p>}
+        </CardContent>
+      </Card>
+
+      {/* Campanhas */}
+      <div className="grid gap-3">
+        {campaigns.map((c: any) => {
+          const ci = costInputs[c.id] ?? { date: new Date().toISOString().slice(0, 10), amount: "" };
+          return (
+            <Card key={c.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">{c.name}</h3>
+                    {c.city && <Badge variant="outline" className="text-[10px]">{c.city}</Badge>}
+                    {c.brand && <Badge variant="outline" className="text-[10px]">{c.brand}</Badge>}
+                  </div>
+                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (confirm(`Eliminar campanha "${c.name}"?`)) remove.mutate({ id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div><div className="text-xs text-muted-foreground">Reservas</div><div className="font-semibold">{c.bookings}</div></div>
+                  <div><div className="text-xs text-muted-foreground">Receita</div><div className="font-semibold">{Number(c.revenue).toFixed(0)} €</div></div>
+                  <div><div className="text-xs text-muted-foreground">Gasto</div><div className="font-semibold">{Number(c.spend).toFixed(0)} €</div></div>
+                  <div><div className="text-xs text-muted-foreground">Custo/reserva</div><div className="font-semibold">{Number(c.costPerBooking).toFixed(2)} €</div></div>
+                  <div><div className="text-xs text-muted-foreground">ROAS</div><div className="font-semibold">{c.roas != null ? Number(c.roas).toFixed(1) + "x" : "—"}</div></div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(c.keys ?? []).map((k: any) => (
+                    <Badge key={k.id} variant="secondary" className="text-[10px] gap-1">
+                      <span className="opacity-60">{k.keyType === "campaign_id" ? "link" : k.keyType === "campaign_name" ? "nome" : "url"}:</span>{k.keyValue}
+                      <button className="ml-1 text-red-500" onClick={() => removeKey.mutate({ keyId: k.id })}>×</button>
+                    </Badge>
+                  ))}
+                  {(c.keys ?? []).length === 0 && <span className="text-xs text-muted-foreground">Sem chaves atribuídas ainda.</span>}
+                </div>
+                <div className="flex items-end gap-2 border-t pt-2">
+                  <div><Label className="text-[10px]">Data</Label><Input type="date" className="h-8 w-36" value={ci.date} onChange={e => setCostInputs(s => ({ ...s, [c.id]: { ...ci, date: e.target.value } }))} /></div>
+                  <div><Label className="text-[10px]">Gasto (€)</Label><Input type="number" className="h-8 w-28" value={ci.amount} onChange={e => setCostInputs(s => ({ ...s, [c.id]: { ...ci, amount: e.target.value } }))} placeholder="0.00" /></div>
+                  <Button size="sm" className="h-8" disabled={!ci.amount || addCost.isPending} onClick={() => addCost.mutate({ campaignId: c.id, costDate: ci.date, amount: Number(ci.amount) })}>+ Custo do dia</Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {campaigns.length === 0 && <Card className="p-8 text-center text-muted-foreground">Ainda não há campanhas. Cria uma acima e atribui os links/nomes detetados.</Card>}
+      </div>
+    </div>
   );
 }
