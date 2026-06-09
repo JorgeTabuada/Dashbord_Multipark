@@ -12,9 +12,18 @@ import { toast } from "sonner";
 import { Key, Plus, Trash2, Copy, BookOpen, Shield, Zap, Radio, Truck, Users, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
+// Scopes disponíveis ao criar uma chave. O campo permissions é lido pela API /api/v1.
+const SCOPES = [
+  { value: "admin", label: "Controlo total (admin)", desc: "Tudo, incluindo apagar. Para o MCP do Claude.", perms: ["admin"] },
+  { value: "write", label: "Leitura + escrita", desc: "Criar/editar reclamações e reviews, disparar syncs. Não apaga.", perms: ["read", "write"] },
+  { value: "read", label: "Só leitura", desc: "Apenas consultar dados (reservas, reclamações, stats…).", perms: ["read"] },
+  { value: "device", label: "Dispositivos (GPS / rádio)", desc: "Para /api/external (Zello, rádios). Sem acesso à /api/v1.", perms: [] as string[] },
+];
+
 export default function ApiKeysPage() {
   const { user } = useAuth();
   const [newKeyName, setNewKeyName] = useState("");
+  const [scope, setScope] = useState("admin");
   const [showCreate, setShowCreate] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
 
@@ -88,9 +97,35 @@ export default function ApiKeysPage() {
                     <div className="space-y-4">
                       <div>
                         <Label>Nome da chave</Label>
-                        <Input placeholder="Ex: GPS Zilo Produção" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
+                        <Input placeholder="Ex: Claude MCP" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
                       </div>
-                      <Button className="w-full" disabled={!newKeyName.trim() || createMut.isPending} onClick={() => createMut.mutate({ name: newKeyName })}>
+                      <div>
+                        <Label>Permissões (scope)</Label>
+                        <div className="grid gap-2 mt-1">
+                          {SCOPES.map((s) => (
+                            <button
+                              key={s.value}
+                              type="button"
+                              onClick={() => setScope(s.value)}
+                              className={`text-left rounded-lg border p-3 transition ${scope === s.value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-input hover:bg-accent"}`}
+                            >
+                              <p className="text-sm font-medium flex items-center gap-2">
+                                {s.value === "admin" && <Shield className="h-4 w-4 text-amber-500" />}
+                                {s.label}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{s.desc}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full"
+                        disabled={!newKeyName.trim() || createMut.isPending}
+                        onClick={() => {
+                          const perms = SCOPES.find((s) => s.value === scope)?.perms ?? [];
+                          createMut.mutate({ name: newKeyName, permissions: perms.length ? perms : undefined });
+                        }}
+                      >
                         {createMut.isPending ? "A criar..." : "Criar API Key"}
                       </Button>
                     </div>
@@ -266,6 +301,23 @@ curl -H "X-API-Key: mp_xxxxxxxxxx" ${baseUrl}/api/external/docs`}</pre>
                 <p>3. Configura o header: <code className="bg-slate-100 px-1 rounded">X-API-Key: [a tua chave]</code></p>
                 <p>4. Mapeia os campos: <code>plate</code>, <code>speed</code>, <code>speedLimit</code>, <code>latitude</code>, <code>longitude</code></p>
                 <p>5. Ativa o webhook e testa com um envio manual.</p>
+              </CardContent>
+            </Card>
+
+            {/* MCP / API de controlo */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5 text-indigo-500" /> API de controlo /api/v1 (MCP)</CardTitle>
+                <CardDescription>Controlar a dashboard a partir do Claude (todos os parques/cidades). O que a chave pode fazer depende do scope escolhido na criação.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
+                <p>1. Cria uma chave acima com o scope <strong>Controlo total (admin)</strong> e copia-a.</p>
+                <p>2. Na pasta <code className="bg-slate-100 px-1 rounded">mcp-server/</code> do repositório: <code className="bg-slate-100 px-1 rounded">npm install</code></p>
+                <p>3. Regista o MCP no Claude com as variáveis:</p>
+                <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">{`MULTIPARK_API_URL=${baseUrl}/api/v1
+MULTIPARK_API_KEY=a-tua-chave`}</pre>
+                <p>Ver instruções completas em <code className="bg-slate-100 px-1 rounded">mcp-server/README.md</code>. Testar a chave:</p>
+                <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">{`curl -H "X-API-Key: a-tua-chave" ${baseUrl}/api/v1/`}</pre>
               </CardContent>
             </Card>
           </TabsContent>
