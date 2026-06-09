@@ -163,6 +163,21 @@ app.get("/api/cron/multipark-future", async (req, res) => {
   }
 });
 
+// Recolha diária de operações (driver history do Zello + alertas gps_off).
+// Substitui o startDailyCollectionScheduler() que só corre no server Railway —
+// em Vercel é preciso este cron (GitHub Actions, 1×/dia).
+app.get("/api/cron/daily-ops", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { collectDailyDriverData } = await import("../jobs/dailyDriverCollection");
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000); // dia anterior
+    const result = await collectDailyDriverData(yesterday);
+    res.json({ ok: true, ranAt: new Date().toISOString(), date: yesterday.toISOString().slice(0, 10), ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+
 app.get("/api/cron/multipark-cleanup", async (req, res) => {
   if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
   try {
