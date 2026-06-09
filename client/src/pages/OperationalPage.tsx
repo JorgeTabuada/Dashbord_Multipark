@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -1817,13 +1818,13 @@ function AgentActivityTab() {
                     <td className="p-2 text-blue-700">{a.checkout}</td>
                     <td className="p-2 text-muted-foreground">{a.movement}</td>
                     <td className="p-2">
-                      <Select value={a.employeeId ? String(a.employeeId) : "none"} onValueChange={(v) => mapMut.mutate({ agentName: a.agentName, employeeId: v === "none" ? null : Number(v) })}>
-                        <SelectTrigger className="h-8 w-64"><SelectValue placeholder="— ligar a colaborador —" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— sem ligação —</SelectItem>
-                          {(employees as any[]).map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        className="h-8 w-64"
+                        value={a.employeeId ? String(a.employeeId) : ""}
+                        onChange={(v) => mapMut.mutate({ agentName: a.agentName, employeeId: v ? Number(v) : null })}
+                        placeholder="— ligar a colaborador —"
+                        options={[{ value: "", label: "— sem ligação —" }, ...(employees as any[]).map((e) => ({ value: String(e.id), label: e.fullName }))]}
+                      />
                     </td>
                   </tr>
                 ))}

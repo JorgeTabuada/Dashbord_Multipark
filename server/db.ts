@@ -2638,20 +2638,23 @@ export async function generateWeeklyEvaluation(weekNumber: number, yearNumber: n
     .groupBy(timeRecords.employeeId);
   const hoursMap = new Map(hoursRows.map(r => [r.employeeId, Number(r.hours)]));
 
-  // ── 2. Movimentações: count por employee
+  // ── 2. Movimentações REAIS: ações no multipark_booking_history, ligadas ao
+  // colaborador via employees.multiparkAgentName. (A tabela vehicle_movements
+  // está vazia — a atividade real vem do sync Multipark.)
   const movRows = await db
     .select({
-      employeeId: vehicleMovements.employeeId,
+      employeeId: employees.id,
       count: sql<number>`COUNT(*)`,
     })
-    .from(vehicleMovements)
+    .from(multiparkBookingHistory)
+    .innerJoin(employees, eq(employees.multiparkAgentName, multiparkBookingHistory.agentName))
     .where(and(
-      inArray(vehicleMovements.employeeId, driverIds),
-      gte(vehicleMovements.createdAt, startStr),
-      lte(vehicleMovements.createdAt, endStr),
+      inArray(employees.id, driverIds),
+      gte(multiparkBookingHistory.actionTime, startStr),
+      lte(multiparkBookingHistory.actionTime, endStr),
     ))
-    .groupBy(vehicleMovements.employeeId);
-  const movMap = new Map(movRows.map(r => [Number(r.employeeId ?? 0), Number(r.count)]));
+    .groupBy(employees.id);
+  const movMap = new Map(movRows.map(r => [Number(r.employeeId), Number(r.count)]));
 
   // ── 3. Speed alerts não reconhecidos com excesso (single query)
   const alertRows = await db
