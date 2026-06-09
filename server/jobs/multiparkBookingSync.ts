@@ -121,6 +121,16 @@ function resolvePartnerCampaign(
   return fallback;
 }
 
+// Cidades vêm da API em variantes (EN/PT). Normaliza para o nome PT usado
+// nos projetos, para o match de projeto encontrar a folha certa.
+const CITY_TO_PT: Record<string, string> = {
+  lisbon: "lisboa",
+  lisboa: "lisboa",
+  oporto: "porto",
+  porto: "porto",
+  faro: "faro",
+};
+
 function findProjectId(
   parkName: string | undefined,
   city: string | undefined,
@@ -132,14 +142,20 @@ function findProjectId(
   // Normalize: "Airpark - Faro" -> "airpark faro"
   const parkNorm = parkLower.replace(/\s*-\s*/g, " ");
 
-  // Try composite "ParkName City" match first (e.g. "airpark lisboa", "airpark faro")
+  // Try composite "ParkName City" match first (e.g. "airpark lisboa", "airpark faro").
+  // A API às vezes devolve só a marca ("Airpark") e a cidade em inglês
+  // ("lisbon"). Sem normalizar, "airpark lisbon" não casa com a folha
+  // "airpark lisboa" e a reserva escorrega para o nó da marca. Normaliza a
+  // cidade (PT) e tenta ambas as grafias ANTES do fallback para a marca.
   if (city) {
-    const cityLower = city.toLowerCase().trim();
-    const composite = `${parkNorm} ${cityLower}`;
-    if (projectMap.has(composite)) return projectMap.get(composite);
-    // Also try with original format
-    const composite2 = `${parkLower} ${cityLower}`;
-    if (projectMap.has(composite2)) return projectMap.get(composite2);
+    const cityRaw = city.toLowerCase().trim();
+    const cityNorm = CITY_TO_PT[cityRaw] ?? cityRaw;
+    for (const c of new Set([cityNorm, cityRaw])) {
+      const composite = `${parkNorm} ${c}`;
+      if (projectMap.has(composite)) return projectMap.get(composite);
+      const composite2 = `${parkLower} ${c}`;
+      if (projectMap.has(composite2)) return projectMap.get(composite2);
+    }
   }
 
   // Try normalized exact match (e.g. "airpark faro" matches project "airpark faro")
