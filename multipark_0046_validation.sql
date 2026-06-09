@@ -6,6 +6,45 @@
 -- ============================================================================
 
 
+-- ── G. PARCEIRO / CAMPANHA / ORIGIN: a API devolve mesmo estes nomes? ────────
+-- Verifica no rawJson (resposta crua do /report) se vêm e com que nome.
+-- Nota: origin/originUrl normalmente NÃO vêm no /report — só no enrichment
+-- (/bookings/:id). Por isso j_origin/j_originUrl podem vir NULL aqui mesmo
+-- estando as COLUNAS origin/originUrl preenchidas (ver 2ª query abaixo).
+SELECT
+  externalId,
+  JSON_EXTRACT(rawJson, '$.partnerName')   AS j_partnerName,
+  JSON_EXTRACT(rawJson, '$.campaignName')  AS j_campaignName,
+  JSON_EXTRACT(rawJson, '$.campaign')      AS j_campaign_old,
+  JSON_EXTRACT(rawJson, '$.discountCode')  AS j_discountCode,
+  JSON_EXTRACT(rawJson, '$.origin')        AS j_origin,
+  JSON_EXTRACT(rawJson, '$.originUrl')     AS j_originUrl
+FROM multipark_bookings
+WHERE rawJson IS NOT NULL
+ORDER BY updatedAt DESC
+LIMIT 15;
+
+-- Colunas persistidas: cobertura de parceiro/campanha/origin (último dia de sync).
+-- origin/originUrl só sobem depois do enrichment correr (não no sync do report).
+SELECT
+  COUNT(*)                       AS total_recentes,
+  SUM(partnerName  IS NOT NULL)  AS tem_partnerName,
+  SUM(campaignName IS NOT NULL)  AS tem_campaignName,
+  SUM(campaign     IS NOT NULL)  AS tem_campaign_resolvido,
+  SUM(origin       IS NOT NULL)  AS tem_origin,
+  SUM(originUrl    IS NOT NULL)  AS tem_originUrl,
+  SUM(enrichedAt   IS NOT NULL)  AS ja_enriquecidas
+FROM multipark_bookings
+WHERE updatedAt >= (NOW() - INTERVAL 1 DAY);
+
+-- Amostra lado-a-lado: nome cru vs resolvido
+SELECT externalId, parkName, partnerName, campaign, campaignName, origin, originUrl, enrichedAt
+FROM multipark_bookings
+WHERE partnerName IS NOT NULL OR campaignName IS NOT NULL OR origin IS NOT NULL
+ORDER BY updatedAt DESC
+LIMIT 20;
+
+
 -- ── F. DECISIVA: que nomes de campo a API REALMENTE devolve? ─────────────────
 -- rawJson = JSON.stringify(booking) tal como veio da API. JSON_KEYS revela os
 -- nomes exactos. Se eu errei um nome (ex: "cashValidated" vs "cashValidatedByName"),

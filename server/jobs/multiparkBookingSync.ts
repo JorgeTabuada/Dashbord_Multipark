@@ -204,7 +204,7 @@ function bookingToRecord(
   // Resolução automática do parceiro: se a API ainda devolve "Unknown User"
   // mas o partnerId/paymentMethod já está associado a um parceiro nosso, usa
   // o nome do parceiro em vez do fallback.
-  const rawFallback = (booking as any).partnerName || booking.discountCode || booking.campaign || null;
+  const rawFallback = (booking as any).partnerName || (booking as any).campaignName || booking.discountCode || booking.campaign || null;
   const isUnknown = typeof rawFallback === "string" && /unknown/i.test(rawFallback);
   const effectiveFallback = isUnknown ? null : rawFallback;
   const resolvedCampaign = resolvePartnerCampaign(booking, pricing, aliasResolver, effectiveFallback);
@@ -256,7 +256,9 @@ function bookingToRecord(
     totalPaid: (pricing as any)?.totalPaid?.toString() ?? null,
     pro: (booking as any).pro ? 1 : 0,
     partnerId: (booking as any).partnerId ? String((booking as any).partnerId).slice(0, 128) : null,
+    partnerName: typeof (booking as any).partnerName === "string" ? (booking as any).partnerName.slice(0, 256) : null,
     campaignId: (booking as any).campaignId ? String((booking as any).campaignId).slice(0, 128) : null,
+    campaignName: typeof (booking as any).campaignName === "string" ? (booking as any).campaignName.slice(0, 256) : null,
     cashValidatedByName: typeof (booking as any).cashValidatedByName === "string" ? (booking as any).cashValidatedByName.slice(0, 256) : null,
     driverValidatedByName: typeof (booking as any).driverValidatedByName === "string" ? (booking as any).driverValidatedByName.slice(0, 256) : null,
     cashierClosedByName: typeof (booking as any).cashierClosedByName === "string" ? (booking as any).cashierClosedByName.slice(0, 256) : null,
