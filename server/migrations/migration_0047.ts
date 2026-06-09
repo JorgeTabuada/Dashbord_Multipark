@@ -9,6 +9,7 @@ export const MIGRATION_0047_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS \`internal_campaigns\` (
     \`id\` INT AUTO_INCREMENT PRIMARY KEY,
     \`name\` VARCHAR(256) NOT NULL,
+    \`projectId\` INT NULL,
     \`city\` VARCHAR(64) NULL,
     \`brand\` VARCHAR(32) NULL,
     \`campaignStatus\` ENUM('active','paused','completed') NOT NULL DEFAULT 'active',

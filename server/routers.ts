@@ -2285,15 +2285,13 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) return { ids: [], names: [] };
         const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
-        const idsRes: any = await db.execute(sql`
-          SELECT cid AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue, MIN(url) AS sampleUrl
-          FROM (
-            SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(originUrl, 'campaignId=', -1), '&', 1) AS cid, totalPrice, originUrl AS url
-            FROM multipark_bookings WHERE originUrl LIKE '%campaignId=%'
-          ) t
-          WHERE cid REGEXP '^[A-Za-z0-9_-]+$'
-            AND cid NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='campaign_id')
-          GROUP BY cid ORDER BY bookings DESC`);
+        // TODOS os links (originUrl) ainda não atribuídos — agrega reservas por link.
+        const linksRes: any = await db.execute(sql`
+          SELECT originUrl AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          FROM multipark_bookings
+          WHERE originUrl IS NOT NULL AND originUrl <> ''
+            AND originUrl NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='url_pattern')
+          GROUP BY originUrl ORDER BY bookings DESC LIMIT 250`);
         const namesRes: any = await db.execute(sql`
           SELECT campaignName AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
           FROM multipark_bookings
@@ -2301,7 +2299,7 @@ export const appRouter = router({
             AND campaignName NOT IN (SELECT name FROM partnerships)
             AND campaignName NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='campaign_name')
           GROUP BY campaignName ORDER BY bookings DESC`);
-        return { ids: rows(idsRes), names: rows(namesRes) };
+        return { links: rows(linksRes), names: rows(namesRes) };
       }),
 
       // Campanhas lógicas + chaves + custos + métricas (reservas/receita/gasto).
@@ -2315,11 +2313,13 @@ export const appRouter = router({
           if (!db) return [];
           const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
           // Campanhas vêm de DUAS fontes: internal_campaigns + campaigns (ad).
-          const internal = rows(await db.execute(sql`SELECT id, name, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
+          const internal = rows(await db.execute(sql`SELECT id, name, projectId, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
             .map((c) => ({ ...c, campaignType: "internal" as const }));
-          const ad = rows(await db.execute(sql`SELECT id, name, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
+          const ad = rows(await db.execute(sql`SELECT id, name, projectId, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
             .map((c) => ({ ...c, city: null, campaignType: "ad" as const }));
-          const camps = [...internal, ...ad];
+          const projs = rows(await db.execute(sql`SELECT id, name FROM projects`));
+          const projName = new Map(projs.map((p) => [p.id, p.name]));
+          const camps = [...internal, ...ad].map((c) => ({ ...c, projectName: c.projectId ? projName.get(c.projectId) ?? null : null }));
           const allKeys = rows(await db.execute(sql`SELECT * FROM internal_campaign_keys`));
           const dateCond = input?.from && input?.to
             ? sql` AND checkIn >= ${input.from + " 00:00:00"} AND checkIn <= ${input.to + " 23:59:59"}`
@@ -2347,19 +2347,19 @@ export const appRouter = router({
         }),
 
       create: protectedProcedure
-        .input(z.object({ name: z.string().min(1), city: z.string().optional(), brand: z.string().optional() }))
+        .input(z.object({ name: z.string().min(1), projectId: z.number().optional(), city: z.string().optional(), brand: z.string().optional() }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");
           const { internalCampaigns } = await import("../drizzle/schema");
           const db = await getDb();
           if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-          await db.insert(internalCampaigns).values({ name: input.name, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id } as any);
+          await db.insert(internalCampaigns).values({ name: input.name, projectId: input.projectId ?? null, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id } as any);
           return { success: true };
         }),
 
       update: protectedProcedure
-        .input(z.object({ id: z.number(), name: z.string().optional(), city: z.string().optional(), brand: z.string().optional(), campaignStatus: z.enum(["active", "paused", "completed"]).optional() }))
+        .input(z.object({ id: z.number(), name: z.string().optional(), projectId: z.number().nullable().optional(), city: z.string().optional(), brand: z.string().optional(), campaignStatus: z.enum(["active", "paused", "completed"]).optional() }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");

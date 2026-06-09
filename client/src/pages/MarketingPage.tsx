@@ -1228,28 +1228,30 @@ function InternalCampaignsTab() {
   const utils = trpc.useUtils();
   const { data: detected } = trpc.marketing.internalCampaigns.detect.useQuery();
   const { data: campaigns = [] } = trpc.marketing.internalCampaigns.list.useQuery();
+  const { data: projects = [] } = trpc.projects.list.useQuery();
   const [target, setTarget] = useState<string>("");
   const [newName, setNewName] = useState("");
-  const [newCity, setNewCity] = useState("");
+  const [newProject, setNewProject] = useState<string>("");
   const [costInputs, setCostInputs] = useState<Record<string, { date: string; amount: string }>>({});
 
   const refresh = () => {
     utils.marketing.internalCampaigns.detect.invalidate();
     utils.marketing.internalCampaigns.list.invalidate();
   };
-  const create = trpc.marketing.internalCampaigns.create.useMutation({ onSuccess: () => { setNewName(""); setNewCity(""); refresh(); toast.success("Campanha criada"); }, onError: (e) => toast.error(e.message) });
+  const create = trpc.marketing.internalCampaigns.create.useMutation({ onSuccess: () => { setNewName(""); setNewProject(""); refresh(); toast.success("Campanha criada"); }, onError: (e) => toast.error(e.message) });
   const assignKey = trpc.marketing.internalCampaigns.assignKey.useMutation({ onSuccess: () => { refresh(); toast.success("Atribuído"); }, onError: (e) => toast.error(e.message) });
   const removeKey = trpc.marketing.internalCampaigns.removeKey.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   const remove = trpc.marketing.internalCampaigns.remove.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   const addCost = trpc.marketing.internalCampaigns.addCost.useMutation({ onSuccess: () => { refresh(); toast.success("Custo registado"); }, onError: (e) => toast.error(e.message) });
 
-  const assign = (keyType: "campaign_id" | "campaign_name", keyValue: string) => {
+  const assign = (keyType: "campaign_id" | "campaign_name" | "url_pattern", keyValue: string) => {
     if (!target) { toast.error("Escolhe a campanha-alvo primeiro"); return; }
     const [campaignType, idStr] = target.split(":");
     assignKey.mutate({ campaignType: campaignType as "internal" | "ad", campaignId: Number(idStr), keyType, keyValue });
   };
-  const ids = (detected?.ids ?? []) as any[];
+  const links = (detected?.links ?? []) as any[];
   const names = (detected?.names ?? []) as any[];
+  const sortedProjects = (projects as any[]).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
   return (
     <div className="space-y-4">
@@ -1258,16 +1260,22 @@ function InternalCampaignsTab() {
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><Plus className="w-4 h-4" /> Nova campanha lógica</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           <div><Label className="text-xs">Nome</Label><Input className="w-56" value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex: Skypark Faro" /></div>
-          <div><Label className="text-xs">Cidade</Label><Input className="w-32" value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="opcional" /></div>
-          <Button disabled={!newName || create.isPending} onClick={() => create.mutate({ name: newName, city: newCity || undefined })}>Criar</Button>
+          <div>
+            <Label className="text-xs">Projeto (para onde vai)</Label>
+            <Select value={newProject} onValueChange={setNewProject}>
+              <SelectTrigger className="w-52"><SelectValue placeholder="Opcional..." /></SelectTrigger>
+              <SelectContent>{sortedProjects.map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <Button disabled={!newName || create.isPending} onClick={() => { create.mutate({ name: newName, projectId: newProject ? Number(newProject) : undefined }); setNewProject(""); }}>Criar</Button>
         </CardContent>
       </Card>
 
       {/* Por atribuir */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Por atribuir ({ids.length + names.length})</CardTitle>
-          <p className="text-xs text-muted-foreground">Escolhe a campanha-alvo e atribui cada link/nome detetado. Fica atribuído para sempre.</p>
+          <CardTitle className="text-base">Reservas por link — por atribuir ({links.length + names.length})</CardTitle>
+          <p className="text-xs text-muted-foreground">Cada link agrega as reservas com esse originUrl. Escolhe a campanha-alvo e atribui. Fica atribuído para sempre.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
@@ -1277,14 +1285,14 @@ function InternalCampaignsTab() {
               <SelectContent>{campaigns.map((c: any) => <SelectItem key={c.campaignType + ":" + c.id} value={c.campaignType + ":" + c.id}>{c.name}{c.campaignType === "ad" ? " · ad" : ""}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          {ids.length > 0 && <div className="text-xs font-medium text-muted-foreground">Links (campaignId)</div>}
-          {ids.map((r) => (
-            <div key={"id-" + r.value} className="flex items-center gap-2 text-sm border-b py-1.5">
+          {links.length > 0 && <div className="text-xs font-medium text-muted-foreground">Links (originUrl)</div>}
+          {links.map((r) => (
+            <div key={"lk-" + r.value} className="flex items-center gap-2 text-sm border-b py-1.5">
               <div className="min-w-0 flex-1">
-                <a href={r.sampleUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline break-all text-xs">{r.sampleUrl}</a>
-                <div className="text-[11px] text-muted-foreground">código <code className="bg-muted px-1 rounded">{r.value}</code> · {Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</div>
+                <a href={r.value} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline break-all text-xs">{r.value}</a>
+                <div className="text-[11px] text-muted-foreground">{Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</div>
               </div>
-              <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={assignKey.isPending} onClick={() => assign("campaign_id", r.value)}>Atribuir →</Button>
+              <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={assignKey.isPending} onClick={() => assign("url_pattern", r.value)}>Atribuir →</Button>
             </div>
           ))}
           {names.length > 0 && <div className="text-xs font-medium text-muted-foreground mt-2">Nomes de campanha</div>}
@@ -1295,7 +1303,7 @@ function InternalCampaignsTab() {
               <Button size="sm" variant="outline" className="ml-auto h-7" disabled={assignKey.isPending} onClick={() => assign("campaign_name", r.value)}>Atribuir →</Button>
             </div>
           ))}
-          {ids.length + names.length === 0 && <p className="text-sm text-muted-foreground">Tudo atribuído ✓</p>}
+          {links.length + names.length === 0 && <p className="text-sm text-muted-foreground">Tudo atribuído ✓</p>}
         </CardContent>
       </Card>
 
@@ -1311,6 +1319,7 @@ function InternalCampaignsTab() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold">{c.name}</h3>
                     <Badge className="text-[10px]" variant={c.campaignType === "ad" ? "default" : "secondary"}>{c.campaignType === "ad" ? "Ad" : "Interna"}</Badge>
+                    {c.projectName && <Badge variant="outline" className="text-[10px]">📁 {c.projectName}</Badge>}
                     {c.city && <Badge variant="outline" className="text-[10px]">{c.city}</Badge>}
                     {c.brand && <Badge variant="outline" className="text-[10px]">{c.brand}</Badge>}
                   </div>

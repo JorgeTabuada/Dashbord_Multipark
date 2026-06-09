@@ -76,6 +76,7 @@ export const campaigns = mysqlTable("campaigns", {
 export const internalCampaigns = mysqlTable("internal_campaigns", {
 	id: int().autoincrement().primaryKey(),
 	name: varchar({ length: 256 }).notNull(),
+	projectId: int(), // "para onde vai" — projeto/centro de custos
 	city: varchar({ length: 64 }),
 	brand: varchar({ length: 32 }),
 	campaignStatus: mysqlEnum(['active','paused','completed']).default('active').notNull(),
