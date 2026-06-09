@@ -66,13 +66,11 @@ export default function MarketingPage() {
           <TabsList>
             <TabsTrigger value="dashboard"><BarChart3 className="w-4 h-4 mr-1" />Dashboard</TabsTrigger>
             <TabsTrigger value="campaigns"><Megaphone className="w-4 h-4 mr-1" />Campanhas</TabsTrigger>
-            <TabsTrigger value="internal"><Target className="w-4 h-4 mr-1" />Campanhas Internas</TabsTrigger>
             <TabsTrigger value="expenses"><Receipt className="w-4 h-4 mr-1" />Despesas Mkt</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard"><DashboardTab /></TabsContent>
-          <TabsContent value="campaigns"><CampaignsTab /></TabsContent>
-          <TabsContent value="internal"><InternalCampaignsTab /></TabsContent>
+          <TabsContent value="campaigns"><InternalCampaignsTab /></TabsContent>
           <TabsContent value="expenses"><MktExpensesTab /></TabsContent>
         </Tabs>
       </div>
