@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QuickRangeBar, thisMonthRange } from "@/components/QuickRangeBar";
 import { toast } from "sonner";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useParams } from "wouter";
@@ -121,9 +122,10 @@ export default function MultiparkPage({ sectionProp }: { sectionProp?: string } 
 // ─── Action Type Tab (queries API directly per actionType) ───────────────────
 function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "checkout" | "cancelation" }) {
   const globalFilters = useGlobalFilters();
-  const today = new Date();
-  const [startDate, setStartDate] = useState(today.toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(today.toISOString().slice(0, 10));
+  const [defFrom, defTo] = thisMonthRange();
+  const [startDate, setStartDate] = useState(defFrom);
+  const [endDate, setEndDate] = useState(defTo);
+  const [activeRange, setActiveRange] = useState<string>("thisMonth");
   const [searchTerm, setSearchTerm] = useState("");
   const [projectId, setProjectId] = useState<string>("");
 
@@ -229,15 +231,21 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
 
   return (
     <div className="space-y-4">
+      {/* Atalhos de período */}
+      <QuickRangeBar
+        active={activeRange}
+        onPick={(f, t, id) => { setStartDate(f); setEndDate(t); setActiveRange(id); }}
+      />
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <Label className="text-xs mb-1 block">De</Label>
-          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
+          <Input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setActiveRange(""); }} className="w-40" />
         </div>
         <div>
           <Label className="text-xs mb-1 block">Até</Label>
-          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
+          <Input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setActiveRange(""); }} className="w-40" />
         </div>
         <div>
           <Label className="text-xs mb-1 block">Grupo / Projeto</Label>

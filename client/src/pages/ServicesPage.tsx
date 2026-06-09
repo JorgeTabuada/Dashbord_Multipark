@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { QuickRangeBar, thisMonthRange } from "@/components/QuickRangeBar";
 import {
   Sparkles, Euro, TrendingUp, CheckCircle2, Clock, Droplets, Zap, Car, Package, Download,
 } from "lucide-react";
@@ -25,13 +26,10 @@ function getServiceIcon(name: string) {
 }
 
 export default function ServicesPage() {
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+  const [defFrom, defTo] = thisMonthRange();
+  const [startDate, setStartDate] = useState(defFrom);
+  const [endDate, setEndDate] = useState(defTo);
+  const [activeRange, setActiveRange] = useState<string>("thisMonth");
 
   const { data, isLoading } = trpc.services.multiparkExtras.useQuery({ startDate, endDate });
 
@@ -92,23 +90,21 @@ export default function ServicesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <p className="text-muted-foreground">Serviços extra das reservas Multipark (lavagens, carregamentos, etc.)</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Label>Mês:</Label>
-            <Select value={String(month)} onValueChange={v => setMonth(parseInt(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
-                  <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="space-y-3">
+        <p className="text-muted-foreground">Serviços extra das reservas Multipark (lavagens, carregamentos, etc.)</p>
+        <QuickRangeBar
+          active={activeRange}
+          onPick={(f, t, id) => { setStartDate(f); setEndDate(t); setActiveRange(id); }}
+        />
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label className="text-xs mb-1 block">De</Label>
+            <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActiveRange(""); }} className="w-40" />
           </div>
-          <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || now.getFullYear())} className="w-24" />
+          <div>
+            <Label className="text-xs mb-1 block">Até</Label>
+            <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActiveRange(""); }} className="w-40" />
+          </div>
         </div>
       </div>
 
@@ -233,7 +229,7 @@ export default function ServicesPage() {
                 const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
-                a.href = url; a.download = `servicos_${year}_${String(month).padStart(2, "0")}.csv`; a.click();
+                a.href = url; a.download = `servicos_${startDate}_${endDate}.csv`; a.click();
                 URL.revokeObjectURL(url);
               }}
             >
