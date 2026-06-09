@@ -150,7 +150,29 @@ export type PartnerExtraConfig = {
   operatesProjects?: number[];
   cashbackPercent?: number;
   prizeBudget?: number;
+  avencaDate?: string;  // data da avença (YYYY-MM-DD) — tipos avenca_*
+  invoiceDay?: number;  // dia do mês em que se emite a fatura — agregador/agência/pro
 };
+
+// Que campos do formulário fazem sentido para cada tipo (deriva do chargeModel).
+export type PartnerFormFields = {
+  commission: boolean;      // % de comissão
+  invoiceTiming: boolean;   // dia/timing da fatura
+  monthlyFee: boolean;      // valor da avença
+  avencaDate: boolean;      // data da avença
+  discountApplied: boolean; // info: desconto já vem aplicado na reserva
+};
+
+export function partnerFormFields(typeId: string | null | undefined): PartnerFormFields {
+  const cm = getPartnerType(typeId).chargeModel;
+  return {
+    commission: cm === "commission_on_revenue" || cm === "small_commission",
+    invoiceTiming: cm === "commission_on_revenue" || cm === "monthly_invoice_discount",
+    monthlyFee: cm === "monthly_fee" || cm === "yearly_fee",
+    avencaDate: cm === "monthly_fee" || cm === "yearly_fee",
+    discountApplied: cm === "prepaid_with_discount" || cm === "monthly_invoice_discount",
+  };
+}
 
 export function parsePartnerConfig(notes: string | null | undefined): PartnerExtraConfig {
   if (!notes) return {};
@@ -175,6 +197,12 @@ export function serializePartnerConfig(cfg: PartnerExtraConfig, plainNotes: stri
   }
   if (typeof cfg.prizeBudget === "number" && Number.isFinite(cfg.prizeBudget)) {
     clean.prizeBudget = cfg.prizeBudget;
+  }
+  if (typeof cfg.avencaDate === "string" && cfg.avencaDate.trim()) {
+    clean.avencaDate = cfg.avencaDate.trim();
+  }
+  if (typeof cfg.invoiceDay === "number" && Number.isFinite(cfg.invoiceDay)) {
+    clean.invoiceDay = cfg.invoiceDay;
   }
   // Se config vazio e há plain notes → devolve o plain
   if (Object.keys(clean).length === 0) return plainNotes;

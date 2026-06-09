@@ -18,7 +18,7 @@ import {
   Plus, Pencil, Trash2, FileText, Settings, Link2, AlertTriangle, Wallet,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { PARTNER_TYPES, getPartnerType, parsePartnerConfig, serializePartnerConfig } from "@shared/partnerTypes";
+import { PARTNER_TYPES, getPartnerType, parsePartnerConfig, serializePartnerConfig, partnerFormFields } from "@shared/partnerTypes";
 
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(v);
 
@@ -55,6 +55,8 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
     operatesProjects: (initialCfg.operatesProjects ?? []) as number[],
     cashbackPercent: initialCfg.cashbackPercent ?? 0,
     prizeBudget: initialCfg.prizeBudget ?? 0,
+    avencaDate: initialCfg.avencaDate ?? "",
+    invoiceDay: initialCfg.invoiceDay ?? 0,
   });
 
   // Projetos para multi-select (operacional)
@@ -64,6 +66,7 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
 
   const isOperational = form.partnerType === "operacional";
   const isOwnCampaign = form.partnerType === "campanha_propria";
+  const fields = partnerFormFields(form.partnerType);
 
   const toggleProject = (id: number) => {
     const has = form.operatesProjects.includes(id);
@@ -75,6 +78,8 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
       operatesProjects: isOperational ? form.operatesProjects : undefined,
       cashbackPercent: isOwnCampaign ? Number(form.cashbackPercent) || undefined : undefined,
       prizeBudget: isOwnCampaign ? Number(form.prizeBudget) || undefined : undefined,
+      avencaDate: fields.avencaDate ? (form.avencaDate || undefined) : undefined,
+      invoiceDay: fields.invoiceTiming ? Number(form.invoiceDay) || undefined : undefined,
     };
     const serializedNotes = serializePartnerConfig(cfg, form.notes ?? "");
     const payload = {
@@ -87,6 +92,8 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
     delete (payload as any).operatesProjects;
     delete (payload as any).cashbackPercent;
     delete (payload as any).prizeBudget;
+    delete (payload as any).avencaDate;
+    delete (payload as any).invoiceDay;
     if (partner) {
       update.mutate({ id: partner.id, ...payload });
     } else {
@@ -144,14 +151,35 @@ function PartnerDialog({ open, onClose, partner, campaignOptions }: {
             <Label className="text-xs">NIF</Label>
             <Input value={form.nif} onChange={e => set("nif", e.target.value)} />
           </div>
-          <div>
-            <Label className="text-xs">Comissão (%)</Label>
-            <Input type="number" value={form.commissionRate} onChange={e => set("commissionRate", e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Fee Mensal (€)</Label>
-            <Input type="number" value={form.monthlyFee} onChange={e => set("monthlyFee", e.target.value)} />
-          </div>
+          {fields.commission && (
+            <div>
+              <Label className="text-xs">Comissão (%)</Label>
+              <Input type="number" value={form.commissionRate} onChange={e => set("commissionRate", e.target.value)} />
+            </div>
+          )}
+          {fields.invoiceTiming && (
+            <div>
+              <Label className="text-xs">Dia da fatura</Label>
+              <Input type="number" min="1" max="31" value={form.invoiceDay} onChange={e => set("invoiceDay", e.target.value)} placeholder="dia do mês (1-31)" />
+            </div>
+          )}
+          {fields.monthlyFee && (
+            <div>
+              <Label className="text-xs">Valor da avença (€/mês)</Label>
+              <Input type="number" value={form.monthlyFee} onChange={e => set("monthlyFee", e.target.value)} />
+            </div>
+          )}
+          {fields.avencaDate && (
+            <div>
+              <Label className="text-xs">Data da avença</Label>
+              <Input type="date" value={form.avencaDate} onChange={e => set("avencaDate", e.target.value)} />
+            </div>
+          )}
+          {fields.discountApplied && (
+            <div className="col-span-2 text-[11px] text-muted-foreground bg-muted/40 rounded px-2 py-1.5">
+              ℹ️ O desconto deste parceiro já vem aplicado na reserva — não é preciso configurar o valor aqui.
+            </div>
+          )}
           <div>
             <Label className="text-xs">Contacto</Label>
             <Input value={form.contactName} onChange={e => set("contactName", e.target.value)} />
@@ -254,6 +282,7 @@ export default function PartnershipsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<any>(null);
   const [selectedBillingPartner, setSelectedBillingPartner] = useState<string>("all");
+  const [mgmtType, setMgmtType] = useState<string>("all"); // segmentação da tab Gestão por tipo
 
   const projectId = useMemo(() => {
     if (filters.brandId !== null) return filters.brandId;
@@ -540,13 +569,32 @@ export default function PartnershipsPage() {
             </div>
           </div>
 
+          {/* Segmentação por tipo de parceiro */}
+          {partnerList.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {[{ id: "all", label: "Todos" }, ...PARTNER_TYPES.map(t => ({ id: t.id, label: t.label }))].map(t => {
+                const count = t.id === "all" ? partnerList.length : (partnerList as any[]).filter((p: any) => p.partnerType === t.id).length;
+                if (t.id !== "all" && count === 0) return null;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setMgmtType(t.id)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${mgmtType === t.id ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-input"}`}
+                  >
+                    {t.label} <span className="opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {partnerList.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">
               Nenhum parceiro configurado. Cria um novo ou vai à tab Análise e clica "Configurar" num parceiro detectado.
             </Card>
           ) : (
             <div className="grid gap-3">
-              {(partnerList as any[]).map((p: any) => (
+              {(partnerList as any[]).filter((p: any) => mgmtType === "all" || p.partnerType === mgmtType).map((p: any) => (
                 <Card key={p.id} className="p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -556,7 +604,7 @@ export default function PartnershipsPage() {
                           {p.partnerStatus === "active" ? "Ativo" : p.partnerStatus === "inactive" ? "Inativo" : "Pendente"}
                         </Badge>
                         <Badge variant="outline" className="text-[10px]">
-                          {p.partnerType === "aggregator" ? "Agregador" : p.partnerType === "agency" ? "Agência" : p.partnerType === "corporate" ? "Empresa" : p.partnerType === "pro_client" ? "Cliente Pro" : p.partnerType === "retainer" ? "Retainer" : "Outro"}
+                          {getPartnerType(p.partnerType).label}
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1 text-sm text-muted-foreground mt-2">
