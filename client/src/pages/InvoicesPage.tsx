@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -99,17 +98,22 @@ export default function InvoicesPage() {
   const extrasDia = (data as any)?.extrasDia ?? [];
   const marketing = (data as any)?.marketing ?? { expenses: [], ads: [] };
   const salesCommissions: Array<{ partnerName: string | null; projectName: string | null; bookingsCount: number; revenueGross: number; commissionRate: number; commission: number }> = (data as any)?.salesCommissions ?? [];
-  const operationalPartners: Array<{ partnerName: string | null; projectName: string | null; amount: number; status: string; sentAt: string | null }> = (data as any)?.operationalPartners ?? [];
+  const operationalPartners: Array<{ partnerName: string | null; projectNames: string[]; bookingsCount: number; revenueGross: number; commissionRate: number; commission: number }> = (data as any)?.operationalPartners ?? [];
   const salaries: { byProject: Array<{ projectName: string | null; cost: number }>; total: number } = (data as any)?.salaries ?? { byProject: [], total: 0 };
 
   const chartData = useMemo(() => timeseries.map((p: any) => ({
     bucket: p.bucket,
     produced: Number(p.produced ?? 0),
     invoiced: Number(p.invoiced ?? 0),
-    expensesPaid: Number(p.expensesPaid ?? 0),
+    expenses: Number(p.expenses ?? p.expensesPaid ?? 0),
     marketingCost: Number(p.marketingCost ?? 0),
+    salaries: Number(p.salaries ?? 0),
+    partners: Number(p.partners ?? 0),
+    extrasCost: Number(p.extrasCost ?? 0),
     revenueForecast: Number(p.revenueForecast ?? 0),
-    margin: Number(p.produced ?? 0) - Number(p.expensesPaid ?? 0) - Number(p.marketingCost ?? 0),
+    margin: p.margin != null
+      ? Number(p.margin)
+      : Number(p.produced ?? 0) - Number(p.totalCost ?? 0),
   })), [timeseries]);
 
   // Despesas pagas por projeto (agrupado)
@@ -229,7 +233,7 @@ export default function InvoicesPage() {
 
           {/* KPI secundários: detalhe dos custos */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <KpiSmall icon={<Receipt className="w-3.5 h-3.5 text-red-500" />} label="Despesas pagas" value={fmt(summary.expensesPaid)} />
+            <KpiSmall icon={<Receipt className="w-3.5 h-3.5 text-red-500" />} label="Despesas inseridas" value={fmt(summary.expensesPaid)} />
             <KpiSmall icon={<UsersIcon className="w-3.5 h-3.5 text-amber-500" />} label="Equipa do dia" value={fmt(summary.extrasDiaCost)} />
             <KpiSmall icon={<UsersIcon className="w-3.5 h-3.5 text-blue-500" />} label="Salários" value={fmt((summary as any).salariesCost ?? 0)} />
             <KpiSmall icon={<Megaphone className="w-3.5 h-3.5 text-violet-500" />} label="Marketing" value={fmt(summary.marketingCost)} />
@@ -260,8 +264,11 @@ export default function InvoicesPage() {
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="produced" name="Produzido" fill="#10b981" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="expensesPaid" name="Despesas" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="marketingCost" name="Marketing" fill="#a78bfa" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="expenses" name="Despesas" stackId="cost" fill="#f59e0b" />
+                    <Bar dataKey="salaries" name="Salários" stackId="cost" fill="#3b82f6" />
+                    <Bar dataKey="partners" name="Parceiros" stackId="cost" fill="#f43f5e" />
+                    <Bar dataKey="marketingCost" name="Marketing" stackId="cost" fill="#a78bfa" />
+                    <Bar dataKey="extrasCost" name="Equipa-dia" stackId="cost" fill="#eab308" radius={[3, 3, 0, 0]} />
                     <Line dataKey="invoiced" name="Faturado" stroke="#6366f1" strokeWidth={2} dot={false} />
                     <Line dataKey="revenueForecast" name="Receita prevista" stroke="#0ea5e9" strokeDasharray="4 4" strokeWidth={2} dot={false} />
                     <Line dataKey="margin" name="Margem" stroke="#111827" strokeWidth={2} dot={false} />
@@ -296,9 +303,7 @@ export default function InvoicesPage() {
                         <tr className="border-b text-left">
                           <th className="p-2">Projeto</th>
                           <th className="p-2 text-right">Entregas</th>
-                          <th className="p-2 text-right">Parking</th>
-                          <th className="p-2 text-right">Delivery</th>
-                          <th className="p-2 text-right">Extras</th>
+                          <th className="p-2 text-right">Serviços extras</th>
                           <th className="p-2 text-right font-bold">Total</th>
                         </tr>
                       </thead>
@@ -307,8 +312,6 @@ export default function InvoicesPage() {
                           <tr key={i} className="border-b hover:bg-muted/50">
                             <td className="p-2 flex items-center gap-2"><FolderTree className="w-3 h-3 text-muted-foreground" />{d.projectName ?? "Sem projeto"}</td>
                             <td className="p-2 text-right tabular-nums">{d.count}</td>
-                            <td className="p-2 text-right tabular-nums">{fmt(Number(d.parkingRevenue))}</td>
-                            <td className="p-2 text-right tabular-nums">{fmt(Number(d.deliveryCharges))}</td>
                             <td className="p-2 text-right tabular-nums">{fmt(Number(d.extrasRevenue))}</td>
                             <td className="p-2 text-right tabular-nums font-bold">{fmt(Number(d.totalRevenue))}</td>
                           </tr>
@@ -360,12 +363,12 @@ export default function InvoicesPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Receipt className="w-4 h-4" /> Despesas pagas por projeto
+                    <Receipt className="w-4 h-4" /> Despesas inseridas por projeto
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {expPaidByProject.length === 0 ? (
-                    <p className="text-muted-foreground text-sm text-center py-6">Sem despesas pagas no período</p>
+                    <p className="text-muted-foreground text-sm text-center py-6">Sem despesas inseridas no período</p>
                   ) : (
                     <div className="space-y-3">
                       {expPaidByProject.map((p) => (
@@ -581,35 +584,39 @@ export default function InvoicesPage() {
                     <Handshake className="w-4 h-4" /> Parceiros operacionais
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Ex.: Top Parking a operar marcas do Porto. Vem das partnership_invoices —
-                    projeto inferido pelo nome do parceiro.
+                    Ex.: Top Parking a operar marcas do Porto. Comissão = receita das
+                    reservas dos projetos que o parceiro opera (configurados na ficha) × <em>%</em>.
                   </p>
                 </CardHeader>
                 <CardContent>
                   {operationalPartners.length === 0 ? (
-                    <p className="text-muted-foreground text-sm text-center py-6">Sem faturas operacionais no período</p>
+                    <p className="text-muted-foreground text-sm text-center py-6">Sem parceiros operacionais com projetos configurados no período</p>
                   ) : (
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b text-left">
                           <th className="p-2">Parceiro</th>
-                          <th className="p-2">Projeto inferido</th>
-                          <th className="p-2">Estado</th>
-                          <th className="p-2 text-right font-bold">Valor</th>
+                          <th className="p-2">Projetos operados</th>
+                          <th className="p-2 text-right">Reservas</th>
+                          <th className="p-2 text-right">Receita</th>
+                          <th className="p-2 text-right">%</th>
+                          <th className="p-2 text-right font-bold">Comissão</th>
                         </tr>
                       </thead>
                       <tbody>
                         {operationalPartners.map((p, i) => (
                           <tr key={i} className="border-b hover:bg-muted/50">
                             <td className="p-2">{p.partnerName ?? "—"}</td>
-                            <td className="p-2">{p.projectName ?? <span className="text-muted-foreground text-xs">(não inferido)</span>}</td>
-                            <td className="p-2"><Badge variant="outline" className="capitalize">{p.status}</Badge></td>
-                            <td className="p-2 text-right tabular-nums font-bold text-cyan-700">{fmt(p.amount)}</td>
+                            <td className="p-2 text-xs text-muted-foreground">{p.projectNames?.length ? p.projectNames.join(", ") : <span className="text-muted-foreground">(sem projetos)</span>}</td>
+                            <td className="p-2 text-right tabular-nums">{p.bookingsCount}</td>
+                            <td className="p-2 text-right tabular-nums">{fmt(p.revenueGross)}</td>
+                            <td className="p-2 text-right tabular-nums">{p.commissionRate}%</td>
+                            <td className="p-2 text-right tabular-nums font-bold text-cyan-700">{fmt(p.commission)}</td>
                           </tr>
                         ))}
                         <tr className="bg-muted/30 font-bold">
-                          <td className="p-2" colSpan={3}>Total</td>
-                          <td className="p-2 text-right">{fmt(operationalPartners.reduce((s, p) => s + p.amount, 0))}</td>
+                          <td className="p-2" colSpan={5}>Total</td>
+                          <td className="p-2 text-right">{fmt(operationalPartners.reduce((s, p) => s + p.commission, 0))}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -620,12 +627,12 @@ export default function InvoicesPage() {
 
             <TabsContent value="forecast" className="space-y-4">
               {/* KPIs Previsão */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <KpiCard
                   icon={<CalendarClock className="w-4 h-4 text-sky-600" />}
                   label="Receita prevista"
                   value={fmt(forecast.reduce((s, f) => s + Number(f.totalRevenue ?? 0), 0))}
-                  hint={`${forecast.reduce((s, f) => s + Number(f.count ?? 0), 0)} reservas pendentes`}
+                  hint={`${forecast.reduce((s, f) => s + Number(f.count ?? 0), 0)} reservas por entregar`}
                   color="text-sky-700"
                 />
                 <KpiCard
@@ -634,13 +641,6 @@ export default function InvoicesPage() {
                   value={fmt(summary.expensesPending)}
                   hint={`${expensesPending.length} grupos`}
                   color="text-orange-700"
-                />
-                <KpiCard
-                  icon={<Handshake className="w-4 h-4 text-blue-600" />}
-                  label="Parceiros a pagar"
-                  value={fmt(summary.partnerCommissionsPending)}
-                  hint="Faturas sent/overdue/draft"
-                  color="text-blue-700"
                 />
                 <KpiCard
                   icon={<Euro className="w-4 h-4 text-emerald-600" />}
