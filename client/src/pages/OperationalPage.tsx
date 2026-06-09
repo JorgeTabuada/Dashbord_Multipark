@@ -34,21 +34,15 @@ export default function OperationalPage() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="dashboard"><Activity className="w-4 h-4 mr-1" />Dashboard</TabsTrigger>
-            <TabsTrigger value="gps"><Satellite className="w-4 h-4 mr-1" />GPS Tempo Real</TabsTrigger>
-            <TabsTrigger value="speed"><Shield className="w-4 h-4 mr-1" />Velocidade</TabsTrigger>
+            <TabsTrigger value="agents"><Users className="w-4 h-4 mr-1" />Por Colaborador</TabsTrigger>
             <TabsTrigger value="history"><History className="w-4 h-4 mr-1" />Histórico Diário</TabsTrigger>
             <TabsTrigger value="pdas"><Smartphone className="w-4 h-4 mr-1" />PDAs</TabsTrigger>
-            <TabsTrigger value="gpsAlerts"><Bell className="w-4 h-4 mr-1" />Alertas GPS</TabsTrigger>
-
             <TabsTrigger value="radio"><Radio className="w-4 h-4 mr-1" />Rádio</TabsTrigger>
           </TabsList>
           <TabsContent value="dashboard"><DashboardTab /></TabsContent>
-          <TabsContent value="gps"><ZelloGPSTab /></TabsContent>
-          <TabsContent value="speed"><SpeedMonitoringTab /></TabsContent>
+          <TabsContent value="agents"><AgentActivityTab /></TabsContent>
           <TabsContent value="history"><DriverHistoryTab /></TabsContent>
           <TabsContent value="pdas"><PdasTab /></TabsContent>
-          <TabsContent value="gpsAlerts"><GpsAlertsTab /></TabsContent>
-
           <TabsContent value="radio"><RadioTab /></TabsContent>
         </Tabs>
       </div>
@@ -1758,5 +1752,87 @@ function TranscribeDialog({ employees, vehicles, onClose }: { employees: any[]; 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── ATIVIDADE POR COLABORADOR (todos os agentes + mapeamento) ────────────────
+function AgentActivityTab() {
+  const utils = trpc.useUtils();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const monthStartStr = todayStr.slice(0, 8) + "01";
+  const [from, setFrom] = useState(monthStartStr);
+  const [to, setTo] = useState(todayStr);
+  const [onlyUnmapped, setOnlyUnmapped] = useState(false);
+  const { data: agents = [], isLoading } = trpc.multipark.agentActivity.useQuery({ from, to });
+  const { data: employees = [] } = trpc.multipark.employeesForMapping.useQuery();
+  const mapMut = trpc.multipark.mapAgentToEmployee.useMutation({
+    onSuccess: () => { utils.multipark.agentActivity.invalidate(); utils.multipark.employeesForMapping.invalidate(); toast.success("Ligação guardada"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const rows = (agents as any[]).filter((a) => !onlyUnmapped || !a.employeeId);
+  const mappedCount = (agents as any[]).filter((a) => a.employeeId).length;
+  const totalActions = (agents as any[]).reduce((s, a) => s + a.total, 0);
+
+  return (
+    <div className="space-y-4 mt-4">
+      <Card>
+        <CardContent className="p-4 flex flex-wrap items-end gap-3">
+          <div><Label className="text-xs">De</Label><Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+          <div><Label className="text-xs">Até</Label><Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer self-center select-none">
+            <input type="checkbox" checked={onlyUnmapped} onChange={(e) => setOnlyUnmapped(e.target.checked)} className="h-4 w-4" /> só por ligar
+          </label>
+          <div className="ml-auto text-xs text-muted-foreground self-center">
+            {(agents as any[]).length} agentes · {mappedCount} ligados · {totalActions} ações
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Atividade por agente Multipark</CardTitle>
+          <p className="text-xs text-muted-foreground">Liga cada nome de agente ao colaborador (os nomes na Multipark diferem dos do RH). Fica guardado para sempre.</p>
+        </CardHeader>
+        <CardContent>
+          {isLoading && <p className="text-sm text-muted-foreground">A carregar...</p>}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground border-b">
+                  <th className="p-2">Agente (Multipark)</th>
+                  <th className="p-2">Ações</th>
+                  <th className="p-2">In</th>
+                  <th className="p-2">Out</th>
+                  <th className="p-2">Mov.</th>
+                  <th className="p-2">Colaborador</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((a) => (
+                  <tr key={a.agentName} className={`border-b ${!a.employeeId ? "bg-amber-50/40" : ""}`}>
+                    <td className="p-2 font-medium">{a.agentName}</td>
+                    <td className="p-2 font-semibold">{a.total}</td>
+                    <td className="p-2 text-emerald-700">{a.checkin}</td>
+                    <td className="p-2 text-blue-700">{a.checkout}</td>
+                    <td className="p-2 text-muted-foreground">{a.movement}</td>
+                    <td className="p-2">
+                      <Select value={a.employeeId ? String(a.employeeId) : "none"} onValueChange={(v) => mapMut.mutate({ agentName: a.agentName, employeeId: v === "none" ? null : Number(v) })}>
+                        <SelectTrigger className="h-8 w-64"><SelectValue placeholder="— ligar a colaborador —" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— sem ligação —</SelectItem>
+                          {(employees as any[]).map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && !isLoading && <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Sem atividade no período.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

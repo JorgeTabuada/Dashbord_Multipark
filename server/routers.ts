@@ -5037,6 +5037,66 @@ export const appRouter = router({
         return { total: rows.length, byType, items: rows };
       }),
 
+    // ── Atividade por agente (TODOS os agentes com atividade) + mapeamento ──
+    // Lista os nomes de agente Multipark do histórico no período, com contagens
+    // e o colaborador a que estão ligados (employees.multiparkAgentName).
+    agentActivity: protectedProcedure
+      .input(z.object({ from: z.string(), to: z.string() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb(); if (!db) return [];
+        const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
+        const acts = rows(await db.execute(sql`
+          SELECT agentName,
+            COUNT(*) AS total,
+            SUM(changeType = 'CHECK_IN') AS checkin,
+            SUM(changeType = 'CHECK_OUT') AS checkout,
+            SUM(changeType = 'MOVEMENT') AS movement
+          FROM multipark_booking_history
+          WHERE agentName IS NOT NULL AND agentName <> ''
+            AND actionTime >= ${input.from + " 00:00:00"} AND actionTime <= ${input.to + " 23:59:59"}
+          GROUP BY agentName ORDER BY total DESC`));
+        const emps = rows(await db.execute(sql`SELECT id, fullName, multiparkAgentName FROM employees WHERE multiparkAgentName IS NOT NULL AND multiparkAgentName <> ''`));
+        const byAgent = new Map(emps.map((e: any) => [e.multiparkAgentName, e]));
+        return acts.map((a: any) => {
+          const e = byAgent.get(a.agentName);
+          return {
+            agentName: a.agentName,
+            total: Number(a.total), checkin: Number(a.checkin), checkout: Number(a.checkout), movement: Number(a.movement),
+            employeeId: e?.id ?? null, employeeName: e?.fullName ?? null,
+          };
+        });
+      }),
+
+    // Liga (ou desliga) um nome de agente Multipark a um colaborador. Único:
+    // limpa o nome de qualquer outro colaborador que o tivesse.
+    mapAgentToEmployee: protectedProcedure
+      .input(z.object({ agentName: z.string().min(1), employeeId: z.number().nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        // limpa o agente de quem o tivesse
+        await db.execute(sql`UPDATE employees SET multiparkAgentName = NULL WHERE multiparkAgentName = ${input.agentName}`);
+        if (input.employeeId != null) {
+          await db.execute(sql`UPDATE employees SET multiparkAgentName = ${input.agentName} WHERE id = ${input.employeeId}`);
+        }
+        return { success: true };
+      }),
+
+    // Lista leve de colaboradores ativos para o dropdown de mapeamento.
+    employeesForMapping: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      const { getDb } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb(); if (!db) return [];
+      const r: any = await db.execute(sql`SELECT id, fullName, multiparkAgentName FROM employees WHERE isActive = 1 ORDER BY fullName`);
+      return (Array.isArray(r[0]) ? r[0] : r) as any[];
+    }),
+
     // List synced bookings with filters
     bookings: protectedProcedure
       .input(z.object({
