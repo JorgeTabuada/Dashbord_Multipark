@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { RecurringExpensesDialog, CompareExpensesDialog } from "@/components/ExpenseRecurringCompare";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus,
@@ -61,6 +63,8 @@ import {
   ArrowUpDown,
   TrendingUp,
   Wallet,
+  ArrowLeftRight,
+  Repeat,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -276,6 +280,18 @@ export default function ExpensesPage() {
 
   const hasFilters = search || filterStatus || filterCategory || filterProject || filterUser || startDate || endDate;
 
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
+  // Auto-gera as despesas recorrentes do mês corrente (idempotente) ao abrir a página.
+  const genRecurring = trpc.expenses.recurring.generateMonth.useMutation({
+    onSuccess: (r) => { if (r.created > 0) { utils.expenses.list.invalidate(); utils.expenses.stats.invalidate(); toast.success(`${r.created} despesa(s) recorrente(s) lançada(s) este mês`); } },
+  });
+  useEffect(() => {
+    const now = new Date();
+    genRecurring.mutate({ year: now.getFullYear(), month: now.getMonth() + 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -300,12 +316,23 @@ export default function ExpensesPage() {
             )}
             Exportar Excel
           </Button>
+          <Button variant="outline" onClick={() => setShowCompare(true)} className="gap-2">
+            <ArrowLeftRight className="h-4 w-4" /> Comparar
+          </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setShowRecurring(true)} className="gap-2">
+              <Repeat className="h-4 w-4" /> Recorrentes
+            </Button>
+          )}
           <Button onClick={() => { setEditId(null); setShowForm(true); }} className="gap-2">
             <Plus className="h-4 w-4" />
             Nova Despesa
           </Button>
         </div>
       </div>
+
+      <RecurringExpensesDialog open={showRecurring} onClose={() => setShowRecurring(false)} categories={categories ?? []} projects={projectsList ?? []} />
+      <CompareExpensesDialog open={showCompare} onClose={() => setShowCompare(false)} categories={categories ?? []} projectId={(filterProject && filterProject !== "all") ? parseInt(filterProject) : undefined} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

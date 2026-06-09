@@ -384,6 +384,25 @@ export const expenses = mysqlTable("expenses", {
 	invoiceImageKey: varchar({ length: 512 }),
 	extractedByAi: tinyint().default(0),
 	notes: text(),
+	recurringTemplateId: int(), // se gerada por um modelo recorrente
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+});
+
+// Despesas recorrentes (fixas do mês): geram automaticamente uma expense/mês.
+export const recurringExpenses = mysqlTable("recurring_expenses", {
+	id: int().autoincrement().primaryKey(),
+	description: text(),
+	supplier: varchar({ length: 256 }),
+	amount: decimal({ precision: 10, scale: 2 }).notNull(),
+	currency: varchar({ length: 8 }).default('EUR').notNull(),
+	paymentMethod: mysqlEnum(['cash','card','transfer','check','other']).default('transfer'),
+	categoryId: int(),
+	projectId: int(),
+	dayOfMonth: int().default(1).notNull(),
+	active: tinyint().default(1).notNull(),
+	notes: text(),
+	createdById: int(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 });

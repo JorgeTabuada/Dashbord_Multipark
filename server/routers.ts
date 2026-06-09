@@ -1458,6 +1458,101 @@ export const appRouter = router({
 
       return { updated: overdue.length };
     }),
+
+    // Resumo de despesas de um período (para comparar períodos).
+    summary: protectedProcedure
+      .input(z.object({ from: z.string(), to: z.string(), projectId: z.number().optional() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const db = await getDb(); if (!db) return { total: 0, count: 0, byCategory: [] as any[] };
+        const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
+        const projCond = input.projectId ? sql` AND projectId = ${input.projectId}` : sql``;
+        const tot = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) total, COUNT(*) cnt FROM expenses WHERE status <> 'cancelled' AND expenseDate >= ${input.from + " 00:00:00"} AND expenseDate <= ${input.to + " 23:59:59"}${projCond}`))[0];
+        const byCat = rows(await db.execute(sql`SELECT categoryId, COALESCE(SUM(amount),0) total, COUNT(*) cnt FROM expenses WHERE status <> 'cancelled' AND expenseDate >= ${input.from + " 00:00:00"} AND expenseDate <= ${input.to + " 23:59:59"}${projCond} GROUP BY categoryId ORDER BY total DESC`));
+        return {
+          total: Number(tot?.total ?? 0), count: Number(tot?.cnt ?? 0),
+          byCategory: byCat.map((r) => ({ categoryId: r.categoryId ?? null, total: Number(r.total), count: Number(r.cnt) })),
+        };
+      }),
+
+    // ── Despesas recorrentes (modelos) ──
+    recurring: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getDb } = await import("./db");
+        const { recurringExpenses } = await import("../drizzle/schema");
+        const { desc } = await import("drizzle-orm");
+        const db = await getDb(); if (!db) return [];
+        return db.select().from(recurringExpenses).orderBy(desc(recurringExpenses.active));
+      }),
+      create: protectedProcedure
+        .input(z.object({ description: z.string().optional(), supplier: z.string().optional(), amount: z.number(), paymentMethod: z.enum(["cash", "card", "transfer", "check", "other"]).optional(), categoryId: z.number().optional(), projectId: z.number().optional(), dayOfMonth: z.number().min(1).max(28).optional(), notes: z.string().optional() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { recurringExpenses } = await import("../drizzle/schema");
+          const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          await db.insert(recurringExpenses).values({ description: input.description ?? null, supplier: input.supplier ?? null, amount: String(input.amount), paymentMethod: input.paymentMethod ?? "transfer", categoryId: input.categoryId ?? null, projectId: input.projectId ?? null, dayOfMonth: input.dayOfMonth ?? 1, notes: input.notes ?? null, createdById: ctx.user.id } as any);
+          return { success: true };
+        }),
+      update: protectedProcedure
+        .input(z.object({ id: z.number(), description: z.string().optional(), supplier: z.string().optional(), amount: z.number().optional(), paymentMethod: z.enum(["cash", "card", "transfer", "check", "other"]).optional(), categoryId: z.number().nullable().optional(), projectId: z.number().nullable().optional(), dayOfMonth: z.number().min(1).max(28).optional(), active: z.boolean().optional(), notes: z.string().optional() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "admin");
+          const { getDb } = await import("./db");
+          const { recurringExpenses } = await import("../drizzle/schema");
+          const { eq } = await import("drizzle-orm");
+          const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+          const { id, amount, active, ...rest } = input;
+          const patch: any = { ...rest };
+          if (amount !== undefined) patch.amount = String(amount);
+          if (active !== undefined) patch.active = active ? 1 : 0;
+          await db.update(recurringExpenses).set(patch).where(eq(recurringExpenses.id, id));
+          return { success: true };
+        }),
+      remove: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { recurringExpenses } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb(); if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db.delete(recurringExpenses).where(eq(recurringExpenses.id, input.id));
+        return { success: true };
+      }),
+      // Idempotente: cria as despesas dos modelos ativos para o mês (se ainda não existem).
+      generateMonth: protectedProcedure
+        .input(z.object({ year: z.number(), month: z.number() }))
+        .mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "frontoffice");
+          const { getDb, createExpense } = await import("./db");
+          const { recurringExpenses, expenses } = await import("../drizzle/schema");
+          const { eq, and, gte, lte } = await import("drizzle-orm");
+          const db = await getDb(); if (!db) return { created: 0 };
+          const templates = await db.select().from(recurringExpenses).where(eq(recurringExpenses.active, 1));
+          const monthStr = `${input.year}-${String(input.month).padStart(2, "0")}`;
+          const lastDay = new Date(input.year, input.month, 0).getDate();
+          let created = 0;
+          for (const t of templates) {
+            const existing = await db.select({ id: expenses.id }).from(expenses).where(and(
+              eq(expenses.recurringTemplateId, t.id),
+              gte(expenses.expenseDate, `${monthStr}-01 00:00:00`),
+              lte(expenses.expenseDate, `${monthStr}-${String(lastDay).padStart(2, "0")} 23:59:59`),
+            )).limit(1);
+            if (existing.length) continue;
+            const day = Math.min(t.dayOfMonth, lastDay);
+            await createExpense({
+              supplier: t.supplier, description: t.description, amount: t.amount, currency: t.currency,
+              paymentMethod: t.paymentMethod, expenseDate: `${monthStr}-${String(day).padStart(2, "0")} 00:00:00`,
+              status: "pending", categoryId: t.categoryId, projectId: t.projectId,
+              insertedById: ctx.user.id, recurringTemplateId: t.id, notes: t.notes,
+            } as any);
+            created++;
+          }
+          return { created };
+        }),
+    }),
   }),
 
   // ── LOGSS ───────────────────────────────────────────────────────────────────────────────────
