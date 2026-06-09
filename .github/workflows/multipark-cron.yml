@@ -3,10 +3,12 @@ name: Multipark Sync Cron
 # Substituto gratuito dos Vercel Cron Jobs (Hobby limita a 1/dia).
 # Chama os endpoints HTTP /api/cron/* com Authorization: Bearer ${CRON_SECRET}.
 #
-# Pré-requisitos:
-#   1. Definir secret CRON_SECRET no GitHub: Settings → Secrets → Actions
-#      (mesma string que no Vercel env var)
-#   2. Definir secret APP_URL com o URL base (ex: https://dashbord-multipark.vercel.app)
+# Pré-requisitos (Settings → Secrets and variables → Actions):
+#   1. APP_URL      — URL base de produção (ex: https://dashbord-multipark.vercel.app)
+#   2. CRON_SECRET  — mesma string que a env var CRON_SECRET no Vercel
+#
+# Se APP_URL não estiver definido, ou o endpoint devolver erro / {"ok":false},
+# o job FALHA (vermelho) em vez de passar silenciosamente.
 #
 # Granularidade mínima do GitHub cron: 5 min, e pode atrasar até alguns minutos.
 
@@ -20,7 +22,7 @@ on:
     - cron: "0 3 * * *"
     # Recolha diária de operações (driver history + alertas GPS): 03:30 UTC
     - cron: "30 3 * * *"
-  workflow_dispatch: {} # também permite trigger manual da UI
+  workflow_dispatch: {} # trigger manual da UI (corre todos os jobs)
 
 jobs:
   sync-recent:
@@ -29,38 +31,80 @@ jobs:
     steps:
       - name: Trigger /api/cron/multipark-sync
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          # URL público de produção; secrets.APP_URL sobrepõe-se se for definido.
+          APP_URL: ${{ secrets.APP_URL || 'https://dashbord-multipark.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
-            --max-time 90 \
-            "$APP_URL/api/cron/multipark-sync" | head -c 500 || echo "Sync failed"
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::error::APP_URL secret não está definido — sync não corre."
+            exit 1
+          fi
+          code=$(curl -sS -m 90 -w '%{http_code}' -o /tmp/body.txt \
+            -H "Authorization: Bearer ${CRON_SECRET:-}" \
+            "$APP_URL/api/cron/multipark-sync") \
+            || { echo "::error::curl falhou ao contactar o endpoint"; cat /tmp/body.txt || true; exit 1; }
+          echo "HTTP $code"; head -c 1000 /tmp/body.txt; echo
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::endpoint devolveu HTTP $code"; exit 1
+          fi
+          if grep -q '"ok":false' /tmp/body.txt; then
+            echo "::error::endpoint reportou ok:false"; exit 1
+          fi
 
   sync-future:
-    if: github.event.schedule == '17 */2 * * *'
+    if: github.event.schedule == '17 */2 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger /api/cron/multipark-future
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          # URL público de produção; secrets.APP_URL sobrepõe-se se for definido.
+          APP_URL: ${{ secrets.APP_URL || 'https://dashbord-multipark.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
-            --max-time 90 \
-            "$APP_URL/api/cron/multipark-future" | head -c 500 || echo "Future sync failed"
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::error::APP_URL secret não está definido — sync não corre."
+            exit 1
+          fi
+          code=$(curl -sS -m 90 -w '%{http_code}' -o /tmp/body.txt \
+            -H "Authorization: Bearer ${CRON_SECRET:-}" \
+            "$APP_URL/api/cron/multipark-future") \
+            || { echo "::error::curl falhou ao contactar o endpoint"; cat /tmp/body.txt || true; exit 1; }
+          echo "HTTP $code"; head -c 1000 /tmp/body.txt; echo
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::endpoint devolveu HTTP $code"; exit 1
+          fi
+          if grep -q '"ok":false' /tmp/body.txt; then
+            echo "::error::endpoint reportou ok:false"; exit 1
+          fi
 
   cleanup:
-    if: github.event.schedule == '0 3 * * *'
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger /api/cron/multipark-cleanup
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          # URL público de produção; secrets.APP_URL sobrepõe-se se for definido.
+          APP_URL: ${{ secrets.APP_URL || 'https://dashbord-multipark.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
-            --max-time 90 \
-            "$APP_URL/api/cron/multipark-cleanup" | head -c 500 || echo "Cleanup failed"
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::error::APP_URL secret não está definido — cleanup não corre."
+            exit 1
+          fi
+          code=$(curl -sS -m 90 -w '%{http_code}' -o /tmp/body.txt \
+            -H "Authorization: Bearer ${CRON_SECRET:-}" \
+            "$APP_URL/api/cron/multipark-cleanup") \
+            || { echo "::error::curl falhou ao contactar o endpoint"; cat /tmp/body.txt || true; exit 1; }
+          echo "HTTP $code"; head -c 1000 /tmp/body.txt; echo
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::endpoint devolveu HTTP $code"; exit 1
+          fi
+          if grep -q '"ok":false' /tmp/body.txt; then
+            echo "::error::endpoint reportou ok:false"; exit 1
+          fi
 
   daily-ops:
     if: github.event.schedule == '30 3 * * *' || github.event_name == 'workflow_dispatch'
@@ -68,9 +112,23 @@ jobs:
     steps:
       - name: Trigger /api/cron/daily-ops
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          # URL público de produção; secrets.APP_URL sobrepõe-se se for definido.
+          APP_URL: ${{ secrets.APP_URL || 'https://dashbord-multipark.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -sf -H "Authorization: Bearer $CRON_SECRET" \
-            --max-time 90 \
-            "$APP_URL/api/cron/daily-ops" | head -c 500 || echo "Daily ops failed"
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::error::APP_URL secret não está definido — daily-ops não corre."
+            exit 1
+          fi
+          code=$(curl -sS -m 90 -w '%{http_code}' -o /tmp/body.txt \
+            -H "Authorization: Bearer ${CRON_SECRET:-}" \
+            "$APP_URL/api/cron/daily-ops") \
+            || { echo "::error::curl falhou ao contactar o endpoint"; cat /tmp/body.txt || true; exit 1; }
+          echo "HTTP $code"; head -c 1000 /tmp/body.txt; echo
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::endpoint devolveu HTTP $code"; exit 1
+          fi
+          if grep -q '"ok":false' /tmp/body.txt; then
+            echo "::error::endpoint reportou ok:false"; exit 1
+          fi
