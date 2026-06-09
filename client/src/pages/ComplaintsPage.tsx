@@ -47,6 +47,19 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 
 const KANBAN_COLUMNS = ["new", "analyzing", "waiting_client", "resolved", "closed"] as const;
 
+// driversInvolved é texto livre na BD; pode não ser JSON válido. Nunca deixar
+// um parse rebentar a vista de detalhe inteira.
+function parseDriversInvolved(raw: string | null | undefined): any[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // Texto solto (ex.: "João, Maria") — mostra como um único nome.
+    return raw.trim() ? [{ name: raw.trim() }] : [];
+  }
+}
+
 export default function ComplaintsPage() {
   const { user } = useAuth();
   const [view, setView] = useState<"kanban" | "detail">("kanban");
@@ -354,7 +367,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
 
   const c = data.complaint;
   const isOverdue = c.slaDeadline && new Date(c.slaDeadline) < new Date() && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed";
-  const drivers = c.driversInvolved ? JSON.parse(c.driversInvolved) : [];
+  const drivers = parseDriversInvolved(c.driversInvolved);
 
   const startEditing = () => {
     setEditForm({

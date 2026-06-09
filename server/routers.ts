@@ -3347,12 +3347,14 @@ export const appRouter = router({
   complaints: router({
     searchBooking: protectedProcedure
       .input(z.object({ search: z.string().min(2) }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return searchBookingByRef(input.search);
       }),
     fetchBookingDetails: protectedProcedure
       .input(z.object({ externalId: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getBooking } = await import("./multipark");
         try {
           return await getBooking(input.externalId);
@@ -3366,10 +3368,12 @@ export const appRouter = router({
       vehicleId: z.number().optional(),
       assignedToId: z.number().optional(),
       projectId: z.number().optional(),
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "team_leader");
       return getComplaints(input ?? {});
     }),
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "team_leader");
       const complaint = await getComplaintById(input.id);
       if (!complaint) throw new TRPCError({ code: "NOT_FOUND" });
       const messages = await getComplaintMessages(input.id);
@@ -3580,17 +3584,20 @@ export const appRouter = router({
       await deleteComplaintPhoto(input.id);
       return { success: true };
     }),
-    stats: protectedProcedure.query(async () => {
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "team_leader");
       return getComplaintStats();
     }),
     // Get vehicle driver history for a complaint
-    vehicleHistory: protectedProcedure.input(z.object({ vehicleId: z.number() })).query(async ({ input }) => {
+    vehicleHistory: protectedProcedure.input(z.object({ vehicleId: z.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "team_leader");
       return getVehicleDriverHistory(input.vehicleId);
     }),
     // Booking timeline from Multipark API
     bookingTimeline: protectedProcedure.input(z.object({
       bookingId: z.string(),
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "team_leader");
       return getBookingHistory(input.bookingId);
     }),
   }),
