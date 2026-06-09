@@ -135,11 +135,9 @@ const menuGroups: MenuGroup[] = [
     items: [
       { icon: Receipt, label: "Despesas", path: "/despesas" },
       { icon: FolderTree, label: "Projetos", path: "/projetos" },
-      { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
       { icon: FileText, label: "Faturação", path: "/faturacao" },
       { icon: Handshake, label: "Parcerias", path: "/parcerias" },
       { icon: Megaphone, label: "Marketing", path: "/marketing" },
-      { icon: CalendarDays, label: "Anual", path: "/anual" },
     ],
   },
   {
@@ -156,6 +154,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { icon: Truck, label: "Actividade", path: "/operacional" },
       { icon: LayoutDashboard, label: "Operações", path: "/operacoes" },
+      { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
       { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia" },
       { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional" },
     ],

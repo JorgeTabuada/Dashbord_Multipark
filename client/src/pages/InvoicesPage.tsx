@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,6 +152,11 @@ export default function InvoicesPage() {
           </p>
         </div>
         <div className="flex items-end gap-2 flex-wrap">
+          <Link href="/anual">
+            <a className="text-xs px-2.5 py-1.5 rounded border bg-primary text-primary-foreground hover:opacity-90 transition-opacity inline-flex items-center gap-1">
+              <CalendarClock className="w-3.5 h-3.5" /> Anual
+            </a>
+          </Link>
           {QUICK_RANGES.map((r) => (
             <button
               key={r.id}

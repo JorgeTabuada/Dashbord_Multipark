@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -185,6 +186,9 @@ export default function AnnualPage() {
       <Card className="p-3">
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
+            <Link href="/faturacao">
+              <a className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-1">← Faturação</a>
+            </Link>
             <p className="text-sm text-muted-foreground">Visão anual de gestão: lucros, gastos, IVA, ordenados e comissões</p>
           </div>
           <div>
