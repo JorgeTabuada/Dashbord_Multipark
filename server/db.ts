@@ -5369,6 +5369,8 @@ export async function generateAnnualSummary(year: number, projectId?: number, sp
 export async function getMultiparkBookings(filters?: {
   status?: string;
   parkingType?: string;
+  city?: string;
+  parkId?: string;
   from?: Date;
   to?: Date;
   search?: string;
@@ -5380,6 +5382,8 @@ export async function getMultiparkBookings(filters?: {
   const conditions: any[] = [];
   if (filters?.status) conditions.push(eq(multiparkBookings.status, filters.status));
   if (filters?.parkingType) conditions.push(eq(multiparkBookings.parkingType, filters.parkingType));
+  if (filters?.city) conditions.push(eq(multiparkBookings.city, filters.city));
+  if (filters?.parkId) conditions.push(eq(multiparkBookings.parkId, filters.parkId));
   if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, toMysqlDateTime(filters.from)));
   if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, toMysqlDateTime(filters.to)));
   if (filters?.search) {

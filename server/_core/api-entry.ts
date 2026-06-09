@@ -3,6 +3,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { createExternalApiRouter } from "../externalApi";
+import { createMcpApiRouter } from "../mcpApi";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { sdk } from "./sdk";
 import { getBookingTryAllParks } from "../multipark";
@@ -17,6 +18,7 @@ let initError: string | null = null;
 try {
   registerOAuthRoutes(app);
   app.use("/api/external", createExternalApiRouter());
+  app.use("/api/v1", createMcpApiRouter());
 
   app.use(
     "/api/trpc",
