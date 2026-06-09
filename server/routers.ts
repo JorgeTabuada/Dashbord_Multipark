@@ -2346,10 +2346,17 @@ export const appRouter = router({
             }
             const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
             const manualSpend = Number(costRow?.spend ?? 0);
-            // Gasto: custos reais manuais se houver; senão estima dailyBudget × dias do período.
+            // Gasto real importado do Google Ads (campaign_daily_stats, só campanhas ad).
+            let realStatsSpend = 0;
+            if (c.campaignType === "ad" && input?.from && input?.to) {
+              const r = rows(await db.execute(sql`SELECT COALESCE(SUM(spend),0) AS s FROM campaign_daily_stats WHERE campaignId = ${c.id} AND date >= ${input.from + " 00:00:00"} AND date <= ${input.to + " 23:59:59"}`))[0];
+              realStatsSpend = Number(r?.s ?? 0);
+            }
+            // Prioridade: gasto real importado > custo manual > estimativa por orçamento×dias.
             const budgetSpend = c.dailyBudget && periodDays > 0 ? Number(c.dailyBudget) * periodDays : 0;
-            const spend = manualSpend > 0 ? manualSpend : budgetSpend;
-            out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated: manualSpend === 0 && budgetSpend > 0, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
+            const spend = realStatsSpend > 0 ? realStatsSpend : (manualSpend > 0 ? manualSpend : budgetSpend);
+            const spendEstimated = realStatsSpend === 0 && manualSpend === 0 && budgetSpend > 0;
+            out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
           }
           // Campanhas com chaves ou métricas primeiro
           out.sort((a, b) => (b.keys.length || b.bookings) - (a.keys.length || a.bookings));
