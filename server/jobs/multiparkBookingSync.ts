@@ -204,7 +204,7 @@ function bookingToRecord(
   // Resolução automática do parceiro: se a API ainda devolve "Unknown User"
   // mas o partnerId/paymentMethod já está associado a um parceiro nosso, usa
   // o nome do parceiro em vez do fallback.
-  const rawFallback = (booking as any).partnerName || (booking as any).campaignName || booking.discountCode || booking.campaign || null;
+  const rawFallback = (booking as any).partnerName || booking.discountCode || booking.campaign || null;
   const isUnknown = typeof rawFallback === "string" && /unknown/i.test(rawFallback);
   const effectiveFallback = isUnknown ? null : rawFallback;
   const resolvedCampaign = resolvePartnerCampaign(booking, pricing, aliasResolver, effectiveFallback);
@@ -256,9 +256,14 @@ function bookingToRecord(
     totalPaid: (pricing as any)?.totalPaid?.toString() ?? null,
     pro: (booking as any).pro ? 1 : 0,
     partnerId: (booking as any).partnerId ? String((booking as any).partnerId).slice(0, 128) : null,
-    partnerName: typeof (booking as any).partnerName === "string" ? (booking as any).partnerName.slice(0, 256) : null,
-    campaignId: (booking as any).campaignId ? String((booking as any).campaignId).slice(0, 128) : null,
-    campaignName: typeof (booking as any).campaignName === "string" ? (booking as any).campaignName.slice(0, 256) : null,
+    // partnerName no /report vem mascarado ("Unknown User") — filtra-o; o nome
+    // real (quando existe) vem do enrichment. partnerId é o que casa com o alias.
+    partnerName: (() => {
+      const pn = (booking as any).partnerName;
+      return typeof pn === "string" && pn && !/unknown/i.test(pn) ? pn.slice(0, 256) : null;
+    })(),
+    // campaignId/campaignName NÃO existem no /report — só no /bookings/:id.
+    // São preenchidos no enrichment (não aqui, senão o sync sobrescrevia-os com null).
     cashValidatedByName: typeof (booking as any).cashValidatedByName === "string" ? (booking as any).cashValidatedByName.slice(0, 256) : null,
     driverValidatedByName: typeof (booking as any).driverValidatedByName === "string" ? (booking as any).driverValidatedByName.slice(0, 256) : null,
     cashierClosedByName: typeof (booking as any).cashierClosedByName === "string" ? (booking as any).cashierClosedByName.slice(0, 256) : null,
@@ -319,6 +324,12 @@ async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promis
     if (b.vehicle?.vehicleType) update.vehicleType = b.vehicle.vehicleType;
     if (typeof b.origin === "string" && b.origin) update.origin = b.origin.slice(0, 64);
     if (typeof b.originUrl === "string" && b.originUrl) update.originUrl = b.originUrl.slice(0, 512);
+    // Campanha só existe no detalhe (/bookings/:id), não no /report.
+    if (typeof b.campaignId === "string" && b.campaignId) update.campaignId = b.campaignId.slice(0, 128);
+    if (typeof b.campaignName === "string" && b.campaignName) update.campaignName = b.campaignName.slice(0, 256);
+    // Nome real do parceiro (o /report mascara como "Unknown User").
+    if (typeof b.partnerId === "string" && b.partnerId) update.partnerId = b.partnerId.slice(0, 128);
+    if (typeof b.partnerName === "string" && b.partnerName && !/unknown/i.test(b.partnerName)) update.partnerName = b.partnerName.slice(0, 256);
 
     await db.update(multiparkBookings).set(update).where(eq(multiparkBookings.externalId, externalId));
     return true;

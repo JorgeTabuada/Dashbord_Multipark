@@ -8,9 +8,11 @@
 
 -- ── G. PARCEIRO / CAMPANHA / ORIGIN: a API devolve mesmo estes nomes? ────────
 -- Verifica no rawJson (resposta crua do /report) se vêm e com que nome.
--- Nota: origin/originUrl normalmente NÃO vêm no /report — só no enrichment
--- (/bookings/:id). Por isso j_origin/j_originUrl podem vir NULL aqui mesmo
--- estando as COLUNAS origin/originUrl preenchidas (ver 2ª query abaixo).
+-- CONFIRMADO contra a API real (2026-06-09): o /report NÃO traz campaignName,
+-- campaignId, origin nem originUrl — só o /bookings/:id (enrichment). Logo
+-- j_campaignName/j_origin/j_originUrl vêm NULL no rawJson; as COLUNAS respectivas
+-- só ficam preenchidas DEPOIS do enrichment correr. partnerName no /report vem
+-- "Unknown User" (mascarado) — o nome real e a campanha vêm do enrichment.
 SELECT
   externalId,
   JSON_EXTRACT(rawJson, '$.partnerName')   AS j_partnerName,
