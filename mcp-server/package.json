@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Servidor MCP (stdio) para controlar a Dashboard Multipark via a API /api/v1.",
+  "description": "Servidor MCP (stdio, sem dependências) para controlar a Dashboard Multipark via a API /api/v1.",
   "bin": {
     "multipark-dashboard-mcp": "index.mjs"
   },
   "scripts": {
     "start": "node index.mjs"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+  "engines": {
+    "node": ">=18"
   }
 }

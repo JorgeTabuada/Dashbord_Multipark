@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Multipark Dashboard MCP Server (stdio)
+ * Multipark Dashboard MCP Server (stdio) — SEM DEPENDÊNCIAS.
+ *
+ * Implementa o protocolo MCP (JSON-RPC 2.0 por stdin/stdout, newline-delimited)
+ * à mão, para não precisar de `npm install`. Basta o Node (>=18, para o fetch).
  *
  * Expõe a Dashboard Multipark como tools MCP, falando com a API REST /api/v1.
  * Cobre todos os parques e cidades. O que cada tool pode fazer depende do
@@ -10,15 +13,17 @@
  *   MULTIPARK_API_URL  (default: https://dashbord-multipark.vercel.app/api/v1)
  *   MULTIPARK_API_KEY  (obrigatório)
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { createInterface } from "node:readline";
 
 const BASE_URL = (process.env.MULTIPARK_API_URL || "https://dashbord-multipark.vercel.app/api/v1").replace(/\/$/, "");
 const API_KEY = process.env.MULTIPARK_API_KEY;
 
 if (!API_KEY) {
   console.error("[multipark-mcp] Falta a variável de ambiente MULTIPARK_API_KEY.");
+  process.exit(1);
+}
+if (typeof fetch !== "function") {
+  console.error("[multipark-mcp] Precisas de Node.js 18 ou superior (fetch nativo).");
   process.exit(1);
 }
 
@@ -203,28 +208,70 @@ const tools = [
 
 const toolByName = new Map(tools.map((t) => [t.name, t]));
 
-const server = new Server(
-  { name: "multipark-dashboard", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+// ─── Transporte MCP: JSON-RPC 2.0 newline-delimited sobre stdin/stdout ──────────
+const SERVER_INFO = { name: "multipark-dashboard", version: "1.0.0" };
+let negotiatedProtocol = "2024-11-05";
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-}));
+function send(msg) {
+  process.stdout.write(JSON.stringify(msg) + "\n");
+}
+function reply(id, result) { send({ jsonrpc: "2.0", id, result }); }
+function replyError(id, code, message) { send({ jsonrpc: "2.0", id, error: { code, message } }); }
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const tool = toolByName.get(req.params.name);
-  if (!tool) {
-    return { isError: true, content: [{ type: "text", text: `Tool desconhecida: ${req.params.name}` }] };
+async function handle(msg) {
+  const { id, method, params } = msg;
+  const isRequest = id !== undefined && id !== null;
+
+  switch (method) {
+    case "initialize": {
+      if (params?.protocolVersion) negotiatedProtocol = params.protocolVersion;
+      reply(id, {
+        protocolVersion: negotiatedProtocol,
+        capabilities: { tools: {} },
+        serverInfo: SERVER_INFO,
+      });
+      return;
+    }
+    case "notifications/initialized":
+    case "initialized":
+      return; // notificação, sem resposta
+    case "ping":
+      if (isRequest) reply(id, {});
+      return;
+    case "tools/list": {
+      if (isRequest) reply(id, { tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+      return;
+    }
+    case "tools/call": {
+      const tool = toolByName.get(params?.name);
+      if (!tool) { if (isRequest) reply(id, { isError: true, content: [{ type: "text", text: `Tool desconhecida: ${params?.name}` }] }); return; }
+      try {
+        const result = await tool.run(params?.arguments ?? {});
+        if (isRequest) reply(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+      } catch (err) {
+        if (isRequest) reply(id, { isError: true, content: [{ type: "text", text: `Erro: ${err?.message || String(err)}` }] });
+      }
+      return;
+    }
+    default:
+      if (isRequest) replyError(id, -32601, `Método não suportado: ${method}`);
+      return;
   }
-  try {
-    const result = await tool.run(req.params.arguments ?? {});
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  } catch (err) {
-    return { isError: true, content: [{ type: "text", text: `Erro: ${err?.message || String(err)}` }] };
-  }
+}
+
+const rl = createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let msg;
+  try { msg = JSON.parse(trimmed); } catch { return; }
+  // Suporta batch (array) ou mensagem única
+  const items = Array.isArray(msg) ? msg : [msg];
+  for (const item of items) handle(item).catch((e) => console.error("[multipark-mcp]", e));
+});
+rl.on("close", () => {
+  // Não forçamos process.exit: deixamos o event loop escoar respostas em curso
+  // (fetches assíncronos) e o Node sai naturalmente quando não houver trabalho.
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
 console.error(`[multipark-mcp] ligado a ${BASE_URL} — ${tools.length} tools disponíveis.`);

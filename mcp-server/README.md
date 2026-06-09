@@ -33,16 +33,41 @@ VALUES ('Claude MCP', '<gera-uma-string-aleatória-longa>', 'admin', 1);
 
 Gera a chave com, por exemplo: `openssl rand -hex 32`.
 
-## 2. Instalar
+## 2. Pôr o ficheiro na tua máquina
+
+Este servidor **não tem dependências** — só precisa do **Node.js 18+**. Não há
+`npm install`. Basta teres o repositório clonado:
 
 ```bash
-cd mcp-server
-npm install
+git clone https://github.com/JorgeTabuada/Dashbord_Multipark.git
+# o servidor é o ficheiro: Dashbord_Multipark/mcp-server/index.mjs
 ```
+
+Confirma o Node: `node --version` (tem de ser ≥ 18). Anota o **caminho absoluto**
+para o `index.mjs` — vais precisar dele a seguir (ex.: no Mac
+`/Users/tu/Dashbord_Multipark/mcp-server/index.mjs`, no Windows
+`C:\\Users\\tu\\Dashbord_Multipark\\mcp-server\\index.mjs`).
 
 ## 3. Registar no Claude
 
+### Claude Code (CLI) — uma linha
+
+```bash
+claude mcp add multipark-dashboard \
+  --env MULTIPARK_API_URL=https://dashbord-multipark.vercel.app/api/v1 \
+  --env MULTIPARK_API_KEY=a-tua-api-key \
+  -- node /caminho/absoluto/para/mcp-server/index.mjs
+```
+
+Confirma com `claude mcp list` e abre uma sessão — as 20 tools aparecem.
+
 ### Claude Desktop — `claude_desktop_config.json`
+
+Abre o ficheiro de config (Settings → Developer → Edit Config, ou):
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\\Claude\\claude_desktop_config.json`
+
+E acrescenta:
 
 ```json
 {
@@ -59,16 +84,9 @@ npm install
 }
 ```
 
-### Claude Code (CLI)
+> No Windows, escapa as barras no caminho (`\\`) como no exemplo acima.
 
-```bash
-claude mcp add multipark-dashboard \
-  --env MULTIPARK_API_URL=https://dashbord-multipark.vercel.app/api/v1 \
-  --env MULTIPARK_API_KEY=a-tua-api-key \
-  -- node /caminho/absoluto/para/mcp-server/index.mjs
-```
-
-Reinicia o Claude e as tools aparecem.
+Reinicia o Claude Desktop e as tools aparecem (ícone de ferramentas no chat).
 
 ## Tools disponíveis
 
