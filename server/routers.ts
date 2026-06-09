@@ -2318,8 +2318,8 @@ export const appRouter = router({
           // Campanhas vêm de DUAS fontes: internal_campaigns + campaigns (ad).
           const internal = rows(await db.execute(sql`SELECT id, name, projectId, dailyBudget, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
             .map((c) => ({ ...c, campaignType: "internal" as const }));
-          const ad = rows(await db.execute(sql`SELECT id, name, projectId, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
-            .map((c) => ({ ...c, city: null, dailyBudget: null, campaignType: "ad" as const }));
+          const ad = rows(await db.execute(sql`SELECT id, name, projectId, budget AS dailyBudget, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
+            .map((c) => ({ ...c, city: null, campaignType: "ad" as const }));
           // nº de dias do período (para estimar gasto via dailyBudget)
           const periodDays = input?.from && input?.to
             ? Math.max(1, Math.floor((Date.parse(input.to) - Date.parse(input.from)) / 86400000) + 1)
