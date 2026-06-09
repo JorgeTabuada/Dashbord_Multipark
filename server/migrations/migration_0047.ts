@@ -20,23 +20,25 @@ export const MIGRATION_0047_STATEMENTS: string[] = [
 
   `CREATE TABLE IF NOT EXISTS \`internal_campaign_keys\` (
     \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`campaignType\` ENUM('internal','ad') NOT NULL DEFAULT 'internal',
     \`campaignId\` INT NOT NULL,
     \`keyType\` ENUM('campaign_id','campaign_name','url_pattern') NOT NULL,
     \`keyValue\` VARCHAR(512) NOT NULL,
     \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE INDEX \`internal_campaign_keys_type_value_unique\` (\`keyType\`, \`keyValue\`),
-    INDEX \`idx_internal_campaign_keys_campaign\` (\`campaignId\`)
+    INDEX \`idx_internal_campaign_keys_campaign\` (\`campaignType\`, \`campaignId\`)
   )`,
 
   `CREATE TABLE IF NOT EXISTS \`internal_campaign_costs\` (
     \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`campaignType\` ENUM('internal','ad') NOT NULL DEFAULT 'internal',
     \`campaignId\` INT NOT NULL,
     \`costDate\` VARCHAR(10) NOT NULL,
     \`amount\` DECIMAL(10,2) NOT NULL,
     \`notes\` VARCHAR(255) NULL,
     \`createdById\` INT NULL,
     \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE INDEX \`internal_campaign_costs_campaign_date_unique\` (\`campaignId\`, \`costDate\`)
+    UNIQUE INDEX \`internal_campaign_costs_campaign_date_unique\` (\`campaignType\`, \`campaignId\`, \`costDate\`)
   )`,
 ];
 

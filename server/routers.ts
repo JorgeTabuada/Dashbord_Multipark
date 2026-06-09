@@ -2286,9 +2286,9 @@ export const appRouter = router({
         if (!db) return { ids: [], names: [] };
         const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
         const idsRes: any = await db.execute(sql`
-          SELECT cid AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          SELECT cid AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue, MIN(url) AS sampleUrl
           FROM (
-            SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(originUrl, 'campaignId=', -1), '&', 1) AS cid, totalPrice
+            SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(originUrl, 'campaignId=', -1), '&', 1) AS cid, totalPrice, originUrl AS url
             FROM multipark_bookings WHERE originUrl LIKE '%campaignId=%'
           ) t
           WHERE cid REGEXP '^[A-Za-z0-9_-]+$'
@@ -2314,14 +2314,19 @@ export const appRouter = router({
           const db = await getDb();
           if (!db) return [];
           const rows = (r: any) => (Array.isArray(r[0]) ? r[0] : r) as any[];
-          const camps = rows(await db.execute(sql`SELECT * FROM internal_campaigns ORDER BY name`));
+          // Campanhas vêm de DUAS fontes: internal_campaigns + campaigns (ad).
+          const internal = rows(await db.execute(sql`SELECT id, name, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`))
+            .map((c) => ({ ...c, campaignType: "internal" as const }));
+          const ad = rows(await db.execute(sql`SELECT id, name, platform AS brand, campaignStatus FROM campaigns ORDER BY name`))
+            .map((c) => ({ ...c, city: null, campaignType: "ad" as const }));
+          const camps = [...internal, ...ad];
           const allKeys = rows(await db.execute(sql`SELECT * FROM internal_campaign_keys`));
           const dateCond = input?.from && input?.to
             ? sql` AND checkIn >= ${input.from + " 00:00:00"} AND checkIn <= ${input.to + " 23:59:59"}`
             : sql``;
           const out: any[] = [];
           for (const c of camps) {
-            const keys = allKeys.filter((k) => k.campaignId === c.id);
+            const keys = allKeys.filter((k) => k.campaignType === c.campaignType && k.campaignId === c.id);
             const conds: any[] = [];
             const names = keys.filter((k) => k.keyType === "campaign_name").map((k) => k.keyValue);
             if (names.length) conds.push(sql`campaignName IN (${sql.join(names.map((v: string) => sql`${v}`), sql`, `)})`);
@@ -2332,10 +2337,12 @@ export const appRouter = router({
               const m = rows(await db.execute(sql`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql.join(conds, sql` OR `)})${dateCond}`))[0];
               bookings = Number(m?.c ?? 0); revenue = Number(m?.rev ?? 0);
             }
-            const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
+            const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
             const spend = Number(costRow?.spend ?? 0);
             out.push({ ...c, keys, bookings, revenue, spend, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
           }
+          // Campanhas com chaves ou métricas primeiro
+          out.sort((a, b) => (b.keys.length || b.bookings) - (a.keys.length || a.bookings));
           return out;
         }),
 
@@ -2365,29 +2372,31 @@ export const appRouter = router({
           return { success: true };
         }),
 
-      remove: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      // Para ad campaigns só desliga (apaga chaves/custos desta vista); a campanha
+      // em si é gerida na tab "Campanhas". Para internas apaga tudo.
+      remove: protectedProcedure.input(z.object({ campaignType: z.enum(["internal", "ad"]), id: z.number() })).mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
         const { getDb } = await import("./db");
         const { internalCampaigns, internalCampaignKeys, internalCampaignCosts } = await import("../drizzle/schema");
-        const { eq } = await import("drizzle-orm");
+        const { eq, and } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-        await db.delete(internalCampaignKeys).where(eq(internalCampaignKeys.campaignId, input.id));
-        await db.delete(internalCampaignCosts).where(eq(internalCampaignCosts.campaignId, input.id));
-        await db.delete(internalCampaigns).where(eq(internalCampaigns.id, input.id));
+        await db.delete(internalCampaignKeys).where(and(eq(internalCampaignKeys.campaignType, input.campaignType), eq(internalCampaignKeys.campaignId, input.id)));
+        await db.delete(internalCampaignCosts).where(and(eq(internalCampaignCosts.campaignType, input.campaignType), eq(internalCampaignCosts.campaignId, input.id)));
+        if (input.campaignType === "internal") await db.delete(internalCampaigns).where(eq(internalCampaigns.id, input.id));
         return { success: true };
       }),
 
       // Atribui uma chave detetada a uma campanha (a tal "atribuição uma vez").
       assignKey: protectedProcedure
-        .input(z.object({ campaignId: z.number(), keyType: z.enum(["campaign_id", "campaign_name", "url_pattern"]), keyValue: z.string().min(1) }))
+        .input(z.object({ campaignType: z.enum(["internal", "ad"]), campaignId: z.number(), keyType: z.enum(["campaign_id", "campaign_name", "url_pattern"]), keyValue: z.string().min(1) }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");
           const { internalCampaignKeys } = await import("../drizzle/schema");
           const db = await getDb();
           if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-          await db.insert(internalCampaignKeys).values({ campaignId: input.campaignId, keyType: input.keyType, keyValue: input.keyValue } as any);
+          await db.insert(internalCampaignKeys).values({ campaignType: input.campaignType, campaignId: input.campaignId, keyType: input.keyType, keyValue: input.keyValue } as any);
           return { success: true };
         }),
 
@@ -2403,29 +2412,29 @@ export const appRouter = router({
       }),
 
       addCost: protectedProcedure
-        .input(z.object({ campaignId: z.number(), costDate: z.string(), amount: z.number(), notes: z.string().optional() }))
+        .input(z.object({ campaignType: z.enum(["internal", "ad"]), campaignId: z.number(), costDate: z.string(), amount: z.number(), notes: z.string().optional() }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");
           const { sql } = await import("drizzle-orm");
           const db = await getDb();
           if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-          // upsert por (campaignId, costDate)
+          // upsert por (campaignType, campaignId, costDate)
           await db.execute(sql`
-            INSERT INTO internal_campaign_costs (campaignId, costDate, amount, notes, createdById)
-            VALUES (${input.campaignId}, ${input.costDate}, ${input.amount}, ${input.notes ?? null}, ${ctx.user.id})
+            INSERT INTO internal_campaign_costs (campaignType, campaignId, costDate, amount, notes, createdById)
+            VALUES (${input.campaignType}, ${input.campaignId}, ${input.costDate}, ${input.amount}, ${input.notes ?? null}, ${ctx.user.id})
             ON DUPLICATE KEY UPDATE amount = ${input.amount}, notes = ${input.notes ?? null}`);
           return { success: true };
         }),
 
-      costs: protectedProcedure.input(z.object({ campaignId: z.number() })).query(async ({ ctx, input }) => {
+      costs: protectedProcedure.input(z.object({ campaignType: z.enum(["internal", "ad"]), campaignId: z.number() })).query(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
         const { getDb } = await import("./db");
         const { internalCampaignCosts } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
+        const { eq, and, desc } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) return [];
-        return db.select().from(internalCampaignCosts).where(eq(internalCampaignCosts.campaignId, input.campaignId)).orderBy(desc(internalCampaignCosts.costDate));
+        return db.select().from(internalCampaignCosts).where(and(eq(internalCampaignCosts.campaignType, input.campaignType), eq(internalCampaignCosts.campaignId, input.campaignId))).orderBy(desc(internalCampaignCosts.costDate));
       }),
 
       removeCost: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {

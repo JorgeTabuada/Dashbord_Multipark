@@ -1231,7 +1231,7 @@ function InternalCampaignsTab() {
   const [target, setTarget] = useState<string>("");
   const [newName, setNewName] = useState("");
   const [newCity, setNewCity] = useState("");
-  const [costInputs, setCostInputs] = useState<Record<number, { date: string; amount: string }>>({});
+  const [costInputs, setCostInputs] = useState<Record<string, { date: string; amount: string }>>({});
 
   const refresh = () => {
     utils.marketing.internalCampaigns.detect.invalidate();
@@ -1245,7 +1245,8 @@ function InternalCampaignsTab() {
 
   const assign = (keyType: "campaign_id" | "campaign_name", keyValue: string) => {
     if (!target) { toast.error("Escolhe a campanha-alvo primeiro"); return; }
-    assignKey.mutate({ campaignId: Number(target), keyType, keyValue });
+    const [campaignType, idStr] = target.split(":");
+    assignKey.mutate({ campaignType: campaignType as "internal" | "ad", campaignId: Number(idStr), keyType, keyValue });
   };
   const ids = (detected?.ids ?? []) as any[];
   const names = (detected?.names ?? []) as any[];
@@ -1272,16 +1273,18 @@ function InternalCampaignsTab() {
           <div className="flex items-center gap-2">
             <Label className="text-xs">Campanha-alvo:</Label>
             <Select value={target} onValueChange={setTarget}>
-              <SelectTrigger className="w-64"><SelectValue placeholder="Escolher campanha..." /></SelectTrigger>
-              <SelectContent>{campaigns.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="w-72"><SelectValue placeholder="Escolher campanha (interna ou ad)..." /></SelectTrigger>
+              <SelectContent>{campaigns.map((c: any) => <SelectItem key={c.campaignType + ":" + c.id} value={c.campaignType + ":" + c.id}>{c.name}{c.campaignType === "ad" ? " · ad" : ""}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           {ids.length > 0 && <div className="text-xs font-medium text-muted-foreground">Links (campaignId)</div>}
           {ids.map((r) => (
-            <div key={"id-" + r.value} className="flex items-center gap-2 text-sm border-b py-1">
-              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{r.value}</code>
-              <span className="text-muted-foreground">{Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</span>
-              <Button size="sm" variant="outline" className="ml-auto h-7" disabled={assignKey.isPending} onClick={() => assign("campaign_id", r.value)}>Atribuir →</Button>
+            <div key={"id-" + r.value} className="flex items-center gap-2 text-sm border-b py-1.5">
+              <div className="min-w-0 flex-1">
+                <a href={r.sampleUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline break-all text-xs">{r.sampleUrl}</a>
+                <div className="text-[11px] text-muted-foreground">código <code className="bg-muted px-1 rounded">{r.value}</code> · {Number(r.bookings)} reservas · {Number(r.revenue).toFixed(0)} €</div>
+              </div>
+              <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={assignKey.isPending} onClick={() => assign("campaign_id", r.value)}>Atribuir →</Button>
             </div>
           ))}
           {names.length > 0 && <div className="text-xs font-medium text-muted-foreground mt-2">Nomes de campanha</div>}
@@ -1299,17 +1302,19 @@ function InternalCampaignsTab() {
       {/* Campanhas */}
       <div className="grid gap-3">
         {campaigns.map((c: any) => {
-          const ci = costInputs[c.id] ?? { date: new Date().toISOString().slice(0, 10), amount: "" };
+          const ckey = c.campaignType + ":" + c.id;
+          const ci = costInputs[ckey] ?? { date: new Date().toISOString().slice(0, 10), amount: "" };
           return (
-            <Card key={c.id}>
+            <Card key={ckey}>
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold">{c.name}</h3>
+                    <Badge className="text-[10px]" variant={c.campaignType === "ad" ? "default" : "secondary"}>{c.campaignType === "ad" ? "Ad" : "Interna"}</Badge>
                     {c.city && <Badge variant="outline" className="text-[10px]">{c.city}</Badge>}
                     {c.brand && <Badge variant="outline" className="text-[10px]">{c.brand}</Badge>}
                   </div>
-                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (confirm(`Eliminar campanha "${c.name}"?`)) remove.mutate({ id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (confirm(c.campaignType === "ad" ? `Desligar links/custos de "${c.name}" desta vista? (a campanha mantém-se na tab Campanhas)` : `Eliminar campanha "${c.name}"?`)) remove.mutate({ campaignType: c.campaignType, id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                   <div><div className="text-xs text-muted-foreground">Reservas</div><div className="font-semibold">{c.bookings}</div></div>
@@ -1328,9 +1333,9 @@ function InternalCampaignsTab() {
                   {(c.keys ?? []).length === 0 && <span className="text-xs text-muted-foreground">Sem chaves atribuídas ainda.</span>}
                 </div>
                 <div className="flex items-end gap-2 border-t pt-2">
-                  <div><Label className="text-[10px]">Data</Label><Input type="date" className="h-8 w-36" value={ci.date} onChange={e => setCostInputs(s => ({ ...s, [c.id]: { ...ci, date: e.target.value } }))} /></div>
-                  <div><Label className="text-[10px]">Gasto (€)</Label><Input type="number" className="h-8 w-28" value={ci.amount} onChange={e => setCostInputs(s => ({ ...s, [c.id]: { ...ci, amount: e.target.value } }))} placeholder="0.00" /></div>
-                  <Button size="sm" className="h-8" disabled={!ci.amount || addCost.isPending} onClick={() => addCost.mutate({ campaignId: c.id, costDate: ci.date, amount: Number(ci.amount) })}>+ Custo do dia</Button>
+                  <div><Label className="text-[10px]">Data</Label><Input type="date" className="h-8 w-36" value={ci.date} onChange={e => setCostInputs(s => ({ ...s, [ckey]: { ...ci, date: e.target.value } }))} /></div>
+                  <div><Label className="text-[10px]">Gasto (€)</Label><Input type="number" className="h-8 w-28" value={ci.amount} onChange={e => setCostInputs(s => ({ ...s, [ckey]: { ...ci, amount: e.target.value } }))} placeholder="0.00" /></div>
+                  <Button size="sm" className="h-8" disabled={!ci.amount || addCost.isPending} onClick={() => addCost.mutate({ campaignType: c.campaignType, campaignId: c.id, costDate: ci.date, amount: Number(ci.amount) })}>+ Custo do dia</Button>
                 </div>
               </CardContent>
             </Card>

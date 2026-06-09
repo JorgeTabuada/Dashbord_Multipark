@@ -89,7 +89,8 @@ export const internalCampaigns = mysqlTable("internal_campaigns", {
 // type: campaign_id (do originUrl) | campaign_name | url_pattern (LIKE no originUrl)
 export const internalCampaignKeys = mysqlTable("internal_campaign_keys", {
 	id: int().autoincrement().primaryKey(),
-	campaignId: int().notNull(), // FK -> internal_campaigns.id
+	campaignType: mysqlEnum(['internal','ad']).default('internal').notNull(), // internal_campaigns ou campaigns
+	campaignId: int().notNull(), // FK -> internal_campaigns.id OU campaigns.id (conforme campaignType)
 	keyType: mysqlEnum(['campaign_id','campaign_name','url_pattern']).notNull(),
 	keyValue: varchar({ length: 512 }).notNull(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
@@ -102,7 +103,8 @@ export const internalCampaignKeys = mysqlTable("internal_campaign_keys", {
 // Gasto por dia de uma campanha lógica.
 export const internalCampaignCosts = mysqlTable("internal_campaign_costs", {
 	id: int().autoincrement().primaryKey(),
-	campaignId: int().notNull(), // FK -> internal_campaigns.id
+	campaignType: mysqlEnum(['internal','ad']).default('internal').notNull(),
+	campaignId: int().notNull(), // FK -> internal_campaigns.id OU campaigns.id
 	costDate: varchar({ length: 10 }).notNull(), // YYYY-MM-DD
 	amount: decimal({ precision: 10, scale: 2 }).notNull(),
 	notes: varchar({ length: 255 }),
@@ -110,7 +112,7 @@ export const internalCampaignCosts = mysqlTable("internal_campaign_costs", {
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 },
 (table) => [
-	uniqueIndex("internal_campaign_costs_campaign_date_unique").on(table.campaignId, table.costDate),
+	uniqueIndex("internal_campaign_costs_campaign_date_unique").on(table.campaignType, table.campaignId, table.costDate),
 ]);
 
 export const careerExamAttempts = mysqlTable("career_exam_attempts", {
