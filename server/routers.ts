@@ -574,8 +574,9 @@ export const appRouter = router({
         requireRole(ctx.user.role, "super_admin");
         const { syncBookings, enrichBookingsBatch, syncBookingHistoryBatch } = await import("./jobs/multiparkBookingSync");
         const t0 = Date.now();
-        // Fase 1: report do dia (todas as actionTypes)
-        const report = await syncBookings({
+        // Fase 1: report do dia (todas as actionTypes). enrichTargets fica de
+        // fora da resposta (lista de IDs grande e desnecessária no backfill).
+        const { enrichTargets: _enrichTargets, ...report } = await syncBookings({
           startDate: input.date,
           endDate: input.date,
           triggeredById: ctx.user.id,

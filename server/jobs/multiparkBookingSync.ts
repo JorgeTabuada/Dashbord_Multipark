@@ -473,7 +473,9 @@ export async function syncBookingHistory(externalId: string, apiKey: string): Pr
  * para escolher a chave de API correcta sem ter de tentar todos os parques.
  * Limite default 30 para caber no timeout do Vercel.
  */
-export async function enrichBookingsBatch(limit = 100): Promise<{
+export async function enrichBookingsBatch(
+  arg: number | { externalIds?: string[]; limit?: number } = 100,
+): Promise<{
   scanned: number;
   enriched: number;
   errors: number;
@@ -482,9 +484,22 @@ export async function enrichBookingsBatch(limit = 100): Promise<{
   const db = await getDb();
   if (!db) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
 
+  const opts = typeof arg === "number" ? { limit: arg } : arg;
+  const limit = opts.limit ?? 100;
+  const targetIds = opts.externalIds;
+  // Alvo explícito mas vazio → nada a enriquecer.
+  if (targetIds && targetIds.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+
   // Mapa parkId (interno) → ParkConfig descobre-se sob procura, vamos tentar
   // todos os parques para cada booking sem perder muito tempo.
-  const { isNull } = await import("drizzle-orm");
+  const { isNull, and, inArray } = await import("drizzle-orm");
+
+  // Só reservas ainda não enriquecidas (enrichedAt IS NULL). Se vier uma lista
+  // de alvos (as que acabaram de entrar/mudar no ciclo), restringe a essas —
+  // enriquecimento imediato e direcionado em vez de varrer o backlog todo.
+  const whereCond = targetIds && targetIds.length
+    ? and(isNull(multiparkBookings.enrichedAt), inArray(multiparkBookings.externalId, targetIds))
+    : isNull(multiparkBookings.enrichedAt);
 
   const pending = await db
     .select({
@@ -493,7 +508,7 @@ export async function enrichBookingsBatch(limit = 100): Promise<{
       city: multiparkBookings.city,
     })
     .from(multiparkBookings)
-    .where(isNull(multiparkBookings.enrichedAt))
+    .where(whereCond)
     .limit(limit);
 
   if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
@@ -725,6 +740,7 @@ export async function syncBookings(opts: {
   created: number;
   updated: number;
   errors: string[];
+  enrichTargets: string[];
 }> {
   const actionTypes = opts.actionTypes || ["creation", "checkin", "checkout", "cancelation"];
   const projectMap = await getProjectMap();
@@ -751,6 +767,7 @@ export async function syncBookings(opts: {
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
     let processed = 0, created = 0, updated = 0;
     const parkErrors: string[] = [];
+    const enrichIds: string[] = []; // reservas novas ou com mudança de estado
 
     try {
       const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
@@ -763,6 +780,11 @@ export async function syncBookings(opts: {
             processed++;
             if (result?.action === "created") created++;
             else updated++;
+            // Marca para enriquecimento imediato: novas, ou as que mudaram de
+            // estado (o detalhe foi reaberto via enrichedAt=null no upsert).
+            if (result?.action === "created" || result?.statusChanged) {
+              enrichIds.push(booking.id);
+            }
           } catch (err: any) {
             parkErrors.push(`Booking ${booking.id}: ${err.message}`);
           }
@@ -771,18 +793,20 @@ export async function syncBookings(opts: {
     } catch (err: any) {
       parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
     }
-    return { processed, created, updated, errors: parkErrors };
+    return { processed, created, updated, errors: parkErrors, enrichIds };
   }));
 
   let totalProcessed = 0;
   let totalCreated = 0;
   let totalUpdated = 0;
+  const enrichTargets = new Set<string>();
   for (const r of perParkResults) {
     if (r.status === "fulfilled") {
       totalProcessed += r.value.processed;
       totalCreated += r.value.created;
       totalUpdated += r.value.updated;
       errors.push(...r.value.errors);
+      for (const id of r.value.enrichIds) enrichTargets.add(id);
     } else {
       errors.push(`Park task failed: ${r.reason?.message ?? r.reason}`);
     }
@@ -807,6 +831,7 @@ export async function syncBookings(opts: {
     created: totalCreated,
     updated: totalUpdated - totalCreated,
     errors,
+    enrichTargets: Array.from(enrichTargets),
   };
 }
 
@@ -890,14 +915,26 @@ export async function runRecentCronSync(windowMinutes = 30): Promise<{
     endDate: fmt(now),
   });
 
-  // Fase 2 e 3 em paralelo (não competem por recursos — uma puxa /bookings/:id
-  // a outra /bookings/:id/history). Cada batch é limitado para caber no tempo.
-  const [enrichResult, historyResult] = await Promise.allSettled([
-    enrichBookingsBatch(50),
+  // Fase 2a: enrichment IMEDIATO e direcionado às reservas que acabaram de
+  // entrar/mudar neste ciclo — vai já buscar ao /bookings/:id a origem, o nome
+  // real do parceiro e o detalhe de pagamento. É o "automático daquelas
+  // reservas" logo a seguir ao report.
+  const targeted = await enrichBookingsBatch({
+    externalIds: report.enrichTargets,
+    // Cap para caber no maxDuration do Vercel num burst; o resto fica enrichedAt
+    // NULL e é apanhado pelo backlog nos ciclos seguintes.
+    limit: Math.min(Math.max(report.enrichTargets.length, 1), 120),
+  });
+
+  // Fase 2b + 3 em paralelo: limpa um resto de backlog (reservas antigas ainda
+  // por enriquecer) + history. Limitados para caber no maxDuration do Vercel.
+  const [backlogResult, historyResult] = await Promise.allSettled([
+    enrichBookingsBatch(20),
     syncBookingHistoryBatch(30),
   ]);
 
-  const enriched = enrichResult.status === "fulfilled" ? enrichResult.value.enriched : 0;
+  const backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
+  const enriched = targeted.enriched + backlogEnriched;
   const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
 
   return {

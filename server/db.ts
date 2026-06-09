@@ -5391,23 +5391,29 @@ export async function upsertMultiparkBooking(data: InsertMultiparkBooking) {
   // só para distinguir created/updated para os contadores do sync.
   const { externalId, ...rest } = data;
   const before = await db
-    .select({ id: multiparkBookings.id })
+    .select({ id: multiparkBookings.id, status: multiparkBookings.status })
     .from(multiparkBookings)
     .where(eq(multiparkBookings.externalId, externalId))
     .limit(1);
+  const existed = before.length > 0;
+  // Se o estado mudou (ex: BOOKED→CHECKED_IN→CHECKED_OUT), reabre o enrichment
+  // (enrichedAt=null) para o /bookings/:id ser re-buscado e refrescar os campos
+  // que só vêm do detalhe (parceiro real, origem, pagamento, etc.).
+  const statusChanged = existed && (before[0].status ?? null) !== (data.status ?? null);
+  const setOnDup: any = statusChanged ? { ...rest, enrichedAt: null } : rest;
   await db
     .insert(multiparkBookings)
     .values(data as any)
-    .onDuplicateKeyUpdate({ set: rest as any });
-  if (before.length > 0) {
-    return { id: before[0].id, action: "updated" as const };
+    .onDuplicateKeyUpdate({ set: setOnDup });
+  if (existed) {
+    return { id: before[0].id, action: "updated" as const, statusChanged };
   }
   const [row] = await db
     .select({ id: multiparkBookings.id })
     .from(multiparkBookings)
     .where(eq(multiparkBookings.externalId, externalId))
     .limit(1);
-  return { id: row?.id, action: "created" as const };
+  return { id: row?.id, action: "created" as const, statusChanged: false };
 }
 
 /**
