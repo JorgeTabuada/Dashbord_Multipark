@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   users,
@@ -1978,13 +1978,23 @@ export async function getComplaints(filters?: { status?: string; type?: string; 
   if (filters?.vehicleId) conditions.push(eq(complaints.vehicleId, filters.vehicleId));
   if (filters?.assignedToId) conditions.push(eq(complaints.assignedToId, filters.assignedToId));
   if (filters?.projectId) conditions.push(eq(complaints.projectId, filters.projectId));
-  return db.select().from(complaints).where(conditions.length > 0 ? and(...conditions) : undefined).orderBy(desc(complaints.createdAt));
+  return db
+    .select({ ...getTableColumns(complaints), assignedToName: employees.fullName })
+    .from(complaints)
+    .leftJoin(employees, eq(complaints.assignedToId, employees.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(complaints.createdAt));
 }
 
 export async function getComplaintById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(complaints).where(eq(complaints.id, id)).limit(1);
+  const result = await db
+    .select({ ...getTableColumns(complaints), assignedToName: employees.fullName })
+    .from(complaints)
+    .leftJoin(employees, eq(complaints.assignedToId, employees.id))
+    .where(eq(complaints.id, id))
+    .limit(1);
   return result[0];
 }
 
@@ -2041,10 +2051,13 @@ export async function deleteComplaintPhoto(id: number) {
   await db.delete(complaintPhotos).where(eq(complaintPhotos.id, id));
 }
 
-export async function getComplaintStats() {
+export async function getComplaintStats(projectId?: number) {
   const db = await getDb();
   if (!db) return { total: 0, new: 0, analyzing: 0, waitingClient: 0, resolved: 0, closed: 0, overdue: 0 };
-  const all = await db.select().from(complaints);
+  const all = await db
+    .select()
+    .from(complaints)
+    .where(projectId !== undefined ? eq(complaints.projectId, projectId) : undefined);
   const now = new Date();
   return {
     total: all.length,

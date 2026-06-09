@@ -3567,6 +3567,7 @@ export const appRouter = router({
       filename: z.string(),
       label: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const buffer = Buffer.from(input.base64, "base64");
       const ext = input.filename.split(".").pop() || "jpg";
       const key = `complaints/${input.complaintId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -3581,12 +3582,13 @@ export const appRouter = router({
       return { id, url };
     }),
     deletePhoto: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await deleteComplaintPhoto(input.id);
       return { success: true };
     }),
-    stats: protectedProcedure.query(async ({ ctx }) => {
+    stats: protectedProcedure.input(z.object({ projectId: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      return getComplaintStats();
+      return getComplaintStats(input?.projectId);
     }),
     // Get vehicle driver history for a complaint
     vehicleHistory: protectedProcedure.input(z.object({ vehicleId: z.number() })).query(async ({ ctx, input }) => {

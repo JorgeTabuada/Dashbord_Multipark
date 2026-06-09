@@ -101,7 +101,9 @@ function KanbanView({ user, filterType, setFilterType, onSelect, onNew }: any) {
     return input;
   }, [filterType, globalFilters.projectId]);
   const { data: complaints = [], isLoading } = trpc.complaints.list.useQuery(complaintsQueryInput);
-  const { data: stats } = trpc.complaints.stats.useQuery();
+  const { data: stats } = trpc.complaints.stats.useQuery(
+    globalFilters.projectId !== undefined ? { projectId: globalFilters.projectId } : undefined
+  );
   const updateMut = trpc.complaints.update.useMutation();
   const utils = trpc.useUtils();
 
@@ -281,6 +283,12 @@ function ComplaintCard({ complaint: c, onSelect, onMove, currentStatus }: any) {
           </div>
         )}
 
+        {c.assignedToName && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <UserPlus className="w-3 h-3" /> {c.assignedToName}
+          </div>
+        )}
+
         {isOverdue && (
           <div className="flex items-center gap-1 text-xs text-red-600 font-medium">
             <AlertTriangle className="w-3 h-3" /> SLA ultrapassado
@@ -444,7 +452,10 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
             <Badge className={PRIORITY_CONFIG[c.complaintPriority]?.color}>{PRIORITY_CONFIG[c.complaintPriority]?.label}</Badge>
             {isOverdue && <Badge className="bg-red-100 text-red-800">SLA Ultrapassado</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">Ticket #{c.id} — Criado em {new Date(c.createdAt).toLocaleDateString("pt-PT")}</p>
+          <p className="text-sm text-muted-foreground">
+            Ticket #{c.id} — Criado em {new Date(c.createdAt).toLocaleDateString("pt-PT")}
+            {c.assignedToName ? ` — Atribuída a: ${c.assignedToName}` : " — Por atribuir"}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={startEditing}><Pencil className="w-4 h-4 mr-1" /> Editar</Button>
         <Select value={c.complaintStatus} onValueChange={handleStatusChange}>
