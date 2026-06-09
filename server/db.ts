@@ -5887,11 +5887,47 @@ export async function getPayrollData(year: number, month: number) {
   const NIGHT_RATE_MULTIPLIER = 1.25;     // 25% extra for night work (22h-7h)
   const WEEKEND_RATE_MULTIPLIER = 1.50;   // 50% extra for weekends/holidays
 
-  // Pré-carrega salário histórico + dias de férias para todos os funcionários, em paralelo
-  const empMeta = await Promise.all(emps.map(async ({ employee: emp }) => {
-    const snapshot = await getEmployeeSalaryAt(emp.id, monthFirstDay);
-    const leaveDays = await getLeaveDaysForMonth(emp.id, year, month);
-    return { empId: emp.id, snapshot, leaveDays };
+  // Pré-carrega salário histórico + faltas de TODOS os colaboradores em BULK
+  // (2 queries no total, em vez de 2 × nº colaboradores — corrige N+1 que fazia
+  // a página Anual estourar os 60s do Vercel com ~8.5k queries para 12 meses).
+  const empIds = emps.map(({ employee }) => employee.id);
+  const histAll = empIds.length ? await db
+    .select()
+    .from(employeeSalaryHistory)
+    .where(and(
+      inArray(employeeSalaryHistory.employeeId, empIds),
+      lte(employeeSalaryHistory.effectiveFrom, monthFirstDay),
+      or(isNull(employeeSalaryHistory.effectiveUntil), gte(employeeSalaryHistory.effectiveUntil, monthFirstDay))!,
+    ))
+    .orderBy(desc(employeeSalaryHistory.effectiveFrom)) : [];
+  const snapshotByEmp = new Map<number, { monthlySalary: any; mealAllowancePerDay: any }>();
+  for (const h of histAll) {
+    if (!snapshotByEmp.has(h.employeeId)) snapshotByEmp.set(h.employeeId, { monthlySalary: h.monthlySalary, mealAllowancePerDay: h.mealAllowancePerDay });
+  }
+  const lastDayNum = new Date(year, month, 0).getDate();
+  const monthEndStr = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+  const leavesAll = empIds.length ? await db
+    .select({ employeeId: employeeLeaves.employeeId, fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate })
+    .from(employeeLeaves)
+    .where(and(
+      inArray(employeeLeaves.employeeId, empIds),
+      lte(employeeLeaves.fromDate, monthEndStr),
+      gte(employeeLeaves.toDate, monthFirstDay),
+    )) : [];
+  const leavesByEmp = new Map<number, Set<string>>();
+  for (const r of leavesAll) {
+    let set = leavesByEmp.get(r.employeeId);
+    if (!set) { set = new Set<string>(); leavesByEmp.set(r.employeeId, set); }
+    const from = r.fromDate < monthFirstDay ? monthFirstDay : r.fromDate;
+    const to = r.toDate > monthEndStr ? monthEndStr : r.toDate;
+    const d = new Date(from + "T00:00:00");
+    const limit = new Date(to + "T00:00:00");
+    while (d <= limit) { set.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+  }
+  const empMeta = emps.map(({ employee: emp }) => ({
+    empId: emp.id,
+    snapshot: snapshotByEmp.get(emp.id) ?? { monthlySalary: emp.monthlySalary, mealAllowancePerDay: emp.mealAllowancePerDay },
+    leaveDays: leavesByEmp.get(emp.id) ?? new Set<string>(),
   }));
   const metaById = new Map(empMeta.map(m => [m.empId, m]));
 
