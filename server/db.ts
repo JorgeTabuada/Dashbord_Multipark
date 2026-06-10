@@ -5737,6 +5737,24 @@ export async function getSyncLogs(limit = 20) {
   return db.select().from(multiparkSyncLogs).orderBy(desc(multiparkSyncLogs.startedAt)).limit(limit);
 }
 
+/** Quando começou o último sync que chegou ao fim (success ou partial).
+ *  Usado pelo cron para auto-alargar a janela quando o GitHub Actions
+ *  atrasa ou falha runs — sem isto, gaps > windowMinutes perdem reservas. */
+export async function getLastSyncSuccessAt(syncType = "api_sync"): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ startedAt: multiparkSyncLogs.startedAt })
+    .from(multiparkSyncLogs)
+    .where(and(
+      eq(multiparkSyncLogs.syncType, syncType),
+      inArray(multiparkSyncLogs.status, ["success", "partial"]),
+    ))
+    .orderBy(desc(multiparkSyncLogs.startedAt))
+    .limit(1);
+  return rows[0]?.startedAt ?? null;
+}
+
 
 // ─── MULTIPARK DAILY SNAPSHOTS (KPIs) ────────────────────────────────────────
 

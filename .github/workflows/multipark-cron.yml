@@ -8,14 +8,19 @@ name: Multipark Sync Cron
 #   2. CRON_SECRET  — mesma string que a env var CRON_SECRET no Vercel
 #
 # Se APP_URL não estiver definido, ou o endpoint devolver erro / {"ok":false},
-# o job FALHA (vermelho) em vez de passar silenciosamente.
+# o job FALHA (vermelho) E abre/comenta uma issue no repo (notificação por email
+# do GitHub — não depende de SMTP nosso).
 #
-# Granularidade mínima do GitHub cron: 5 min, e pode atrasar até alguns minutos.
+# Granularidade mínima do GitHub cron: 5 min, e pode atrasar até alguns minutos
+# (na prática, em horas de pico, MUITO mais — por isso os minutos desfasados e a
+# janela auto-recuperável no servidor, que cobre gaps até 3 dias).
 
 on:
   schedule:
-    # Sync recente: a cada 15 minutos
-    - cron: "*/15 * * * *"
+    # Sync recente: a cada 15 minutos. Minutos desfasados (4,19,34,49) — os
+    # minutos "redondos" (0,15,30,45) são os mais congestionados no GitHub e
+    # os runs são descartados/atrasados com mais frequência.
+    - cron: "4,19,34,49 * * * *"
     # Janela futura: minuto 17 a cada 2 horas
     - cron: "17 */2 * * *"
     # Cleanup: 03:00 UTC (=04:00 PT verão)
@@ -24,9 +29,13 @@ on:
     - cron: "30 3 * * *"
   workflow_dispatch: {} # trigger manual da UI (corre todos os jobs)
 
+permissions:
+  contents: read
+  issues: write # para o passo de alerta abrir/comentar issues em falha
+
 jobs:
   sync-recent:
-    if: github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '4,19,34,49 * * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger /api/cron/multipark-sync
@@ -50,6 +59,20 @@ jobs:
           fi
           if grep -q '"ok":false' /tmp/body.txt; then
             echo "::error::endpoint reportou ok:false"; exit 1
+          fi
+      - name: Alerta — abrir/comentar issue em caso de falha
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="🔴 Cron multipark falhou: sync-recent"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="Run falhado: $run_url — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number' || true)
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
           fi
 
   sync-future:
@@ -78,6 +101,20 @@ jobs:
           if grep -q '"ok":false' /tmp/body.txt; then
             echo "::error::endpoint reportou ok:false"; exit 1
           fi
+      - name: Alerta — abrir/comentar issue em caso de falha
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="🔴 Cron multipark falhou: sync-future"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="Run falhado: $run_url — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number' || true)
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
 
   cleanup:
     if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
@@ -105,6 +142,20 @@ jobs:
           if grep -q '"ok":false' /tmp/body.txt; then
             echo "::error::endpoint reportou ok:false"; exit 1
           fi
+      - name: Alerta — abrir/comentar issue em caso de falha
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="🔴 Cron multipark falhou: cleanup"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="Run falhado: $run_url — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number' || true)
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
 
   daily-ops:
     if: github.event.schedule == '30 3 * * *' || github.event_name == 'workflow_dispatch'
@@ -131,4 +182,18 @@ jobs:
           fi
           if grep -q '"ok":false' /tmp/body.txt; then
             echo "::error::endpoint reportou ok:false"; exit 1
+          fi
+      - name: Alerta — abrir/comentar issue em caso de falha
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="🔴 Cron multipark falhou: daily-ops"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="Run falhado: $run_url — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number' || true)
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
           fi

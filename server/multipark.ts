@@ -17,6 +17,9 @@
 import { ENV } from "./_core/env";
 
 const MAX_RETRIES = 3;
+// Sem timeout, um pedido pendurado segura a função serverless até o Vercel a
+// matar aos 60s (maxDuration) — o cron fica vermelho sem resposta nenhuma.
+const FETCH_TIMEOUT_MS = Number(process.env.MULTIPARK_FETCH_TIMEOUT_MS || 15_000);
 
 // ─── Park API key mapping ───
 
@@ -80,6 +83,7 @@ async function multiparkRequest<T = any>(opts: {
           "Content-Type": "application/json",
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
       // Rate limited — exponential backoff

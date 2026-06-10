@@ -29,6 +29,7 @@ import {
   createSyncLog,
   getProjects,
   getDb,
+  getLastSyncSuccessAt,
 } from "../db";
 import { eq } from "drizzle-orm";
 import { multiparkBookings, multiparkBookingHistory } from "../../drizzle/schema";
@@ -359,12 +360,15 @@ async function enrichBookingIfNeeded(externalId: string, apiKey: string): Promis
   }
 }
 
-/** Corre N tarefas em paralelo com limite de concorrência. */
-async function runConcurrent<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+/** Corre N tarefas em paralelo com limite de concorrência.
+ *  Se deadlineAt for passado, deixa de pegar em itens novos quando o tempo
+ *  esgota — os restantes ficam por processar (apanhados em ciclos seguintes). */
+async function runConcurrent<T>(items: T[], limit: number, fn: (item: T) => Promise<void>, deadlineAt?: number): Promise<void> {
   let idx = 0;
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
       while (idx < items.length) {
+        if (deadlineAt && Date.now() >= deadlineAt) break;
         const i = idx++;
         try { await fn(items[i]); } catch {}
       }
@@ -490,7 +494,7 @@ export async function syncBookingHistory(externalId: string, apiKey: string): Pr
  * Limite default 30 para caber no timeout do Vercel.
  */
 export async function enrichBookingsBatch(
-  arg: number | { externalIds?: string[]; limit?: number } = 100,
+  arg: number | { externalIds?: string[]; limit?: number; deadlineAt?: number } = 100,
 ): Promise<{
   scanned: number;
   enriched: number;
@@ -503,6 +507,7 @@ export async function enrichBookingsBatch(
   const opts = typeof arg === "number" ? { limit: arg } : arg;
   const limit = opts.limit ?? 100;
   const targetIds = opts.externalIds;
+  const deadlineAt = opts.deadlineAt;
   // Alvo explícito mas vazio → nada a enriquecer.
   if (targetIds && targetIds.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
 
@@ -586,7 +591,7 @@ export async function enrichBookingsBatch(
     }
     const ok = await enrichBookingIfNeeded(p.externalId, apiKey);
     if (ok) enriched++; else errs++;
-  });
+  }, deadlineAt);
 
   return { scanned: pending.length, enriched, errors: errs, noKey };
 }
@@ -661,7 +666,7 @@ export async function fetchAgentHistoryByName(
  * Vai buscar history das reservas que ainda não tinham. Mesma estratégia
  * do enrich: lote pequeno por execução para caber no timeout do Vercel.
  */
-export async function syncBookingHistoryBatch(limit = 50): Promise<{
+export async function syncBookingHistoryBatch(limit = 50, deadlineAt?: number): Promise<{
   scanned: number;
   fetched: number;
   errors: number;
@@ -738,7 +743,7 @@ export async function syncBookingHistoryBatch(limit = 50): Promise<{
     }
     const ok = await syncBookingHistory(p.externalId, apiKey);
     if (ok) fetched++; else errs++;
-  });
+  }, deadlineAt);
 
   return { scanned: pending.length, fetched, errors: errs, noKey };
 }
@@ -905,27 +910,54 @@ export function startBookingSyncScheduler() {
 
 // ─── Cron wrappers (Vercel Cron Jobs chama os endpoints HTTP) ─────────────────
 
+/** Orçamento de tempo do cron: tem de caber DENTRO do maxDuration do Vercel
+ *  (60s em vercel.json) com margem para a resposta HTTP sair. Sem isto, um
+ *  ciclo mais pesado é morto aos 60s → 504 → run vermelho no GitHub Actions. */
+const CRON_BUDGET_MS = Number(process.env.CRON_BUDGET_MS || 50_000);
+
 /** Sync recente: report dos últimos N minutos + enrich em paralelo + history.
- *  Chamado pelo Vercel Cron cada 15 minutos. Toda a função tem que caber no
- *  maxDuration da função (60s configurado em vercel.json).
+ *  Chamado pelo cron (GitHub Actions) a cada 15 minutos — mas o agendamento
+ *  do GitHub atrasa com frequência (gaps de 1-3h observados), por isso a
+ *  janela auto-alarga até ao último sync com sucesso (clamp: 3 dias).
  *
- *  windowMinutes deve cobrir o intervalo entre runs + margem (default: 30 para
- *  cobrir o cron de 15 min com 100% de margem se um falhar). */
+ *  Todas as fases respeitam CRON_BUDGET_MS: o que não couber fica para os
+ *  ciclos seguintes (enrichedAt/historyFetchedAt NULL = fila persistente). */
 export async function runRecentCronSync(windowMinutes = 30): Promise<{
   report: { processed: number; created: number; updated: number; errors: string[] };
   enriched: number;
   historyFetched: number;
   durationMs: number;
+  windowStart: string;
+  partial: boolean;
 }> {
   const t0 = Date.now();
+  const deadlineAt = t0 + CRON_BUDGET_MS;
 
-  // Janela: agora - N min → agora. As datas YYYY-MM-DD são granularidade
+  // Janela base: agora - N min → agora. As datas YYYY-MM-DD são granularidade
   // de dia para o /bookings/report (a API filtra internamente por tempo).
   const now = new Date();
-  const since = new Date(now.getTime() - windowMinutes * 60_000);
+  let since = new Date(now.getTime() - windowMinutes * 60_000);
+
+  // Janela auto-recuperável: se o último sync completo foi há mais tempo que
+  // a janela pedida (runs falhados ou atrasados), alarga até lá com 60 min de
+  // margem. Clamp a 3 dias para não rebentar o orçamento num cold start.
+  try {
+    const last = await getLastSyncSuccessAt("api_sync");
+    if (last) {
+      const lastDate = new Date(String(last).replace(" ", "T") + "Z");
+      if (!Number.isNaN(lastDate.getTime())) {
+        const candidate = new Date(lastDate.getTime() - 60 * 60_000);
+        if (candidate < since) since = candidate;
+      }
+    }
+  } catch {}
+  const clampStart = new Date(now.getTime() - 3 * 86_400_000);
+  if (since < clampStart) since = clampStart;
+
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-  // Fase 1: report (puxa o que estiver novo/alterado)
+  // Fase 1: report (puxa o que estiver novo/alterado). Corre sempre — é a
+  // fase crítica; cada chamada à API tem timeout próprio (FETCH_TIMEOUT_MS).
   const report = await syncBookings({
     startDate: fmt(since),
     endDate: fmt(now),
@@ -935,29 +967,36 @@ export async function runRecentCronSync(windowMinutes = 30): Promise<{
   // entrar/mudar neste ciclo — vai já buscar ao /bookings/:id a origem, o nome
   // real do parceiro e o detalhe de pagamento. É o "automático daquelas
   // reservas" logo a seguir ao report.
-  const targeted = await enrichBookingsBatch({
-    externalIds: report.enrichTargets,
-    // Cap para caber no maxDuration do Vercel num burst; o resto fica enrichedAt
-    // NULL e é apanhado pelo backlog nos ciclos seguintes.
-    limit: Math.min(Math.max(report.enrichTargets.length, 1), 120),
-  });
+  const targeted = Date.now() < deadlineAt - 5_000
+    ? await enrichBookingsBatch({
+        externalIds: report.enrichTargets,
+        // Cap num burst; o resto fica enrichedAt NULL e é apanhado pelo
+        // backlog nos ciclos seguintes.
+        limit: Math.min(Math.max(report.enrichTargets.length, 1), 120),
+        deadlineAt,
+      })
+    : { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
 
   // Fase 2b + 3 em paralelo: limpa um resto de backlog (reservas antigas ainda
-  // por enriquecer) + history. Limitados para caber no maxDuration do Vercel.
-  const [backlogResult, historyResult] = await Promise.allSettled([
-    enrichBookingsBatch(20),
-    syncBookingHistoryBatch(30),
-  ]);
-
-  const backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
-  const enriched = targeted.enriched + backlogEnriched;
-  const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+  // por enriquecer) + history. Só se ainda houver orçamento.
+  let backlogEnriched = 0;
+  let historyFetched = 0;
+  if (Date.now() < deadlineAt - 5_000) {
+    const [backlogResult, historyResult] = await Promise.allSettled([
+      enrichBookingsBatch({ limit: 20, deadlineAt }),
+      syncBookingHistoryBatch(30, deadlineAt),
+    ]);
+    backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
+    historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+  }
 
   return {
     report,
-    enriched,
+    enriched: targeted.enriched + backlogEnriched,
     historyFetched,
     durationMs: Date.now() - t0,
+    windowStart: fmt(since),
+    partial: Date.now() >= deadlineAt - 5_000,
   };
 }
 
