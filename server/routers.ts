@@ -863,10 +863,16 @@ export const appRouter = router({
   }),
   // ── PROJECTS ────────────────────────────────────────────────────────────────
   projects: router({
-    list: protectedProcedure.query(async () => getProjects()),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra"); // extra precisa dos nomes (tarefas); user não acede
+      return getProjects();
+    }),
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => getProjectById(input.id)),
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "extra");
+        return getProjectById(input.id);
+      }),
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),
@@ -962,22 +968,57 @@ export const appRouter = router({
   tasks: router({
     list: protectedProcedure
       .input(z.object({ projectId: z.number().optional(), assigneeId: z.number().optional(), status: z.string().optional() }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "extra");
         const { getTasksWithAssignees } = await import("./db");
+        // extra: só vê as tarefas atribuídas a si
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          if (!me) return [];
+          return getTasksWithAssignees({ ...(input ?? {}), assigneeId: me.employee.id });
+        }
         return getTasksWithAssignees(input ?? {});
       }),
     getById: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "extra");
         const task = await getTaskById(input.id);
         if (!task) return null;
         const assignees = await getTaskAssignees(input.id);
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          const mine = me && (task.assigneeId === me.employee.id || assignees.some((a: any) => a.id === me.employee.id));
+          if (!mine) throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
+        }
         return { ...task, assignees };
       }),
-    stats: protectedProcedure.query(async () => getTaskStats()),
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
+      // extra: stats calculadas só sobre as suas tarefas
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        const { getTasksWithAssignees } = await import("./db");
+        const mine = me ? await getTasksWithAssignees({ assigneeId: me.employee.id }) : [];
+        const now = new Date();
+        return {
+          total: mine.length,
+          backlog: mine.filter((t: any) => t.taskStatus === "backlog").length,
+          todo: mine.filter((t: any) => t.taskStatus === "todo").length,
+          inProgress: mine.filter((t: any) => t.taskStatus === "in_progress").length,
+          review: mine.filter((t: any) => t.taskStatus === "review").length,
+          done: mine.filter((t: any) => t.taskStatus === "done").length,
+          overdue: mine.filter((t: any) => t.taskStatus !== "done" && t.dueDate && new Date(t.dueDate) < now).length,
+        };
+      }
+      return getTaskStats();
+    }),
     getAssignees: protectedProcedure
       .input(z.object({ taskId: z.number() }))
-      .query(async ({ input }) => getTaskAssignees(input.taskId)),
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "extra");
+        return getTaskAssignees(input.taskId);
+      }),
     create: protectedProcedure
       .input(z.object({
         title: z.string().min(1),
@@ -989,6 +1030,7 @@ export const appRouter = router({
         dueDate: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         // O primeiro assignee passa para a coluna assigneeId (compat);
         // a lista completa fica em task_assignees.
         const primaryAssignee = input.assigneeIds?.[0] ?? input.assigneeId ?? null;
@@ -1020,6 +1062,7 @@ export const appRouter = router({
         dueDate: z.string().nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { id, dueDate, assigneeIds, status, priority, ...rest } = input;
         const data: any = { ...rest };
         if (status !== undefined) data.taskStatus = status;
@@ -1045,6 +1088,7 @@ export const appRouter = router({
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         await deleteTask(input.id);
         await logActivity({ userId: ctx.user.id, action: "delete", entity: "task", entityId: input.id });
         return { success: true };
@@ -1142,7 +1186,8 @@ export const appRouter = router({
 
   // ── CATEGORIES ──────────────────────────────────────────────────────────────
   categories: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await seedDefaultCategories();
       return getAllCategories();
     }),
@@ -1170,6 +1215,7 @@ export const appRouter = router({
         }).optional()
       )
       .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const filters: Record<string, any> = {};
         if (input?.startDate) filters.startDate = new Date(input.startDate);
         if (input?.endDate) filters.endDate = new Date(input.endDate);
@@ -1191,7 +1237,10 @@ export const appRouter = router({
 
     byId: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => getExpenseById(input.id)),
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        return getExpenseById(input.id);
+      }),
 
     create: protectedProcedure
       .input(
@@ -1216,6 +1265,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const expense = await createExpense({
           supplier: input.supplier ?? null,
           description: input.description ?? null,
@@ -1670,7 +1720,8 @@ export const appRouter = router({
     // para que frontoffice/team_leader/extra possam usar dropdowns também.
     roster: protectedProcedure
       .input(z.object({ activeOnly: z.boolean().optional() }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "extra"); // lista mínima (id+nome) p/ dropdowns; user não acede
         const rows = await getAllEmployees({ isActive: input?.activeOnly ?? true });
         return rows.map((row: any) => ({
           id: row.employee.id,
@@ -3718,13 +3769,16 @@ export const appRouter = router({
       rating: z.number().optional(),
       status: z.string().optional(),
       projectId: z.number().optional(),
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviews(input ?? undefined);
     }),
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviewById(input.id);
     }),
-    stats: protectedProcedure.query(async () => {
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviewStats();
     }),
     create: protectedProcedure.input(z.object({
@@ -3889,7 +3943,8 @@ export const appRouter = router({
   // ─── FORMAÇÃO E APOIO ──────────────────────────────────────────────────────
   training: router({
     // Categories
-    categories: protectedProcedure.query(async () => {
+    categories: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingCategories();
     }),
     createCategory: protectedProcedure.input(z.object({ name: z.string(), description: z.string().optional(), icon: z.string().optional(), sortOrder: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -3906,7 +3961,8 @@ export const appRouter = router({
     }),
 
     // Videos
-    videos: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+    videos: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingVideos(input.categoryId);
     }),
     createVideo: protectedProcedure.input(z.object({ categoryId: z.number(), title: z.string(), description: z.string().optional(), videoUrl: z.string(), thumbnailUrl: z.string().optional(), durationMinutes: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -3923,7 +3979,8 @@ export const appRouter = router({
     }),
 
     // Manuals / Blog
-    manuals: protectedProcedure.input(z.object({ categoryId: z.number().optional(), type: z.string().optional() })).query(async ({ input }) => {
+    manuals: protectedProcedure.input(z.object({ categoryId: z.number().optional(), type: z.string().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingManuals(input.categoryId, input.type);
     }),
     createManual: protectedProcedure.input(z.object({ categoryId: z.number().optional(), title: z.string(), content: z.string(), type: z.enum(["manual", "update", "news", "procedure"]).optional(), fileUrl: z.string().optional(), fileKey: z.string().optional(), fileName: z.string().optional(), fileMimeType: z.string().optional() })).mutation(async ({ ctx, input }) => {
@@ -3955,7 +4012,8 @@ export const appRouter = router({
     }),
 
     // FAQs
-    faqs: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+    faqs: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getFAQs(input.categoryId);
     }),
     createFAQ: protectedProcedure.input(z.object({ categoryId: z.number().optional(), question: z.string(), answer: z.string(), sortOrder: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -3984,8 +4042,9 @@ export const appRouter = router({
       }
       return getQuizQuestions(input.categoryId);
     }),
-    // PLAYER: sem correctOption (qualquer user pode jogar)
-    quizQuestionsForPlayer: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ input }) => {
+    // PLAYER: sem correctOption (extra ou superior pode jogar)
+    quizQuestionsForPlayer: protectedProcedure.input(z.object({ categoryId: z.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getQuizQuestionsForPlayer(input.categoryId);
     }),
     createQuizQuestion: protectedProcedure.input(z.object({ categoryId: z.number().optional(), question: z.string(), optionA: z.string(), optionB: z.string(), optionC: z.string(), optionD: z.string(), correctOption: z.enum(["A", "B", "C", "D"]), explanation: z.string().optional(), difficulty: z.enum(["easy", "medium", "hard"]).optional(), points: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -4000,6 +4059,7 @@ export const appRouter = router({
       return { success: true };
     }),
     submitQuiz: protectedProcedure.input(z.object({ answers: z.array(z.object({ questionId: z.number(), answer: z.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       // employeeId derivado de ctx.user.id (não confiável o do cliente)
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) throw new TRPCError({ code: "NOT_FOUND", message: "Sem ficha de colaborador. Pede ao admin para te cadastrar primeiro." });
@@ -4014,12 +4074,14 @@ export const appRouter = router({
       const result = await saveQuizAttempt({ employeeId: me.employee.id, totalQuestions: input.answers.length, correctAnswers: correct, score, timeSpentSeconds: input.timeSpentSeconds });
       return { ...result, correct, score, total: input.answers.length };
     }),
-    quizRanking: protectedProcedure.query(async () => {
+    quizRanking: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getQuizRanking();
     }),
 
     // Career Exams
-    careerExams: protectedProcedure.query(async () => {
+    careerExams: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getCareerExams();
     }),
     createCareerExam: protectedProcedure.input(z.object({ level: z.enum(["extra", "condutor", "senior", "team_leader", "supervisor"]), title: z.string(), description: z.string().optional(), passingScore: z.number(), timeLimitMinutes: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -4039,7 +4101,8 @@ export const appRouter = router({
       }
       return getCareerExamQuestions(input.examId);
     }),
-    careerExamQuestionsForPlayer: protectedProcedure.input(z.object({ examId: z.number() })).query(async ({ input }) => {
+    careerExamQuestionsForPlayer: protectedProcedure.input(z.object({ examId: z.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getCareerExamQuestionsForPlayer(input.examId);
     }),
     createCareerExamQuestion: protectedProcedure.input(z.object({ examId: z.number(), question: z.string(), optionA: z.string(), optionB: z.string(), optionC: z.string(), optionD: z.string(), correctOption: z.enum(["A", "B", "C", "D"]), explanation: z.string().optional(), points: z.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -4048,6 +4111,7 @@ export const appRouter = router({
       return result;
     }),
     submitCareerExam: protectedProcedure.input(z.object({ examId: z.number(), answers: z.array(z.object({ questionId: z.number(), answer: z.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z.number().optional() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) throw new TRPCError({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
       const questions = await getCareerExamQuestions(input.examId);
@@ -4072,11 +4136,13 @@ export const appRouter = router({
     }),
 
     myCareerExamAttempts: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) return [];
       return getCareerExamAttempts(me.employee.id);
     }),
-    careerExamAttempts: protectedProcedure.input(z.object({ employeeId: z.number().optional(), examId: z.number().optional() })).query(async ({ input }) => {
+    careerExamAttempts: protectedProcedure.input(z.object({ employeeId: z.number().optional(), examId: z.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getCareerExamAttempts(input.employeeId, input.examId);
     }),
   }),
@@ -4088,9 +4154,15 @@ export const appRouter = router({
       itemType: z.string().optional(),
       projectId: z.number().optional(),
       search: z.string().optional(),
-    }).optional()).query(({ input }) => getLostFoundItems(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundItems(input);
+    }),
 
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getLostFoundItemById(input.id)),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundItemById(input.id);
+    }),
 
     create: protectedProcedure.input(z.object({
       projectId: z.number().optional(),
@@ -4147,7 +4219,10 @@ export const appRouter = router({
     }),
 
     // Photos
-    getPhotos: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ input }) => getLostFoundPhotos(input.itemId)),
+    getPhotos: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundPhotos(input.itemId);
+    }),
 
     uploadPhoto: protectedProcedure.input(z.object({
       itemId: z.number(),
@@ -4165,7 +4240,10 @@ export const appRouter = router({
     }),
 
     // Messages
-    getMessages: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ input }) => getLostFoundMessages(input.itemId)),
+    getMessages: protectedProcedure.input(z.object({ itemId: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundMessages(input.itemId);
+    }),
 
     addMessage: protectedProcedure.input(z.object({
       itemId: z.number(),
@@ -4178,13 +4256,17 @@ export const appRouter = router({
     }),
 
     // Driver ranking (cruzamento de dados)
-    driverRanking: protectedProcedure.query(() => getLostFoundDriverRanking()),
+    driverRanking: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundDriverRanking();
+    }),
 
     // Agentes Multipark que mexeram na matrícula. Sinaliza os que tocaram
     // especificamente na reserva do caso aberto (currentBookingRef).
     vehicleAgents: protectedProcedure
       .input(z.object({ plate: z.string(), currentBookingRef: z.string().optional() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getVehicleAgentsByPlate } = await import("./db");
         return getVehicleAgentsByPlate(input.plate, input.currentBookingRef);
       }),
@@ -4192,16 +4274,23 @@ export const appRouter = router({
     // ── Booking History (Multipark DB local, sincronizado pelo cron job) ──
     bookingHistory: protectedProcedure
       .input(z.object({ bookingId: z.string().optional(), plate: z.string().optional(), search: z.string().optional() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         if (input.bookingId) return getBookingHistoryByBookingId(input.bookingId);
         if (input.plate) return getBookingHistoryByPlate(input.plate);
         if (input.search) return searchBookingHistory(input.search);
         return [];
       }),
 
-    bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
+    bookingHistoryDriverStats: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingHistoryDriverStats();
+    }),
 
-    bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
+    bookingHistoryCrossRef: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingHistoryCrossReference();
+    }),
     // Booking timeline directo da API Multipark (para o caso aberto)
     bookingTimeline: protectedProcedure.input(z.object({
       bookingId: z.string(),
@@ -4218,9 +4307,15 @@ export const appRouter = router({
       employeeId: z.number().optional(),
       weekNumber: z.number().optional(),
       yearNumber: z.number().optional(),
-    }).optional()).query(({ input }) => getIncidents(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidents(input);
+    }),
 
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getIncidentById(input.id)),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentById(input.id);
+    }),
 
     create: protectedProcedure.input(z.object({
       projectId: z.number().optional(),
@@ -4272,9 +4367,15 @@ export const appRouter = router({
     stats: protectedProcedure.input(z.object({
       weekNumber: z.number().optional(),
       yearNumber: z.number().optional(),
-    }).optional()).query(({ input }) => getIncidentStats(input?.weekNumber, input?.yearNumber)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentStats(input?.weekNumber, input?.yearNumber);
+    }),
 
-    byEmployee: protectedProcedure.input(z.object({ employeeId: z.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId)),
+    byEmployee: protectedProcedure.input(z.object({ employeeId: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentsByEmployee(input.employeeId);
+    }),
 
     // Sincroniza ocorrências a partir do multipark_booking_history (remarks
     // dos agentes nos check-in/out/movements). Dedup por sourceEmailId.
@@ -4302,7 +4403,20 @@ export const appRouter = router({
       weekNumber: z.number().optional(),
       yearNumber: z.number().optional(),
       employeeId: z.number().optional(),
-    }).optional()).query(({ input }) => getPerformanceEvaluations(input)),
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
+      // extra: só a própria avaliação, e apenas a semana mais recente
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me) return [];
+        const mine = await getPerformanceEvaluations({ employeeId: me.employee.id });
+        if (mine.length === 0) return [];
+        const latest = mine.reduce((a: any, b: any) =>
+          b.yearNumber > a.yearNumber || (b.yearNumber === a.yearNumber && b.weekNumber > a.weekNumber) ? b : a);
+        return mine.filter((r: any) => r.yearNumber === latest.yearNumber && r.weekNumber === latest.weekNumber);
+      }
+      return getPerformanceEvaluations(input);
+    }),
 
     generate: protectedProcedure.input(z.object({
       weekNumber: z.number(),
@@ -4334,7 +4448,7 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       await deletePerformanceEvaluation(input.id);
       return { success: true };
     }),
@@ -4348,7 +4462,10 @@ export const appRouter = router({
       projectId: z.number().optional(),
       month: z.number().optional(),
       year: z.number().optional(),
-    }).optional()).query(({ input }) => getServices(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getServices(input);
+    }),
 
     create: protectedProcedure.input(z.object({
       projectId: z.number().optional(),
@@ -4392,13 +4509,17 @@ export const appRouter = router({
     stats: protectedProcedure.input(z.object({
       month: z.number().optional(),
       year: z.number().optional(),
-    }).optional()).query(({ input }) => getServiceStats(input?.month, input?.year)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getServiceStats(input?.month, input?.year);
+    }),
 
     // Extra services from Multipark bookings
     multiparkExtras: protectedProcedure.input(z.object({
       startDate: z.string(),
       endDate: z.string(),
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const report = await getBookingsReport(input.startDate, input.endDate, "checkout");
       const services: Array<{
         bookingId: string;
@@ -4435,9 +4556,15 @@ export const appRouter = router({
       search: z.string().optional(),
       month: z.number().optional(),
       year: z.number().optional(),
-    }).optional()).query(({ input }) => getInvoices(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoices(input);
+    }),
 
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getInvoiceById(input.id)),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoiceById(input.id);
+    }),
 
     create: protectedProcedure.input(z.object({
       projectId: z.number().optional(),
@@ -4452,7 +4579,7 @@ export const appRouter = router({
       paymentMethod: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = {
         ...input,
         issueDate: new Date(input.issueDate),
@@ -4473,7 +4600,7 @@ export const appRouter = router({
       paymentMethod: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateInvoice(id, data);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "invoice", entityId: id });
@@ -4481,7 +4608,7 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deleteInvoice(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "invoice", entityId: input.id });
       return { success: true };
@@ -4490,7 +4617,10 @@ export const appRouter = router({
     stats: protectedProcedure.input(z.object({
       month: z.number().optional(),
       year: z.number().optional(),
-    }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoiceStats(input?.month, input?.year);
+    }),
 
     // Diagnóstico cru: várias somas e breakdowns para isolar discrepâncias
     diagnose: protectedProcedure
@@ -4506,7 +4636,10 @@ export const appRouter = router({
       from: z.string(),
       to: z.string(),
       projectId: z.number().optional(),
-    })).query(({ input }) => getBillingData(input)),
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBillingData(input);
+    }),
   }),
 
   // ─── PARCERIAS ───────────────────────────────────────────────────────────
@@ -4520,11 +4653,18 @@ export const appRouter = router({
     list: protectedProcedure.input(z.object({
       partnerType: z.string().optional(),
       status: z.string().optional(),
-    }).optional()).query(({ input }) => getPartnerships(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnerships(input);
+    }),
 
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getPartnershipById(input.id)),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnershipById(input.id);
+    }),
 
-    dashboardStats: protectedProcedure.query(async () => {
+    dashboardStats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await markOverduePartnershipInvoices();
       return getPartnershipDashboardStats();
     }),
@@ -4542,7 +4682,7 @@ export const appRouter = router({
       billingAgreement: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { nif, ...rest } = input;
       const id = await createPartnership({ ...rest, partnerNif: nif });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "partnership", entityId: id || 0, details: `Parceria: ${input.name}` });
@@ -4564,7 +4704,7 @@ export const appRouter = router({
       partnerStatus: z.enum(["active", "inactive", "pending"]).optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, nif, ...rest } = input;
       await updatePartnership(id, { ...rest, ...(nif !== undefined ? { partnerNif: nif } : {}) });
       await logActivity({ userId: ctx.user.id, action: "update", entity: "partnership", entityId: id });
@@ -4572,7 +4712,7 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deletePartnership(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership", entityId: input.id });
       return { success: true };
@@ -4611,12 +4751,16 @@ export const appRouter = router({
 
     listAliases: protectedProcedure
       .input(z.object({ partnershipId: z.number() }))
-      .query(({ input }) => listPartnerAliases(input.partnershipId)),
+      .query(({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        return listPartnerAliases(input.partnershipId);
+      }),
 
     // Aliases agregados por parceiro — mostra quantos códigos cada parceiro
     // já tem associados (cada parceiro tem normalmente 1 código por
     // cidade × marca, logo vários).
-    aliasCounts: protectedProcedure.query(async () => {
+    aliasCounts: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { aliasCountsByPartner } = await import("./db");
       return aliasCountsByPartner();
     }),
@@ -4628,7 +4772,8 @@ export const appRouter = router({
         to: z.string(),
         partnerType: z.string().optional(),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getPartnerInvoicingSummary } = await import("./db");
         return getPartnerInvoicingSummary(input);
       }),
@@ -4640,7 +4785,8 @@ export const appRouter = router({
         to: z.string(),
         partnerType: z.string(),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getPartnerInvoicingDetailByType } = await import("./db");
         return getPartnerInvoicingDetailByType(input);
       }),
@@ -4654,7 +4800,10 @@ export const appRouter = router({
       }),
 
     // Transactions
-    getTransactions: protectedProcedure.input(z.object({ partnershipId: z.number() })).query(({ input }) => getPartnershipTransactions(input.partnershipId)),
+    getTransactions: protectedProcedure.input(z.object({ partnershipId: z.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnershipTransactions(input.partnershipId);
+    }),
 
     addTransaction: protectedProcedure.input(z.object({
       partnershipId: z.number(),
@@ -4664,7 +4813,7 @@ export const appRouter = router({
       amount: z.number(),
       transactionDate: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = { ...input, transactionDate: input.transactionDate ? new Date(input.transactionDate) : new Date() };
       const id = await createPartnershipTransaction(data);
       return { id };
@@ -4736,7 +4885,10 @@ export const appRouter = router({
       from: z.string(),
       to: z.string(),
       projectId: z.number().optional(),
-    })).query(({ input }) => getBookingsByCampaign(input)),
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingsByCampaign(input);
+    }),
   }),
 
   // ─── ANUAL ───────────────────────────────────────────────────────────────
@@ -4744,19 +4896,25 @@ export const appRouter = router({
     list: protectedProcedure.input(z.object({
       year: z.number().optional(),
       projectId: z.number().optional(),
-    }).optional()).query(({ input }) => getAnnualReports(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getAnnualReports(input);
+    }),
 
     breakdown: protectedProcedure.input(z.object({
       year: z.number(),
       projectId: z.number().optional(),
-    })).query(({ input }) => getAnnualBreakdown(input.year, input.projectId)),
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getAnnualBreakdown(input.year, input.projectId);
+    }),
 
     generate: protectedProcedure.input(z.object({
       year: z.number(),
       projectId: z.number().optional(),
       splitPartner: z.number().min(0).max(100).optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const results = await generateAnnualSummary(input.year, input.projectId, input.splitPartner ?? 60);
       await logActivity({ userId: ctx.user.id, action: "generate", entity: "annual_report", details: `Relatório anual ${input.year}` });
       return results;
@@ -4771,14 +4929,14 @@ export const appRouter = router({
       splitRatio: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateAnnualReport(id, data);
       return { success: true };
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deleteAnnualReport(input.id);
       return { success: true };
     }),
@@ -4791,13 +4949,15 @@ export const appRouter = router({
     // matrícula / email / nome do cliente. DB local.
     searchBooking: protectedProcedure
       .input(z.object({ search: z.string().min(2) }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return searchBookingByRef(input.search);
       }),
     // Detalhe de uma reserva específica via API Multipark
     fetchBookingDetails: protectedProcedure
       .input(z.object({ externalId: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getBooking } = await import("./multipark");
         try {
           return await getBooking(input.externalId);
@@ -4839,7 +4999,8 @@ export const appRouter = router({
         vehicleType: z.enum(["MOTORCYCLE", "CAR", "VAN", "TRUCK"]).default("CAR"),
         parkingType: z.enum(["COVERED", "UNCOVERED", "INDOOR", "VIP"]).default("COVERED"),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return mpCheckAvailability(
           input.checkIn,
           input.checkOut,
@@ -4849,12 +5010,14 @@ export const appRouter = router({
       }),
 
     // List parks
-    listParks: protectedProcedure.query(async () => {
+    listParks: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return mpListParks();
     }),
 
     // Get sync logs
-    syncLogs: protectedProcedure.query(async () => {
+    syncLogs: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getSyncLogs(50);
     }),
 
@@ -4865,7 +5028,8 @@ export const appRouter = router({
         to: z.string().optional(),
         city: z.string().optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getSnapshotKPIs({
           from: input?.from ? new Date(input.from) : undefined,
           to: input?.to ? new Date(input.to) : undefined,
@@ -4882,7 +5046,8 @@ export const appRouter = router({
         city: z.string().optional(),
         limit: z.number().optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getDailySnapshots({
           from: input?.from ? new Date(input.from) : undefined,
           to: input?.to ? new Date(input.to) : undefined,
@@ -5154,7 +5319,8 @@ export const appRouter = router({
     // por turno + agregado total. TL recebe também score da equipa.
     dayEvaluation: protectedProcedure
       .input(z.object({ date: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { evaluateDay } = await import("./multiparkEvaluation");
         return evaluateDay(input.date);
       }),
@@ -5163,7 +5329,8 @@ export const appRouter = router({
     // in-shift vs out-of-shift actions
     dashboardRange: protectedProcedure
       .input(z.object({ startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getDashboardRange } = await import("./multiparkEvaluation");
         return getDashboardRange(input.startDate, input.endDate);
       }),
@@ -5195,7 +5362,8 @@ export const appRouter = router({
         agentName: z.string().min(1).max(256),
         date: z.string(),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const { getDb } = await import("./db");
         const db = await getDb(); if (!db) return null;
         const { multiparkBookingHistory } = await import("../drizzle/schema");
@@ -5296,7 +5464,8 @@ export const appRouter = router({
         search: z.string().optional(),
         limit: z.number().optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getMultiparkBookings({
           status: input?.status,
           parkingType: input?.parkingType,
@@ -5314,7 +5483,8 @@ export const appRouter = router({
         to: z.string().optional(),
         projectId: z.number().optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getMultiparkBookingStats(input ?? undefined);
       }),
 
@@ -5326,7 +5496,8 @@ export const appRouter = router({
         actionType: z.enum(["creation", "checkin", "checkout", "cancelation"]),
         projectId: z.number().optional(),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const bookings = await getLocalBookingsByAction(input);
         return {
           total: bookings.length,
@@ -5343,7 +5514,8 @@ export const appRouter = router({
         endDate: z.string(),
         actionType: z.enum(["creation", "checkin", "checkout", "cancelation"]),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         const results = await getBookingsReportAllParks(
           input.startDate,
           input.endDate,
@@ -5375,17 +5547,20 @@ export const appRouter = router({
   extrasDia: router({
     forecast: protectedProcedure
       .input(z.object({ baseDate: z.string().optional() }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getExtrasDiaForecast(input?.baseDate);
       }),
 
-    candidates: protectedProcedure.query(async () => {
+    candidates: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return listDriverCandidates();
     }),
 
     assignments: protectedProcedure
       .input(z.object({ date: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return listAssignments(input.date);
       }),
 
@@ -5406,6 +5581,7 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         if (input.endHour <= input.startHour) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Fim tem de ser depois do início" });
         }
@@ -5435,14 +5611,16 @@ export const appRouter = router({
 
     deleteAssignment: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         await deleteAssignment(input.id);
         return { success: true };
       }),
 
     costForRange: protectedProcedure
       .input(z.object({ startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getExtrasDiaCostForRange(input.startDate, input.endDate);
       }),
 
@@ -5455,7 +5633,8 @@ export const appRouter = router({
           type: z.enum(["checkin", "checkout"]),
         }),
       )
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
       }),
   }),

@@ -11671,8 +11671,14 @@ var appRouter = router({
   }),
   // ── PROJECTS ────────────────────────────────────────────────────────────────
   projects: router({
-    list: protectedProcedure.query(async () => getProjects()),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => getProjectById(input.id)),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
+      return getProjects();
+    }),
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
+      return getProjectById(input.id);
+    }),
     create: protectedProcedure.input(z2.object({
       name: z2.string().min(1),
       description: z2.string().optional(),
@@ -11749,18 +11755,51 @@ var appRouter = router({
   }),
   // ── TASKS (KANBAN) ────────────────────────────────────────────────────────────
   tasks: router({
-    list: protectedProcedure.input(z2.object({ projectId: z2.number().optional(), assigneeId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ input }) => {
+    list: protectedProcedure.input(z2.object({ projectId: z2.number().optional(), assigneeId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const { getTasksWithAssignees: getTasksWithAssignees2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me) return [];
+        return getTasksWithAssignees2({ ...input ?? {}, assigneeId: me.employee.id });
+      }
       return getTasksWithAssignees2(input ?? {});
     }),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const task = await getTaskById(input.id);
       if (!task) return null;
       const assignees = await getTaskAssignees(input.id);
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        const mine = me && (task.assigneeId === me.employee.id || assignees.some((a) => a.id === me.employee.id));
+        if (!mine) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+      }
       return { ...task, assignees };
     }),
-    stats: protectedProcedure.query(async () => getTaskStats()),
-    getAssignees: protectedProcedure.input(z2.object({ taskId: z2.number() })).query(async ({ input }) => getTaskAssignees(input.taskId)),
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        const { getTasksWithAssignees: getTasksWithAssignees2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const mine = me ? await getTasksWithAssignees2({ assigneeId: me.employee.id }) : [];
+        const now = /* @__PURE__ */ new Date();
+        return {
+          total: mine.length,
+          backlog: mine.filter((t2) => t2.taskStatus === "backlog").length,
+          todo: mine.filter((t2) => t2.taskStatus === "todo").length,
+          inProgress: mine.filter((t2) => t2.taskStatus === "in_progress").length,
+          review: mine.filter((t2) => t2.taskStatus === "review").length,
+          done: mine.filter((t2) => t2.taskStatus === "done").length,
+          overdue: mine.filter((t2) => t2.taskStatus !== "done" && t2.dueDate && new Date(t2.dueDate) < now).length
+        };
+      }
+      return getTaskStats();
+    }),
+    getAssignees: protectedProcedure.input(z2.object({ taskId: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
+      return getTaskAssignees(input.taskId);
+    }),
     create: protectedProcedure.input(z2.object({
       title: z2.string().min(1),
       description: z2.string().optional(),
@@ -11770,6 +11809,7 @@ var appRouter = router({
       priority: z2.enum(["low", "medium", "high", "urgent"]).default("medium"),
       dueDate: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const primaryAssignee = input.assigneeIds?.[0] ?? input.assigneeId ?? null;
       const newId = await createTask({
         title: input.title,
@@ -11797,6 +11837,7 @@ var appRouter = router({
       priority: z2.enum(["low", "medium", "high", "urgent"]).optional(),
       dueDate: z2.string().nullable().optional()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { id, dueDate, assigneeIds, status, priority, ...rest } = input;
       const data = { ...rest };
       if (status !== void 0) data.taskStatus = status;
@@ -11819,6 +11860,7 @@ var appRouter = router({
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await deleteTask(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "task", entityId: input.id });
       return { success: true };
@@ -11908,7 +11950,8 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
   }),
   // ── CATEGORIES ──────────────────────────────────────────────────────────────
   categories: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await seedDefaultCategories();
       return getAllCategories();
     }),
@@ -11931,6 +11974,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         search: z2.string().optional()
       }).optional()
     ).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const filters = {};
       if (input?.startDate) filters.startDate = new Date(input.startDate);
       if (input?.endDate) filters.endDate = new Date(input.endDate);
@@ -11946,7 +11990,10 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
       }
       return getExpenses(filters);
     }),
-    byId: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => getExpenseById(input.id)),
+    byId: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getExpenseById(input.id);
+    }),
     create: protectedProcedure.input(
       z2.object({
         supplier: z2.string().optional(),
@@ -11968,6 +12015,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         notes: z2.string().optional()
       })
     ).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const expense = await createExpense({
         supplier: input.supplier ?? null,
         description: input.description ?? null,
@@ -12370,7 +12418,8 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // Lista pública (id + fullName) para selectors em qualquer página
     // (atribuir responsáveis, condutores envolvidos, etc.). Sem requireRole
     // para que frontoffice/team_leader/extra possam usar dropdowns também.
-    roster: protectedProcedure.input(z2.object({ activeOnly: z2.boolean().optional() }).optional()).query(async ({ input }) => {
+    roster: protectedProcedure.input(z2.object({ activeOnly: z2.boolean().optional() }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const rows = await getAllEmployees({ isActive: input?.activeOnly ?? true });
       return rows.map((row) => ({
         id: row.employee.id,
@@ -14173,13 +14222,16 @@ Link do PDF: ${url}`
       rating: z2.number().optional(),
       status: z2.string().optional(),
       projectId: z2.number().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviews(input ?? void 0);
     }),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviewById(input.id);
     }),
-    stats: protectedProcedure.query(async () => {
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getGoogleReviewStats();
     }),
     create: protectedProcedure.input(z2.object({
@@ -14336,7 +14388,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
   // ─── FORMAÇÃO E APOIO ──────────────────────────────────────────────────────
   training: router({
     // Categories
-    categories: protectedProcedure.query(async () => {
+    categories: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingCategories();
     }),
     createCategory: protectedProcedure.input(z2.object({ name: z2.string(), description: z2.string().optional(), icon: z2.string().optional(), sortOrder: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14352,7 +14405,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Videos
-    videos: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ input }) => {
+    videos: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingVideos(input.categoryId);
     }),
     createVideo: protectedProcedure.input(z2.object({ categoryId: z2.number(), title: z2.string(), description: z2.string().optional(), videoUrl: z2.string(), thumbnailUrl: z2.string().optional(), durationMinutes: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14368,7 +14422,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Manuals / Blog
-    manuals: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), type: z2.string().optional() })).query(async ({ input }) => {
+    manuals: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), type: z2.string().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getTrainingManuals(input.categoryId, input.type);
     }),
     createManual: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), title: z2.string(), content: z2.string(), type: z2.enum(["manual", "update", "news", "procedure"]).optional(), fileUrl: z2.string().optional(), fileKey: z2.string().optional(), fileName: z2.string().optional(), fileMimeType: z2.string().optional() })).mutation(async ({ ctx, input }) => {
@@ -14399,7 +14454,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // FAQs
-    faqs: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ input }) => {
+    faqs: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getFAQs(input.categoryId);
     }),
     createFAQ: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), question: z2.string(), answer: z2.string(), sortOrder: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14427,8 +14483,9 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       }
       return getQuizQuestions(input.categoryId);
     }),
-    // PLAYER: sem correctOption (qualquer user pode jogar)
-    quizQuestionsForPlayer: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ input }) => {
+    // PLAYER: sem correctOption (extra ou superior pode jogar)
+    quizQuestionsForPlayer: protectedProcedure.input(z2.object({ categoryId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getQuizQuestionsForPlayer(input.categoryId);
     }),
     createQuizQuestion: protectedProcedure.input(z2.object({ categoryId: z2.number().optional(), question: z2.string(), optionA: z2.string(), optionB: z2.string(), optionC: z2.string(), optionD: z2.string(), correctOption: z2.enum(["A", "B", "C", "D"]), explanation: z2.string().optional(), difficulty: z2.enum(["easy", "medium", "hard"]).optional(), points: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14443,6 +14500,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     submitQuiz: protectedProcedure.input(z2.object({ answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador. Pede ao admin para te cadastrar primeiro." });
       const questions = await getQuizQuestions();
@@ -14459,11 +14517,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       const result = await saveQuizAttempt({ employeeId: me.employee.id, totalQuestions: input.answers.length, correctAnswers: correct, score, timeSpentSeconds: input.timeSpentSeconds });
       return { ...result, correct, score, total: input.answers.length };
     }),
-    quizRanking: protectedProcedure.query(async () => {
+    quizRanking: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getQuizRanking();
     }),
     // Career Exams
-    careerExams: protectedProcedure.query(async () => {
+    careerExams: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       return getCareerExams();
     }),
     createCareerExam: protectedProcedure.input(z2.object({ level: z2.enum(["extra", "condutor", "senior", "team_leader", "supervisor"]), title: z2.string(), description: z2.string().optional(), passingScore: z2.number(), timeLimitMinutes: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14483,7 +14543,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       }
       return getCareerExamQuestions(input.examId);
     }),
-    careerExamQuestionsForPlayer: protectedProcedure.input(z2.object({ examId: z2.number() })).query(async ({ input }) => {
+    careerExamQuestionsForPlayer: protectedProcedure.input(z2.object({ examId: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       return getCareerExamQuestionsForPlayer(input.examId);
     }),
     createCareerExamQuestion: protectedProcedure.input(z2.object({ examId: z2.number(), question: z2.string(), optionA: z2.string(), optionB: z2.string(), optionC: z2.string(), optionD: z2.string(), correctOption: z2.enum(["A", "B", "C", "D"]), explanation: z2.string().optional(), points: z2.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -14492,6 +14553,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return result;
     }),
     submitCareerExam: protectedProcedure.input(z2.object({ examId: z2.number(), answers: z2.array(z2.object({ questionId: z2.number(), answer: z2.enum(["A", "B", "C", "D"]) })), timeSpentSeconds: z2.number().optional() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
       const questions = await getCareerExamQuestions(input.examId);
@@ -14518,11 +14580,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { ...result, correct, score: percentage, total: questions.length, passed, passingScore: exam.passingScore };
     }),
     myCareerExamAttempts: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "extra");
       const me = await getEmployeeByUserId(ctx.user.id);
       if (!me) return [];
       return getCareerExamAttempts(me.employee.id);
     }),
-    careerExamAttempts: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), examId: z2.number().optional() })).query(async ({ input }) => {
+    careerExamAttempts: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), examId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getCareerExamAttempts(input.employeeId, input.examId);
     })
   }),
@@ -14533,8 +14597,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       itemType: z2.string().optional(),
       projectId: z2.number().optional(),
       search: z2.string().optional()
-    }).optional()).query(({ input }) => getLostFoundItems(input)),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ input }) => getLostFoundItemById(input.id)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundItems(input);
+    }),
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundItemById(input.id);
+    }),
     create: protectedProcedure.input(z2.object({
       projectId: z2.number().optional(),
       vehiclePlate: z2.string().optional(),
@@ -14586,7 +14656,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Photos
-    getPhotos: protectedProcedure.input(z2.object({ itemId: z2.number() })).query(({ input }) => getLostFoundPhotos(input.itemId)),
+    getPhotos: protectedProcedure.input(z2.object({ itemId: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundPhotos(input.itemId);
+    }),
     uploadPhoto: protectedProcedure.input(z2.object({
       itemId: z2.number(),
       base64: z2.string(),
@@ -14602,7 +14675,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { url };
     }),
     // Messages
-    getMessages: protectedProcedure.input(z2.object({ itemId: z2.number() })).query(({ input }) => getLostFoundMessages(input.itemId)),
+    getMessages: protectedProcedure.input(z2.object({ itemId: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundMessages(input.itemId);
+    }),
     addMessage: protectedProcedure.input(z2.object({
       itemId: z2.number(),
       message: z2.string().min(1),
@@ -14613,22 +14689,33 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Driver ranking (cruzamento de dados)
-    driverRanking: protectedProcedure.query(() => getLostFoundDriverRanking()),
+    driverRanking: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getLostFoundDriverRanking();
+    }),
     // Agentes Multipark que mexeram na matrícula. Sinaliza os que tocaram
     // especificamente na reserva do caso aberto (currentBookingRef).
-    vehicleAgents: protectedProcedure.input(z2.object({ plate: z2.string(), currentBookingRef: z2.string().optional() })).query(async ({ input }) => {
+    vehicleAgents: protectedProcedure.input(z2.object({ plate: z2.string(), currentBookingRef: z2.string().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getVehicleAgentsByPlate: getVehicleAgentsByPlate2 } = await Promise.resolve().then(() => (init_db(), db_exports));
       return getVehicleAgentsByPlate2(input.plate, input.currentBookingRef);
     }),
     // ── Booking History (Multipark DB local, sincronizado pelo cron job) ──
-    bookingHistory: protectedProcedure.input(z2.object({ bookingId: z2.string().optional(), plate: z2.string().optional(), search: z2.string().optional() })).query(async ({ input }) => {
+    bookingHistory: protectedProcedure.input(z2.object({ bookingId: z2.string().optional(), plate: z2.string().optional(), search: z2.string().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       if (input.bookingId) return getBookingHistoryByBookingId(input.bookingId);
       if (input.plate) return getBookingHistoryByPlate(input.plate);
       if (input.search) return searchBookingHistory(input.search);
       return [];
     }),
-    bookingHistoryDriverStats: protectedProcedure.query(() => getBookingHistoryDriverStats()),
-    bookingHistoryCrossRef: protectedProcedure.query(() => getBookingHistoryCrossReference()),
+    bookingHistoryDriverStats: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingHistoryDriverStats();
+    }),
+    bookingHistoryCrossRef: protectedProcedure.query(({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingHistoryCrossReference();
+    }),
     // Booking timeline directo da API Multipark (para o caso aberto)
     bookingTimeline: protectedProcedure.input(z2.object({
       bookingId: z2.string()
@@ -14644,8 +14731,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       employeeId: z2.number().optional(),
       weekNumber: z2.number().optional(),
       yearNumber: z2.number().optional()
-    }).optional()).query(({ input }) => getIncidents(input)),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ input }) => getIncidentById(input.id)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidents(input);
+    }),
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentById(input.id);
+    }),
     create: protectedProcedure.input(z2.object({
       projectId: z2.number().optional(),
       vehiclePlate: z2.string().optional(),
@@ -14691,8 +14784,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     stats: protectedProcedure.input(z2.object({
       weekNumber: z2.number().optional(),
       yearNumber: z2.number().optional()
-    }).optional()).query(({ input }) => getIncidentStats(input?.weekNumber, input?.yearNumber)),
-    byEmployee: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(({ input }) => getIncidentsByEmployee(input.employeeId)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentStats(input?.weekNumber, input?.yearNumber);
+    }),
+    byEmployee: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getIncidentsByEmployee(input.employeeId);
+    }),
     // Sincroniza ocorrências a partir do multipark_booking_history (remarks
     // dos agentes nos check-in/out/movements). Dedup por sourceEmailId.
     syncFromMultipark: protectedProcedure.input(z2.object({ lookbackDays: z2.number().int().min(1).max(180).optional() }).optional()).mutation(async ({ ctx, input }) => {
@@ -14719,7 +14818,18 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       weekNumber: z2.number().optional(),
       yearNumber: z2.number().optional(),
       employeeId: z2.number().optional()
-    }).optional()).query(({ input }) => getPerformanceEvaluations(input)),
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "extra");
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me) return [];
+        const mine = await getPerformanceEvaluations({ employeeId: me.employee.id });
+        if (mine.length === 0) return [];
+        const latest = mine.reduce((a, b) => b.yearNumber > a.yearNumber || b.yearNumber === a.yearNumber && b.weekNumber > a.weekNumber ? b : a);
+        return mine.filter((r) => r.yearNumber === latest.yearNumber && r.weekNumber === latest.weekNumber);
+      }
+      return getPerformanceEvaluations(input);
+    }),
     generate: protectedProcedure.input(z2.object({
       weekNumber: z2.number(),
       yearNumber: z2.number()
@@ -14747,7 +14857,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "supervisor");
       await deletePerformanceEvaluation(input.id);
       return { success: true };
     })
@@ -14760,7 +14870,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       projectId: z2.number().optional(),
       month: z2.number().optional(),
       year: z2.number().optional()
-    }).optional()).query(({ input }) => getServices(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getServices(input);
+    }),
     create: protectedProcedure.input(z2.object({
       projectId: z2.number().optional(),
       employeeId: z2.number().optional(),
@@ -14800,12 +14913,16 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     stats: protectedProcedure.input(z2.object({
       month: z2.number().optional(),
       year: z2.number().optional()
-    }).optional()).query(({ input }) => getServiceStats(input?.month, input?.year)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getServiceStats(input?.month, input?.year);
+    }),
     // Extra services from Multipark bookings
     multiparkExtras: protectedProcedure.input(z2.object({
       startDate: z2.string(),
       endDate: z2.string()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const report = await getBookingsReport(input.startDate, input.endDate, "checkout");
       const services2 = [];
       for (const b of report.bookings || []) {
@@ -14833,8 +14950,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       search: z2.string().optional(),
       month: z2.number().optional(),
       year: z2.number().optional()
-    }).optional()).query(({ input }) => getInvoices(input)),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ input }) => getInvoiceById(input.id)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoices(input);
+    }),
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoiceById(input.id);
+    }),
     create: protectedProcedure.input(z2.object({
       projectId: z2.number().optional(),
       invoiceNumber: z2.string().min(1),
@@ -14848,7 +14971,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       paymentMethod: z2.string().optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = {
         ...input,
         issueDate: new Date(input.issueDate),
@@ -14868,14 +14991,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       paymentMethod: z2.string().optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateInvoice(id, data);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "invoice", entityId: id });
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deleteInvoice(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "invoice", entityId: input.id });
       return { success: true };
@@ -14883,7 +15006,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     stats: protectedProcedure.input(z2.object({
       month: z2.number().optional(),
       year: z2.number().optional()
-    }).optional()).query(({ input }) => getInvoiceStats(input?.month, input?.year)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getInvoiceStats(input?.month, input?.year);
+    }),
     // Diagnóstico cru: várias somas e breakdowns para isolar discrepâncias
     diagnose: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string(), projectId: z2.number().optional() })).query(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "admin");
@@ -14895,7 +15021,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string(),
       to: z2.string(),
       projectId: z2.number().optional()
-    })).query(({ input }) => getBillingData(input))
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBillingData(input);
+    })
   }),
   // ─── PARCERIAS ───────────────────────────────────────────────────────────
   partnerships: router({
@@ -14907,9 +15036,16 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     list: protectedProcedure.input(z2.object({
       partnerType: z2.string().optional(),
       status: z2.string().optional()
-    }).optional()).query(({ input }) => getPartnerships(input)),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ input }) => getPartnershipById(input.id)),
-    dashboardStats: protectedProcedure.query(async () => {
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnerships(input);
+    }),
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnershipById(input.id);
+    }),
+    dashboardStats: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await markOverduePartnershipInvoices();
       return getPartnershipDashboardStats();
     }),
@@ -14926,7 +15062,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       billingAgreement: z2.string().optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { nif, ...rest } = input;
       const id = await createPartnership({ ...rest, partnerNif: nif });
       await logActivity({ userId: ctx.user.id, action: "create", entity: "partnership", entityId: id || 0, details: `Parceria: ${input.name}` });
@@ -14947,14 +15083,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       partnerStatus: z2.enum(["active", "inactive", "pending"]).optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, nif, ...rest } = input;
       await updatePartnership(id, { ...rest, ...nif !== void 0 ? { partnerNif: nif } : {} });
       await logActivity({ userId: ctx.user.id, action: "update", entity: "partnership", entityId: id });
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deletePartnership(input.id);
       await logActivity({ userId: ctx.user.id, action: "delete", entity: "partnership", entityId: input.id });
       return { success: true };
@@ -14986,11 +15122,15 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       });
       return { updated };
     }),
-    listAliases: protectedProcedure.input(z2.object({ partnershipId: z2.number() })).query(({ input }) => listPartnerAliases(input.partnershipId)),
+    listAliases: protectedProcedure.input(z2.object({ partnershipId: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return listPartnerAliases(input.partnershipId);
+    }),
     // Aliases agregados por parceiro — mostra quantos códigos cada parceiro
     // já tem associados (cada parceiro tem normalmente 1 código por
     // cidade × marca, logo vários).
-    aliasCounts: protectedProcedure.query(async () => {
+    aliasCounts: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { aliasCountsByPartner: aliasCountsByPartner2 } = await Promise.resolve().then(() => (init_db(), db_exports));
       return aliasCountsByPartner2();
     }),
@@ -14999,7 +15139,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string(),
       to: z2.string(),
       partnerType: z2.string().optional()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getPartnerInvoicingSummary: getPartnerInvoicingSummary2 } = await Promise.resolve().then(() => (init_db(), db_exports));
       return getPartnerInvoicingSummary2(input);
     }),
@@ -15008,7 +15149,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string(),
       to: z2.string(),
       partnerType: z2.string()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getPartnerInvoicingDetailByType: getPartnerInvoicingDetailByType2 } = await Promise.resolve().then(() => (init_db(), db_exports));
       return getPartnerInvoicingDetailByType2(input);
     }),
@@ -15018,7 +15160,10 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       return { success: true };
     }),
     // Transactions
-    getTransactions: protectedProcedure.input(z2.object({ partnershipId: z2.number() })).query(({ input }) => getPartnershipTransactions(input.partnershipId)),
+    getTransactions: protectedProcedure.input(z2.object({ partnershipId: z2.number() })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getPartnershipTransactions(input.partnershipId);
+    }),
     addTransaction: protectedProcedure.input(z2.object({
       partnershipId: z2.number(),
       projectId: z2.number().optional(),
@@ -15027,7 +15172,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       amount: z2.number(),
       transactionDate: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const data = { ...input, transactionDate: input.transactionDate ? new Date(input.transactionDate) : /* @__PURE__ */ new Date() };
       const id = await createPartnershipTransaction(data);
       return { id };
@@ -15093,24 +15238,33 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string(),
       to: z2.string(),
       projectId: z2.number().optional()
-    })).query(({ input }) => getBookingsByCampaign(input))
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getBookingsByCampaign(input);
+    })
   }),
   // ─── ANUAL ───────────────────────────────────────────────────────────────
   annual: router({
     list: protectedProcedure.input(z2.object({
       year: z2.number().optional(),
       projectId: z2.number().optional()
-    }).optional()).query(({ input }) => getAnnualReports(input)),
+    }).optional()).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getAnnualReports(input);
+    }),
     breakdown: protectedProcedure.input(z2.object({
       year: z2.number(),
       projectId: z2.number().optional()
-    })).query(({ input }) => getAnnualBreakdown(input.year, input.projectId)),
+    })).query(({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getAnnualBreakdown(input.year, input.projectId);
+    }),
     generate: protectedProcedure.input(z2.object({
       year: z2.number(),
       projectId: z2.number().optional(),
       splitPartner: z2.number().min(0).max(100).optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const results = await generateAnnualSummary(input.year, input.projectId, input.splitPartner ?? 60);
       await logActivity({ userId: ctx.user.id, action: "generate", entity: "annual_report", details: `Relat\xF3rio anual ${input.year}` });
       return results;
@@ -15124,13 +15278,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       splitRatio: z2.string().optional(),
       notes: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       const { id, ...data } = input;
       await updateAnnualReport(id, data);
       return { success: true };
     }),
     delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError3({ code: "UNAUTHORIZED" });
+      requireRole(ctx.user.role, "admin");
       await deleteAnnualReport(input.id);
       return { success: true };
     })
@@ -15140,11 +15294,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     // Pesquisa partilhada de reservas — usada por reclamações, perdidos/achados,
     // ocorrências e críticas Google. Procura por nº reserva / externalId /
     // matrícula / email / nome do cliente. DB local.
-    searchBooking: protectedProcedure.input(z2.object({ search: z2.string().min(2) })).query(async ({ input }) => {
+    searchBooking: protectedProcedure.input(z2.object({ search: z2.string().min(2) })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return searchBookingByRef(input.search);
     }),
     // Detalhe de uma reserva específica via API Multipark
-    fetchBookingDetails: protectedProcedure.input(z2.object({ externalId: z2.string() })).query(async ({ input }) => {
+    fetchBookingDetails: protectedProcedure.input(z2.object({ externalId: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getBooking: getBooking2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
       try {
         return await getBooking2(input.externalId);
@@ -15179,7 +15335,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       checkOut: z2.string(),
       vehicleType: z2.enum(["MOTORCYCLE", "CAR", "VAN", "TRUCK"]).default("CAR"),
       parkingType: z2.enum(["COVERED", "UNCOVERED", "INDOOR", "VIP"]).default("COVERED")
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return checkAvailability(
         input.checkIn,
         input.checkOut,
@@ -15188,11 +15345,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       );
     }),
     // List parks
-    listParks: protectedProcedure.query(async () => {
+    listParks: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return listParks();
     }),
     // Get sync logs
-    syncLogs: protectedProcedure.query(async () => {
+    syncLogs: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getSyncLogs(50);
     }),
     // ── KPIs AGREGADOS ──
@@ -15200,7 +15359,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string().optional(),
       to: z2.string().optional(),
       city: z2.string().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getSnapshotKPIs({
         from: input?.from ? new Date(input.from) : void 0,
         to: input?.to ? new Date(input.to) : void 0,
@@ -15214,7 +15374,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       parkName: z2.string().optional(),
       city: z2.string().optional(),
       limit: z2.number().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getDailySnapshots({
         from: input?.from ? new Date(input.from) : void 0,
         to: input?.to ? new Date(input.to) : void 0,
@@ -15442,13 +15603,15 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     }),
     // Avaliação operacional do dia: por extra (com métricas) + agregado
     // por turno + agregado total. TL recebe também score da equipa.
-    dayEvaluation: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+    dayEvaluation: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { evaluateDay: evaluateDay2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
       return evaluateDay2(input.date);
     }),
     // Dashboard por intervalo: daily series + per-person summary com
     // in-shift vs out-of-shift actions
-    dashboardRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ input }) => {
+    dashboardRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getDashboardRange: getDashboardRange2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
       return getDashboardRange2(input.startDate, input.endDate);
     }),
@@ -15475,7 +15638,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     agentHistorySummary: protectedProcedure.input(z2.object({
       agentName: z2.string().min(1).max(256),
       date: z2.string()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db2 = await getDb3();
       if (!db2) return null;
@@ -15569,7 +15733,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       to: z2.string().optional(),
       search: z2.string().optional(),
       limit: z2.number().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getMultiparkBookings({
         status: input?.status,
         parkingType: input?.parkingType,
@@ -15584,7 +15749,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       from: z2.string().optional(),
       to: z2.string().optional(),
       projectId: z2.number().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getMultiparkBookingStats(input ?? void 0);
     }),
     // Query LOCAL DB by actionType + date range
@@ -15593,7 +15759,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       endDate: z2.string(),
       actionType: z2.enum(["creation", "checkin", "checkout", "cancelation"]),
       projectId: z2.number().optional()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const bookings = await getLocalBookingsByAction(input);
       return {
         total: bookings.length,
@@ -15607,7 +15774,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       startDate: z2.string(),
       endDate: z2.string(),
       actionType: z2.enum(["creation", "checkin", "checkout", "cancelation"])
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const results = await getBookingsReportAllParks(
         input.startDate,
         input.endDate,
@@ -15634,13 +15802,16 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
   }),
   // ── EXTRAS DIA — Daily forecast & driver allocation (Lisboa) ────────────────
   extrasDia: router({
-    forecast: protectedProcedure.input(z2.object({ baseDate: z2.string().optional() }).optional()).query(async ({ input }) => {
+    forecast: protectedProcedure.input(z2.object({ baseDate: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getExtrasDiaForecast(input?.baseDate);
     }),
-    candidates: protectedProcedure.query(async () => {
+    candidates: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return listDriverCandidates();
     }),
-    assignments: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+    assignments: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return listAssignments(input.date);
     }),
     upsertAssignment: protectedProcedure.input(
@@ -15658,6 +15829,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         notes: z2.string().max(255).nullable().optional()
       })
     ).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       if (input.endHour <= input.startHour) {
         throw new TRPCError3({ code: "BAD_REQUEST", message: "Fim tem de ser depois do in\xEDcio" });
       }
@@ -15684,11 +15856,13 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         throw new TRPCError3({ code: "BAD_REQUEST", message: err.message || "Erro ao guardar" });
       }
     }),
-    deleteAssignment: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
+    deleteAssignment: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await deleteAssignment(input.id);
       return { success: true };
     }),
-    costForRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ input }) => {
+    costForRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getExtrasDiaCostForRange(input.startDate, input.endDate);
     }),
     bookingsInSlot: protectedProcedure.input(
@@ -15698,7 +15872,8 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         slot: z2.number().int().min(0).max(2),
         type: z2.enum(["checkin", "checkout"])
       })
-    ).query(async ({ input }) => {
+    ).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
     })
   })

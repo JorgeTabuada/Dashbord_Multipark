@@ -357,6 +357,8 @@ export default function TasksPage() {
   }
 
   const isAdmin = user && ["super_admin", "admin"].includes(user.role);
+  // extra/user só consultam — criar/editar exige frontoffice+ (o servidor também valida)
+  const canEdit = user && !["user", "extra"].includes(user.role);
 
   return (
     <div className="space-y-6">
@@ -415,7 +417,9 @@ export default function TasksPage() {
               {checkNotifMut.isPending ? "A verificar..." : "Verificar Notificações"}
             </Button>
           )}
-          <Button onClick={() => { resetForm(); setShowCreate(true); }}><Plus className="h-4 w-4 mr-2" /> Nova Tarefa</Button>
+          {canEdit && (
+            <Button onClick={() => { resetForm(); setShowCreate(true); }}><Plus className="h-4 w-4 mr-2" /> Nova Tarefa</Button>
+          )}
         </div>
       </div>
 

@@ -11,7 +11,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && user) {
-      setLocation("/dashboard");
+      // user/extra nunca aterram na dashboard principal — vão para o RH (perfil próprio)
+      const lowRole = ["user", "extra"].includes((user as any).role ?? "user");
+      setLocation(lowRole ? "/rh" : "/dashboard");
     }
   }, [user, loading, setLocation]);
 

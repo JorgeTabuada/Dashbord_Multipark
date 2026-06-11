@@ -142,20 +142,22 @@ const menuGroups: MenuGroup[] = [
   {
     label: "Pessoas",
     items: [
+      // RH visível a todos os roles (user/extra veem só o próprio perfil)
       { icon: UserCheck, label: "Recursos Humanos", path: "/rh" },
       { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "frontoffice" },
-      { icon: GraduationCap, label: "Formação", path: "/formacao" },
+      { icon: GraduationCap, label: "Formação", path: "/formacao", minRole: "extra" },
     ],
   },
   {
     label: "Operações",
-    minRole: "frontoffice",
+    // minRole por item: extra tem acesso a Tarefas (só as suas) e à
+    // Avaliação Operacional (só a própria, última semana)
     items: [
-      { icon: Truck, label: "Actividade", path: "/operacional" },
-      { icon: LayoutDashboard, label: "Operações", path: "/operacoes" },
-      { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
-      { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia" },
-      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional" },
+      { icon: Truck, label: "Actividade", path: "/operacional", minRole: "frontoffice" },
+      { icon: LayoutDashboard, label: "Operações", path: "/operacoes", minRole: "frontoffice" },
+      { icon: ListTodo, label: "Tarefas", path: "/tarefas", minRole: "extra" },
+      { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia", minRole: "frontoffice" },
+      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "extra" },
     ],
   },
   {
@@ -291,10 +293,18 @@ function DashboardLayoutContent({
   useEffect(() => {
     if (!user) return;
     const allowedPaths = new Set(filteredItems.map(i => i.path));
-    if (allMenuPaths.has(location) && !allowedPaths.has(location)) {
+    const isLowRole = (ROLE_HIERARCHY[userRole] ?? 0) < ROLE_HIERARCHY["frontoffice"];
+    if (isLowRole) {
+      // user/extra: whitelist estrita — qualquer rota fora do menu permitido
+      // (incl. /dashboard e /dashboards) cai no RH (perfil próprio)
+      const base = "/" + (location.split("/")[1] ?? "");
+      if (!allowedPaths.has(location) && !allowedPaths.has(base)) {
+        setLocation("/rh");
+      }
+    } else if (allMenuPaths.has(location) && !allowedPaths.has(location)) {
       setLocation(filteredItems[0]?.path ?? "/formacao");
     }
-  }, [location, user, filteredItems]);
+  }, [location, user, filteredItems, userRole]);
   const filters = useGlobalFilters();
 
   useEffect(() => {

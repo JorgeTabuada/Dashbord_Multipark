@@ -38,11 +38,12 @@ export default function PerformancePage() {
   const generateMut = trpc.performance.generate.useMutation();
   const updateMut = trpc.performance.update.useMutation();
   const utils = trpc.useUtils();
-  const { data: employees = [] } = trpc.rh.list.useQuery();
+  // roster (id+nome) em vez de rh.list: acessível a extra+ (rh.list é admin)
+  const { data: employees = [] } = trpc.rh.roster.useQuery({ activeOnly: true });
 
   const employeeMap = useMemo(() => {
     const map = new Map<number, string>();
-    employees.forEach((e: any) => map.set(e.employee.id, e.employee.fullName));
+    employees.forEach((e: any) => map.set(e.id, e.fullName));
     return map;
   }, [employees]);
 
