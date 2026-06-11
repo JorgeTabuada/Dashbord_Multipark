@@ -65,6 +65,7 @@ import {
   Wallet,
   ArrowLeftRight,
   Repeat,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -860,23 +861,34 @@ function ExpenseFormModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => setPreviewUrl(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
 
     setUploading(true);
     try {
       const base64 = await fileToBase64(file);
-      setLastFileBase64(base64);
-      setLastFileMime(file.type);
+
+      if (isPdf) {
+        // Converte para imagem (preview + OCR); o PDF original é o que fica guardado.
+        const pngDataUrl = await pdfToPngDataUrl(file);
+        setPreviewUrl(pngDataUrl);
+        setLastFileBase64(pngDataUrl.split(",")[1]);
+        setLastFileMime("image/png");
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => setPreviewUrl(ev.target?.result as string);
+        reader.readAsDataURL(file);
+        setLastFileBase64(base64);
+        setLastFileMime(file.type);
+      }
+
       const result = await uploadMutation.mutateAsync({
         fileName: file.name,
         fileBase64: base64,
-        mimeType: file.type,
+        mimeType: file.type || (isPdf ? "application/pdf" : "application/octet-stream"),
       });
       set("invoiceImageUrl", result.url);
       set("invoiceImageKey", result.key);
-      toast.success("Fatura carregada com sucesso!");
+      toast.success(isPdf ? "PDF carregado — pronto para extrair com IA!" : "Fatura carregada com sucesso!");
     } catch {
       toast.error("Erro ao carregar a fatura");
     } finally {
@@ -985,7 +997,20 @@ function ExpenseFormModal({
             <div className="flex flex-col sm:flex-row gap-4 items-start">
               {previewUrl ? (
                 <div className="relative shrink-0">
-                  <img src={previewUrl} alt="Fatura" className="h-32 w-32 object-cover rounded-lg border shadow-sm" />
+                  {/\.pdf(\?|$)/i.test(previewUrl) ? (
+                    // PDF guardado (ao editar): não dá para mostrar em <img>, mostra link
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="h-32 w-32 rounded-lg border shadow-sm flex flex-col items-center justify-center gap-2 bg-muted/50 hover:bg-muted transition-colors"
+                    >
+                      <FileText className="h-8 w-8 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Ver PDF</span>
+                    </a>
+                  ) : (
+                    <img src={previewUrl} alt="Fatura" className="h-32 w-32 object-cover rounded-lg border shadow-sm" />
+                  )}
                   {uploading && (
                     <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-white" />
@@ -1005,7 +1030,7 @@ function ExpenseFormModal({
               <div className="flex flex-col gap-2 flex-1">
                 <p className="text-sm font-medium">Fatura / Recibo</p>
                 <p className="text-xs text-muted-foreground">
-                  Carrega uma imagem da fatura e usa a IA para extrair os dados automaticamente.
+                  Carrega uma imagem ou PDF da fatura e usa a IA para extrair os dados automaticamente.
                 </p>
                 <div className="flex flex-wrap gap-2 mt-1">
                   <Button
@@ -1054,7 +1079,7 @@ function ExpenseFormModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf,.pdf"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -1245,4 +1270,36 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// Converte as primeiras páginas de um PDF numa única imagem PNG (empilhadas
+// na vertical) para o preview e o OCR por IA. pdf.js é importado on-demand
+// para não pesar no bundle de quem nunca carrega PDFs.
+async function pdfToPngDataUrl(file: File, maxPages = 2): Promise<string> {
+  const pdfjs = await import("pdfjs-dist");
+  const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = Math.min(pdf.numPages, maxPages);
+  const canvases: HTMLCanvasElement[] = [];
+  for (let i = 1; i <= pages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 }); // A4 → ~1190×1684, bom para OCR
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d")!, viewport } as any).promise;
+    canvases.push(canvas);
+  }
+  if (canvases.length === 1) return canvases[0].toDataURL("image/png");
+  const out = document.createElement("canvas");
+  out.width = Math.max(...canvases.map((c) => c.width));
+  out.height = canvases.reduce((s, c) => s + c.height, 0);
+  const ctx = out.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  let y = 0;
+  for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height; }
+  return out.toDataURL("image/png");
 }
