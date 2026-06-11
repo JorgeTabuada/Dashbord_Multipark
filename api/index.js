@@ -16100,7 +16100,9 @@ function createMcpApiRouter() {
           "GET /reviews",
           "GET /vehicles",
           "GET /employees",
-          "GET /dashboard/summary"
+          "GET /dashboard/summary",
+          "GET /campaigns",
+          "GET /campaigns/:type/:id/daily"
         ],
         write: [
           "POST /complaints",
@@ -16109,7 +16111,8 @@ function createMcpApiRouter() {
           "POST /reviews",
           "POST /sync/recent",
           "POST /sync/future",
-          "POST /sync/day"
+          "POST /sync/day",
+          "POST /campaigns/daily"
         ],
         admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates"]
       }
@@ -16123,6 +16126,73 @@ function createMcpApiRouter() {
       cities,
       parks: PARK_CONFIGS2.map((p) => ({ id: p.id, name: p.name, city: p.city, closed: !!p.closed }))
     });
+  }));
+  r.get("/campaigns", requireScope("read"), h(async (_req, res) => {
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    const internal = rows(await d.execute(sql5`SELECT id, name, projectId, dailyBudget, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`)).map((c) => ({ ...c, campaignType: "internal" }));
+    const ad = rows(await d.execute(sql5`SELECT id, name, projectId, budget AS dailyBudget, platform AS brand, campaignStatus FROM campaigns ORDER BY name`)).map((c) => ({ ...c, city: null, campaignType: "ad" }));
+    res.json({ success: true, count: internal.length + ad.length, campaigns: [...internal, ...ad] });
+  }));
+  r.get("/campaigns/:type/:id/daily", requireScope("read"), h(async (req, res) => {
+    const type = String(req.params.type);
+    if (type !== "internal" && type !== "ad") return res.status(400).json({ error: "type deve ser 'internal' ou 'ad'" });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "id inv\xE1lido" });
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    const daily = rows(await d.execute(sql5`SELECT costDate, amount, impressions, clicks, ctr, conversions, conversionValue, notes FROM internal_campaign_costs WHERE campaignType = ${type} AND campaignId = ${id} ORDER BY costDate DESC LIMIT 120`));
+    res.json({ success: true, count: daily.length, daily });
+  }));
+  r.post("/campaigns/daily", requireScope("write"), h(async (req, res) => {
+    const b = req.body ?? {};
+    const date = String(b.costDate ?? b.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "costDate (YYYY-MM-DD) \xE9 obrigat\xF3rio" });
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    let campaignType = b.campaignType ?? null;
+    let campaignId = b.campaignId != null ? Number(b.campaignId) : null;
+    if ((!campaignType || campaignId == null) && b.name) {
+      const name = String(b.name);
+      const hitInternal = rows(await d.execute(sql5`SELECT id FROM internal_campaigns WHERE name = ${name} LIMIT 1`))[0];
+      if (hitInternal) {
+        campaignType = "internal";
+        campaignId = Number(hitInternal.id);
+      } else {
+        const hitAd = rows(await d.execute(sql5`SELECT id FROM campaigns WHERE name = ${name} LIMIT 1`))[0];
+        if (hitAd) {
+          campaignType = "ad";
+          campaignId = Number(hitAd.id);
+        }
+      }
+      if (campaignId == null) return res.status(404).json({ error: `Campanha "${name}" n\xE3o encontrada (usa GET /campaigns para listar)` });
+    }
+    if (campaignType !== "internal" && campaignType !== "ad") return res.status(400).json({ error: "campaignType deve ser 'internal' ou 'ad' (ou indica name)" });
+    if (campaignId == null || !Number.isFinite(campaignId)) return res.status(400).json({ error: "campaignId \xE9 obrigat\xF3rio (ou indica name)" });
+    const num = (v) => v === void 0 || v === null || v === "" ? null : Number(v);
+    const amount = num(b.amount ?? b.spend) ?? 0;
+    const impressions = num(b.impressions);
+    const clicks = num(b.clicks);
+    const ctr = num(b.ctr) ?? (clicks != null && impressions ? Math.round(clicks / impressions * 1e5) / 1e3 : null);
+    const conversions = num(b.conversions);
+    const conversionValue = num(b.conversionValue);
+    const notes = b.notes != null ? String(b.notes) : null;
+    await d.execute(sql5`
+      INSERT INTO internal_campaign_costs (campaignType, campaignId, costDate, amount, impressions, clicks, ctr, conversions, conversionValue, notes, createdById)
+      VALUES (${campaignType}, ${campaignId}, ${date}, ${amount}, ${impressions}, ${clicks}, ${ctr}, ${conversions}, ${conversionValue}, ${notes}, ${req.apiKeyInfo?.createdById ?? null})
+      ON DUPLICATE KEY UPDATE
+        amount = ${amount},
+        impressions = COALESCE(${impressions}, impressions),
+        clicks = COALESCE(${clicks}, clicks),
+        ctr = COALESCE(${ctr}, ctr),
+        conversions = COALESCE(${conversions}, conversions),
+        conversionValue = COALESCE(${conversionValue}, conversionValue),
+        notes = COALESCE(${notes}, notes)`);
+    await logActivity({ userId: 0, action: "update", entity: "campaign_daily", entityId: campaignId, details: `[MCP] ${campaignType}:${campaignId} ${date} \u20AC${amount}` });
+    res.json({ success: true, campaignType, campaignId, costDate: date });
   }));
   r.get("/bookings", requireScope("read"), h(async (req, res) => {
     const q = req.query;

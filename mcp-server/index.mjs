@@ -153,6 +153,37 @@ const tools = [
     run: (a) => api("DELETE", `/complaints/${a.id}`),
   },
   {
+    name: "list_campaigns",
+    description: "Lista as campanhas de marketing (internas + ad) com id, tipo, projeto e orçamento diário.",
+    inputSchema: { type: "object", properties: {} },
+    run: () => api("GET", "/campaigns"),
+  },
+  {
+    name: "get_campaign_daily",
+    description: "Histórico diário de uma campanha (gasto, impressões, cliques, CTR, conversões, valor). campaignType: internal|ad.",
+    inputSchema: {
+      type: "object",
+      properties: { campaignType: { type: "string" }, campaignId: { type: "number" } },
+      required: ["campaignType", "campaignId"],
+    },
+    run: (a) => api("GET", `/campaigns/${encodeURIComponent(a.campaignType)}/${a.campaignId}/daily`),
+  },
+  {
+    name: "update_campaign_daily",
+    description: "Atualiza as métricas de UM dia de uma campanha (upsert): amount (gasto €), impressions, clicks, ctr (auto se faltar), conversions, conversionValue. Campos omitidos preservam o registado. Identifica por campaignType+campaignId ou por name. costDate YYYY-MM-DD obrigatório.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        campaignType: { type: "string" }, campaignId: { type: "number" }, name: { type: "string" },
+        costDate: { type: "string" }, amount: { type: "number" }, impressions: { type: "number" },
+        clicks: { type: "number" }, ctr: { type: "number" }, conversions: { type: "number" },
+        conversionValue: { type: "number" }, notes: { type: "string" },
+      },
+      required: ["costDate"],
+    },
+    run: (a) => api("POST", "/campaigns/daily", { body: a }),
+  },
+  {
     name: "list_reviews",
     description: "Lista avaliações Google. Filtros: rating (1-5), status, projectId.",
     inputSchema: { type: "object", properties: { rating: { type: "number" }, status: { type: "string" }, projectId: { type: "number" } } },
