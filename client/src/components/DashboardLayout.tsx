@@ -61,7 +61,6 @@ import {
   ScrollText,
   LogOut,
   PanelLeft,
-  Building2,
   ChevronDown,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -354,12 +353,18 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-gray-500" />
               </button>
               {!isCollapsed ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="h-5 w-5 shrink-0" style={{ color: '#6366F1' }} />
-                  <span className="font-bold tracking-tight truncate text-foreground text-xl">
-                    Multipark
-                  </span>
-                </div>
+                <img
+                  src="/multipark-logo.png"
+                  alt="Multipark"
+                  className="h-5 w-auto min-w-0 object-contain object-left dark:hidden"
+                />
+              ) : null}
+              {!isCollapsed ? (
+                <img
+                  src="/multipark-logo-white.png"
+                  alt="Multipark"
+                  className="h-5 w-auto min-w-0 object-contain object-left hidden dark:block"
+                />
               ) : null}
             </div>
           </SidebarHeader>
