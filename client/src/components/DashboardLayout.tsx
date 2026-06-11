@@ -144,7 +144,8 @@ const menuGroups: MenuGroup[] = [
     items: [
       // RH visível a todos os roles (user/extra veem só o próprio perfil)
       { icon: UserCheck, label: "Recursos Humanos", path: "/rh" },
-      { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "frontoffice" },
+      // extra vê a própria avaliação (última semana) — filtrado no servidor
+      { icon: Trophy, label: "Avaliação", path: "/avaliacao", minRole: "extra" },
       { icon: GraduationCap, label: "Formação", path: "/formacao", minRole: "extra" },
     ],
   },
@@ -157,7 +158,7 @@ const menuGroups: MenuGroup[] = [
       { icon: LayoutDashboard, label: "Operações", path: "/operacoes", minRole: "frontoffice" },
       { icon: ListTodo, label: "Tarefas", path: "/tarefas", minRole: "extra" },
       { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia", minRole: "frontoffice" },
-      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "extra" },
+      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "frontoffice" },
     ],
   },
   {
