@@ -19,7 +19,7 @@ import {
 import {
   Megaphone, TrendingUp, Target, DollarSign, Plus, Trash2, Pencil,
   Upload, Eye, BarChart3, Receipt, ArrowUpRight, MousePointerClick, FileSpreadsheet,
-  AlertTriangle, CheckCircle2, Info, Loader2,
+  AlertTriangle, CheckCircle2, Info, Loader2, RefreshCw,
 } from "lucide-react";
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -1237,6 +1237,79 @@ function InternalCampaignsTab() {
   const [costInputs, setCostInputs] = useState<Record<string, { date: string; amount: string }>>({});
   const [editCamp, setEditCamp] = useState<any>(null);
 
+  // ── Diálogo "Atualizar campanhas": métricas diárias por campanha ──
+  type DailyRow = { amount: string; impressions: string; clicks: string; ctr: string; conversions: string; conversionValue: string };
+  const emptyRow: DailyRow = { amount: "", impressions: "", clicks: "", ctr: "", conversions: "", conversionValue: "" };
+  const [updOpen, setUpdOpen] = useState(false);
+  const [updDate, setUpdDate] = useState(todayStr);
+  const [updRows, setUpdRows] = useState<Record<string, DailyRow>>({});
+  const [updSaving, setUpdSaving] = useState(false);
+  const { data: dayCosts } = trpc.marketing.internalCampaigns.costsByDate.useQuery(
+    { costDate: updDate },
+    { enabled: updOpen },
+  );
+
+  // Pré-preenche com o que já está registado para o dia escolhido
+  useEffect(() => {
+    if (!updOpen) return;
+    const next: Record<string, DailyRow> = {};
+    for (const r of (dayCosts ?? []) as any[]) {
+      next[r.campaignType + ":" + r.campaignId] = {
+        amount: r.amount != null ? String(Number(r.amount)) : "",
+        impressions: r.impressions != null ? String(r.impressions) : "",
+        clicks: r.clicks != null ? String(r.clicks) : "",
+        ctr: r.ctr != null ? String(Number(r.ctr)) : "",
+        conversions: r.conversions != null ? String(Number(r.conversions)) : "",
+        conversionValue: r.conversionValue != null ? String(Number(r.conversionValue)) : "",
+      };
+    }
+    setUpdRows(next);
+  }, [updOpen, updDate, dayCosts]);
+
+  const setUpdField = (ckey: string, field: keyof DailyRow, value: string) => {
+    setUpdRows(s => {
+      const row = { ...(s[ckey] ?? emptyRow), [field]: value };
+      // CTR deriva automaticamente de cliques/impressões (continua editável)
+      if (field === "clicks" || field === "impressions") {
+        const cl = Number(row.clicks), im = Number(row.impressions);
+        if (row.clicks !== "" && im > 0) row.ctr = String(Math.round((cl / im) * 100000) / 1000);
+      }
+      return { ...s, [ckey]: row };
+    });
+  };
+
+  const saveDailyUpdate = async () => {
+    const entries = Object.entries(updRows).filter(([, r]) => Object.values(r).some(v => v !== ""));
+    if (entries.length === 0) { toast.info("Nada para guardar"); return; }
+    setUpdSaving(true);
+    let saved = 0;
+    try {
+      for (const [ckey, r] of entries) {
+        const [campaignType, idStr] = ckey.split(":");
+        await addCostBulk.mutateAsync({
+          campaignType: campaignType as "internal" | "ad",
+          campaignId: Number(idStr),
+          costDate: updDate,
+          amount: r.amount !== "" ? Number(r.amount) : 0,
+          impressions: r.impressions !== "" ? Number(r.impressions) : null,
+          clicks: r.clicks !== "" ? Number(r.clicks) : null,
+          ctr: r.ctr !== "" ? Number(r.ctr) : null,
+          conversions: r.conversions !== "" ? Number(r.conversions) : null,
+          conversionValue: r.conversionValue !== "" ? Number(r.conversionValue) : null,
+        });
+        saved++;
+      }
+      toast.success(`Campanhas atualizadas (${saved} ${saved === 1 ? "registo" : "registos"} em ${updDate})`);
+      setUpdOpen(false);
+      refresh();
+      utils.marketing.internalCampaigns.costsByDate.invalidate();
+    } catch (e: any) {
+      toast.error(`Guardadas ${saved}/${entries.length} — ${e.message}`);
+    } finally {
+      setUpdSaving(false);
+    }
+  };
+
   const refresh = () => {
     utils.marketing.internalCampaigns.detect.invalidate();
     utils.marketing.internalCampaigns.list.invalidate();
@@ -1246,6 +1319,7 @@ function InternalCampaignsTab() {
   const removeKey = trpc.marketing.internalCampaigns.removeKey.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   const remove = trpc.marketing.internalCampaigns.remove.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   const addCost = trpc.marketing.internalCampaigns.addCost.useMutation({ onSuccess: () => { refresh(); toast.success("Gasto registado"); }, onError: (e) => toast.error(e.message) });
+  const addCostBulk = trpc.marketing.internalCampaigns.addCost.useMutation(); // sem toasts por linha — usado pelo diálogo
   const updateInternal = trpc.marketing.internalCampaigns.update.useMutation({ onSuccess: () => { setEditCamp(null); refresh(); toast.success("Campanha atualizada"); }, onError: (e) => toast.error(e.message) });
   const updateAd = trpc.marketing.campaigns.update.useMutation({ onSuccess: () => { setEditCamp(null); refresh(); toast.success("Campanha atualizada"); }, onError: (e) => toast.error(e.message) });
 
@@ -1273,6 +1347,11 @@ function InternalCampaignsTab() {
           <div><Label className="text-xs">De</Label><Input type="date" className="w-40" value={from} onChange={e => setFrom(e.target.value)} /></div>
           <div><Label className="text-xs">Até</Label><Input type="date" className="w-40" value={to} onChange={e => setTo(e.target.value)} /></div>
           <div className="text-[11px] text-muted-foreground self-center">↑ período do gasto e das reservas</div>
+          <div className="ml-auto">
+            <Button onClick={() => { setUpdDate(todayStr); setUpdOpen(true); }}>
+              <RefreshCw className="w-4 h-4 mr-1.5" />Atualizar campanhas
+            </Button>
+          </div>
           <div className="w-full border-t my-1" />
           <div><Label className="text-xs">Nova campanha</Label><Input className="w-48" value={newName} onChange={e => setNewName(e.target.value)} placeholder="nome" /></div>
           <div>
@@ -1335,12 +1414,15 @@ function InternalCampaignsTab() {
                     <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (confirm(c.campaignType === "ad" ? `Desligar links/custos de "${c.name}"? (a campanha mantém-se)` : `Eliminar campanha "${c.name}"?`)) remove.mutate({ campaignType: c.campaignType, id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 text-sm">
                   <div><div className="text-xs text-muted-foreground">Reservas</div><div className="font-semibold">{c.bookings}</div></div>
                   <div><div className="text-xs text-muted-foreground">Receita</div><div className="font-semibold">{Number(c.revenue).toFixed(0)} €</div></div>
                   <div><div className="text-xs text-muted-foreground">Gasto{c.spendEstimated ? " (est.)" : ""}</div><div className="font-semibold">{Number(c.spend).toFixed(0)} €</div></div>
                   <div><div className="text-xs text-muted-foreground">Custo/reserva</div><div className="font-semibold">{Number(c.costPerBooking).toFixed(2)} €</div></div>
                   <div><div className="text-xs text-muted-foreground">ROAS</div><div className="font-semibold">{c.roas != null ? Number(c.roas).toFixed(1) + "x" : "—"}</div></div>
+                  <div><div className="text-xs text-muted-foreground">Cliques</div><div className="font-semibold">{c.clicks != null ? c.clicks : "—"}</div></div>
+                  <div><div className="text-xs text-muted-foreground">CTR</div><div className="font-semibold">{c.ctr != null ? Number(c.ctr).toFixed(2) + "%" : "—"}</div></div>
+                  <div><div className="text-xs text-muted-foreground">Conversões</div><div className="font-semibold">{c.conversions != null ? Number(c.conversions) : "—"}</div></div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(c.keys ?? []).map((k: any) => (
@@ -1364,6 +1446,62 @@ function InternalCampaignsTab() {
         })}
         {campaigns.length === 0 && <Card className="p-8 text-center text-muted-foreground">Ainda não há campanhas. Cria uma acima.</Card>}
       </div>
+
+      {/* Atualizar campanhas — métricas diárias */}
+      <Dialog open={updOpen} onOpenChange={setUpdOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader><DialogTitle>Atualizar campanhas — dados do dia</DialogTitle></DialogHeader>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div><Label className="text-xs">Dia</Label><Input type="date" className="w-40" value={updDate} onChange={e => setUpdDate(e.target.value)} /></div>
+            <p className="text-[11px] text-muted-foreground self-center">
+              Preenche só o que tiveres — campos vazios não apagam dados já registados. O CTR calcula-se sozinho a partir de cliques/impressões.
+            </p>
+          </div>
+          <div className="overflow-x-auto max-h-[55vh] overflow-y-auto border rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-muted">
+                <tr className="text-[11px] text-muted-foreground uppercase">
+                  <th className="text-left font-medium px-3 py-2">Campanha</th>
+                  <th className="text-left font-medium px-2 py-2">Gasto (€)</th>
+                  <th className="text-left font-medium px-2 py-2">Impressões</th>
+                  <th className="text-left font-medium px-2 py-2">Cliques</th>
+                  <th className="text-left font-medium px-2 py-2">CTR (%)</th>
+                  <th className="text-left font-medium px-2 py-2">Conversões</th>
+                  <th className="text-left font-medium px-2 py-2">Valor conv. (€)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c: any) => {
+                  const ckey = c.campaignType + ":" + c.id;
+                  const r = updRows[ckey] ?? emptyRow;
+                  return (
+                    <tr key={ckey} className="border-t">
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        <span className="font-medium">{c.name}</span>
+                        {c.campaignType === "ad" && <span className="text-[10px] text-muted-foreground ml-1">· ad</span>}
+                      </td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" step="0.01" className="h-8 w-24" placeholder="0.00" value={r.amount} onChange={e => setUpdField(ckey, "amount", e.target.value)} /></td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" className="h-8 w-24" placeholder="—" value={r.impressions} onChange={e => setUpdField(ckey, "impressions", e.target.value)} /></td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" className="h-8 w-20" placeholder="—" value={r.clicks} onChange={e => setUpdField(ckey, "clicks", e.target.value)} /></td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" step="0.001" className="h-8 w-20" placeholder="—" value={r.ctr} onChange={e => setUpdField(ckey, "ctr", e.target.value)} /></td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" step="0.01" className="h-8 w-24" placeholder="—" value={r.conversions} onChange={e => setUpdField(ckey, "conversions", e.target.value)} /></td>
+                      <td className="px-2 py-1.5"><Input type="number" min="0" step="0.01" className="h-8 w-28" placeholder="—" value={r.conversionValue} onChange={e => setUpdField(ckey, "conversionValue", e.target.value)} /></td>
+                    </tr>
+                  );
+                })}
+                {campaigns.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">Sem campanhas — cria uma primeiro.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpdOpen(false)}>Cancelar</Button>
+            <Button disabled={updSaving} onClick={saveDailyUpdate}>
+              {updSaving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1.5" />}
+              Guardar dia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Editar campanha */}
       <Dialog open={!!editCamp} onOpenChange={(v) => !v && setEditCamp(null)}>

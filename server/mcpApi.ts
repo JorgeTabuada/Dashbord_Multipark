@@ -338,6 +338,25 @@ export function createMcpApiRouter(): Router {
   }));
 
   // ── ADMIN (destrutivo) ──────────────────────────────────────────────────────
+  // One-shot, idempotente: colunas de métricas diárias nas campanhas (0048).
+  r.post("/admin/migrate-0048", requireScope("admin"), h(async (_req, res) => {
+    const { MIGRATION_0048_STATEMENTS, IDEMPOTENT_ERROR_CODES_0048 } = await import("./migrations/migration_0048");
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    let ok = 0, skipped = 0;
+    const errors: string[] = [];
+    for (const stmt of MIGRATION_0048_STATEMENTS) {
+      try {
+        await d.execute(sql.raw(stmt));
+        ok++;
+      } catch (e: any) {
+        if (e?.code && IDEMPOTENT_ERROR_CODES_0048.has(e.code)) skipped++;
+        else errors.push(`${e?.code ?? "ERR"}: ${String(e?.message ?? e).slice(0, 200)}`);
+      }
+    }
+    res.json({ success: errors.length === 0, ok, skipped, errors });
+  }));
+
   r.post("/admin/cleanup-duplicates", requireScope("admin"), h(async (_req, res) => {
     const d = await db();
     if (!d) return res.status(500).json({ error: "DB unavailable" });

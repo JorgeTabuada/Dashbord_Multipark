@@ -109,6 +109,11 @@ export const internalCampaignCosts = mysqlTable("internal_campaign_costs", {
 	campaignId: int().notNull(), // FK -> internal_campaigns.id OU campaigns.id
 	costDate: varchar({ length: 10 }).notNull(), // YYYY-MM-DD
 	amount: decimal({ precision: 10, scale: 2 }).notNull(),
+	impressions: int(),
+	clicks: int(),
+	ctr: decimal({ precision: 7, scale: 3 }), // %
+	conversions: decimal({ precision: 10, scale: 2 }),
+	conversionValue: decimal({ precision: 10, scale: 2 }),
 	notes: varchar({ length: 255 }),
 	createdById: int(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),

@@ -416,6 +416,32 @@ async function applyMigration0046(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0048(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0048_STATEMENTS, IDEMPOTENT_ERROR_CODES_0048 } = await import("./migrations/migration_0048");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0048_STATEMENTS) {
+    try {
+      await db.execute(sql.raw(stmt));
+      ok += 1;
+    } catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0048.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -441,6 +467,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0046_multipark_report_extra_fields: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0048: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0048();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0048_campaign_daily_metrics: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),
@@ -2439,8 +2477,15 @@ export const appRouter = router({
               const m = rows(await db.execute(sql`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql.join(conds, sql` OR `)})${dateCond}`))[0];
               bookings = Number(m?.c ?? 0); revenue = Number(m?.rev ?? 0);
             }
-            const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
+            const costRow = rows(await db.execute(sql`SELECT COALESCE(SUM(amount),0) AS spend, SUM(impressions) AS impressions, SUM(clicks) AS clicks, SUM(conversions) AS conversions, SUM(conversionValue) AS conversionValue, AVG(ctr) AS avgCtr FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql``}`))[0];
             const manualSpend = Number(costRow?.spend ?? 0);
+            const impressions = costRow?.impressions != null ? Number(costRow.impressions) : null;
+            const clicks = costRow?.clicks != null ? Number(costRow.clicks) : null;
+            const conversions = costRow?.conversions != null ? Number(costRow.conversions) : null;
+            const conversionValue = costRow?.conversionValue != null ? Number(costRow.conversionValue) : null;
+            // CTR do período: derivado dos totais; senão média dos CTRs registados
+            const ctr = impressions && clicks != null ? Math.round((clicks / impressions) * 100000) / 1000
+              : (costRow?.avgCtr != null ? Math.round(Number(costRow.avgCtr) * 1000) / 1000 : null);
             // Gasto real importado do Google Ads (campaign_daily_stats, só campanhas ad).
             let realStatsSpend = 0;
             if (c.campaignType === "ad" && input?.from && input?.to) {
@@ -2451,7 +2496,7 @@ export const appRouter = router({
             const budgetSpend = c.dailyBudget && periodDays > 0 ? Number(c.dailyBudget) * periodDays : 0;
             const spend = realStatsSpend > 0 ? realStatsSpend : (manualSpend > 0 ? manualSpend : budgetSpend);
             const spendEstimated = realStatsSpend === 0 && manualSpend === 0 && budgetSpend > 0;
-            out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
+            out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null, impressions, clicks, ctr, conversions, conversionValue });
           }
           // Campanhas com chaves ou métricas primeiro
           out.sort((a, b) => (b.keys.length || b.bookings) - (a.keys.length || a.bookings));
@@ -2524,20 +2569,57 @@ export const appRouter = router({
       }),
 
       addCost: protectedProcedure
-        .input(z.object({ campaignType: z.enum(["internal", "ad"]), campaignId: z.number(), costDate: z.string(), amount: z.number(), notes: z.string().optional() }))
+        .input(z.object({
+          campaignType: z.enum(["internal", "ad"]),
+          campaignId: z.number(),
+          costDate: z.string(),
+          amount: z.number(),
+          impressions: z.number().nullable().optional(),
+          clicks: z.number().nullable().optional(),
+          ctr: z.number().nullable().optional(),
+          conversions: z.number().nullable().optional(),
+          conversionValue: z.number().nullable().optional(),
+          notes: z.string().optional(),
+        }))
         .mutation(async ({ ctx, input }) => {
           requireRole(ctx.user.role, "admin");
           const { getDb } = await import("./db");
           const { sql } = await import("drizzle-orm");
           const db = await getDb();
           if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-          // upsert por (campaignType, campaignId, costDate)
+          const impressions = input.impressions ?? null;
+          const clicks = input.clicks ?? null;
+          // CTR: usa o valor dado; senão deriva de cliques/impressões
+          const ctr = input.ctr ?? (clicks != null && impressions ? Math.round((clicks / impressions) * 100000) / 1000 : null);
+          const conversions = input.conversions ?? null;
+          const conversionValue = input.conversionValue ?? null;
+          // upsert por (campaignType, campaignId, costDate); métricas omitidas
+          // (undefined→null) preservam o valor existente via COALESCE, para a
+          // entrada rápida de gasto não apagar métricas já registadas.
           await db.execute(sql`
-            INSERT INTO internal_campaign_costs (campaignType, campaignId, costDate, amount, notes, createdById)
-            VALUES (${input.campaignType}, ${input.campaignId}, ${input.costDate}, ${input.amount}, ${input.notes ?? null}, ${ctx.user.id})
-            ON DUPLICATE KEY UPDATE amount = ${input.amount}, notes = ${input.notes ?? null}`);
+            INSERT INTO internal_campaign_costs (campaignType, campaignId, costDate, amount, impressions, clicks, ctr, conversions, conversionValue, notes, createdById)
+            VALUES (${input.campaignType}, ${input.campaignId}, ${input.costDate}, ${input.amount}, ${impressions}, ${clicks}, ${ctr}, ${conversions}, ${conversionValue}, ${input.notes ?? null}, ${ctx.user.id})
+            ON DUPLICATE KEY UPDATE
+              amount = ${input.amount},
+              impressions = COALESCE(${impressions}, impressions),
+              clicks = COALESCE(${clicks}, clicks),
+              ctr = COALESCE(${ctr}, ctr),
+              conversions = COALESCE(${conversions}, conversions),
+              conversionValue = COALESCE(${conversionValue}, conversionValue),
+              notes = COALESCE(${input.notes ?? null}, notes)`);
           return { success: true };
         }),
+
+      // Custos/métricas de TODAS as campanhas num dia — para o diálogo "Atualizar campanhas".
+      costsByDate: protectedProcedure.input(z.object({ costDate: z.string() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb } = await import("./db");
+        const { internalCampaignCosts } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return [];
+        return db.select().from(internalCampaignCosts).where(eq(internalCampaignCosts.costDate, input.costDate));
+      }),
 
       costs: protectedProcedure.input(z.object({ campaignType: z.enum(["internal", "ad"]), campaignId: z.number() })).query(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
