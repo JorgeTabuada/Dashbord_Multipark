@@ -11749,7 +11749,8 @@ var appRouter = router({
       await removeEmployeeFromProject(input.projectId, input.employeeId);
       return { success: true };
     }),
-    costs: protectedProcedure.input(z2.object({ year: z2.number().optional(), month: z2.number().optional() }).optional()).query(async ({ input }) => {
+    costs: protectedProcedure.input(z2.object({ year: z2.number().optional(), month: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getProjectCosts(input?.year, input?.month);
     })
   }),
@@ -12150,7 +12151,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     }),
     // ── DASHBOARD STATS ──────────────────────────────────────────────────────
     stats: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       return getExpenseStats();
     }),
     // ── UPCOMING PAYMENTS ────────────────────────────────────────────────────
@@ -12382,7 +12383,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
         employeeId = me.employee.id;
       }
-      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
         const me = await getEmployeeByUserId(ctx.user.id);
         if (!me || me.employee.id !== employeeId) {
           throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
@@ -12428,17 +12429,17 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     }),
     // ── STATS ──────────────────────────────────────────────────────────────────────────────────
     stats: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       await seedExtraRates();
       return getHRStats();
     }),
     // ── EMPLOYEES ─────────────────────────────────────────────────────────────────────────────────
     list: protectedProcedure.input(z2.object({ isActive: z2.boolean().optional(), position: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       return getAllEmployees({ isActive: input?.isActive, position: input?.position });
     }),
     byId: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
-      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
         const myEmployee = await getEmployeeByUserId(ctx.user.id);
         if (!myEmployee || myEmployee.employee.id !== input.id) {
           throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
@@ -12572,7 +12573,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // ── DOCUMENTS ─────────────────────────────────────────────────────────────────────────────────
     documents: router({
       list: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getEmployeeDocuments(input.employeeId);
       }),
       upload: protectedProcedure.input(z2.object({
@@ -12632,11 +12633,11 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         return results;
       }),
       checklist: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getDocumentChecklistForEmployee(input.employeeId);
       }),
       allStatus: protectedProcedure.query(async ({ ctx }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const map = await getAllEmployeesDocumentStatus();
         const MANDATORY = ["photo", "id_card", "driving_license", "nib_proof", "address_proof", "contract", "responsibility_term"];
         const result = {};
@@ -12657,7 +12658,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // ── SCHEDULES ─────────────────────────────────────────────────────────────────────────────────
     schedules: router({
       list: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getEmployeeSchedules(input.employeeId);
       }),
       upsert: protectedProcedure.input(z2.object({
@@ -12680,7 +12681,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // ── TIME RECORDS ────────────────────────────────────────────────────────────────────────────────
     timeRecords: router({
       list: protectedProcedure.input(z2.object({ employeeId: z2.number(), startDate: z2.string().optional(), endDate: z2.string().optional() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getTimeRecords(
           input.employeeId,
           input.startDate ? new Date(input.startDate) : void 0,
@@ -12894,7 +12895,7 @@ Link do PDF: ${url}`
     // ── PENALIZAÇÕES ───────────────────────────────────────────────────────
     penalties: router({
       list: protectedProcedure.input(z2.object({ employeeId: z2.number() })).query(async ({ ctx, input }) => {
-        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
           const me = await getEmployeeByUserId(ctx.user.id);
           if (!me || me.employee.id !== input.employeeId) throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
         }
@@ -12957,23 +12958,23 @@ Link do PDF: ${url}`
   // ─── MARKETING ────────────────────────────────────────────────────────────
   marketing: router({
     dashboard: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       const from = input?.from ? new Date(input.from) : void 0;
       const to = input?.to ? new Date(input.to) : void 0;
       return getMarketingDashboardStats({ from, to, projectId: input?.projectId });
     }),
     bookingRevenue: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       return getBookingRevenueByProject({ from: input?.from, to: input?.to, projectId: input?.projectId });
     }),
     // ── CAMPAIGNS ──
     campaigns: router({
       list: protectedProcedure.input(z2.object({ platform: z2.string().optional(), projectId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getCampaigns({ platform: input?.platform, projectId: input?.projectId, status: input?.status });
       }),
       get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getCampaignById(input.id);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13034,7 +13035,7 @@ Link do PDF: ${url}`
     internalCampaigns: router({
       // Chaves ainda NÃO atribuídas: campaignId (do originUrl) + campaignName não-parceiro.
       detect: protectedProcedure.query(async ({ ctx }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { sql: sql6 } = await import("drizzle-orm");
         const db2 = await getDb3();
@@ -13060,7 +13061,7 @@ Link do PDF: ${url}`
       }),
       // Campanhas lógicas + chaves + custos + métricas (reservas/receita/gasto).
       list: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { sql: sql6 } = await import("drizzle-orm");
         const db2 = await getDb3();
@@ -13199,7 +13200,7 @@ Link do PDF: ${url}`
       }),
       // Custos/métricas de TODAS as campanhas num dia — para o diálogo "Atualizar campanhas".
       costsByDate: protectedProcedure.input(z2.object({ costDate: z2.string() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq8 } = await import("drizzle-orm");
@@ -13208,7 +13209,7 @@ Link do PDF: ${url}`
         return db2.select().from(internalCampaignCosts2).where(eq8(internalCampaignCosts2.costDate, input.costDate));
       }),
       costs: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), campaignId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq8, and: and7, desc: desc3 } = await import("drizzle-orm");
@@ -13230,11 +13231,11 @@ Link do PDF: ${url}`
     // ── DAILY STATS ──
     stats: router({
       byCampaign: protectedProcedure.input(z2.object({ campaignId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getCampaignStats(input.campaignId);
       }),
       all: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         const from = input?.from ? new Date(input.from) : void 0;
         const to = input?.to ? new Date(input.to) : void 0;
         return getAllDailyStats({ from, to, projectId: input?.projectId });
@@ -13392,7 +13393,7 @@ Link do PDF: ${url}`
     // ── MARKETING EXPENSES ──
     expenses: router({
       list: protectedProcedure.input(z2.object({ category: z2.string().optional(), projectId: z2.number().optional(), from: z2.string().optional(), to: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "admin");
+        requireRole(ctx.user.role, "frontoffice");
         return getMarketingExpenses({
           category: input?.category,
           projectId: input?.projectId,
@@ -15667,7 +15668,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     // Lista os nomes de agente Multipark do histórico no período, com contagens
     // e o colaborador a que estão ligados (employees.multiparkAgentName).
     agentActivity: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const { sql: sql6 } = await import("drizzle-orm");
       const db2 = await getDb3();
@@ -15714,7 +15715,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     }),
     // Lista leve de colaboradores ativos para o dropdown de mapeamento.
     employeesForMapping: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "admin");
+      requireRole(ctx.user.role, "frontoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const { sql: sql6 } = await import("drizzle-orm");
       const db2 = await getDb3();
