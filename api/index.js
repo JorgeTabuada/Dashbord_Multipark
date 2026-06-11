@@ -1574,6 +1574,7 @@ __export(db_exports, {
   getInvoiceById: () => getInvoiceById,
   getInvoiceStats: () => getInvoiceStats,
   getInvoices: () => getInvoices,
+  getLastSyncSuccessAt: () => getLastSyncSuccessAt,
   getLeaveDaysForMonth: () => getLeaveDaysForMonth,
   getLocalBookingsByAction: () => getLocalBookingsByAction,
   getLostFoundDriverRanking: () => getLostFoundDriverRanking,
@@ -5786,6 +5787,15 @@ async function getSyncLogs(limit = 20) {
   if (!db2) return [];
   return db2.select().from(multiparkSyncLogs).orderBy(desc(multiparkSyncLogs.startedAt)).limit(limit);
 }
+async function getLastSyncSuccessAt(syncType = "api_sync") {
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select({ startedAt: multiparkSyncLogs.startedAt }).from(multiparkSyncLogs).where(and(
+    eq(multiparkSyncLogs.syncType, syncType),
+    inArray(multiparkSyncLogs.status, ["success", "partial"])
+  )).orderBy(desc(multiparkSyncLogs.startedAt)).limit(1);
+  return rows[0]?.startedAt ?? null;
+}
 async function upsertDailySnapshot(data) {
   const db2 = await getDb();
   if (!db2) return;
@@ -7195,7 +7205,8 @@ async function multiparkRequest(opts) {
           "X-Api-Key": apiKey,
           "Content-Type": "application/json"
         },
-        body: body ? JSON.stringify(body) : void 0
+        body: body ? JSON.stringify(body) : void 0,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
       });
       if (res.status === 429 && attempt < MAX_RETRIES - 1) {
         const delay = Math.pow(2, attempt) * 1e3;
@@ -7338,12 +7349,13 @@ async function getCheckoutDrivers(startDate, endDate, apiKey) {
     apiKey
   });
 }
-var MAX_RETRIES, PARK_CONFIGS;
+var MAX_RETRIES, FETCH_TIMEOUT_MS, PARK_CONFIGS;
 var init_multipark = __esm({
   "server/multipark.ts"() {
     "use strict";
     init_env();
     MAX_RETRIES = 3;
+    FETCH_TIMEOUT_MS = Number(process.env.MULTIPARK_FETCH_TIMEOUT_MS || 15e3);
     PARK_CONFIGS = [
       { id: "LISBON_AIRPARK", name: "Airpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_AIRPARK" },
       { id: "LISBON_REDPARK", name: "Redpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_REDPARK" },
@@ -8235,11 +8247,12 @@ async function enrichBookingIfNeeded(externalId, apiKey) {
     return false;
   }
 }
-async function runConcurrent(items, limit, fn) {
+async function runConcurrent(items, limit, fn, deadlineAt) {
   let idx = 0;
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
       while (idx < items.length) {
+        if (deadlineAt && Date.now() >= deadlineAt) break;
         const i = idx++;
         try {
           await fn(items[i]);
@@ -8344,6 +8357,7 @@ async function enrichBookingsBatch(arg = 100) {
   const opts = typeof arg === "number" ? { limit: arg } : arg;
   const limit = opts.limit ?? 100;
   const targetIds = opts.externalIds;
+  const deadlineAt = opts.deadlineAt;
   if (targetIds && targetIds.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
   const { isNull: isNull3, and: and7, inArray: inArray2 } = await import("drizzle-orm");
   const whereCond = targetIds && targetIds.length ? and7(isNull3(multiparkBookings.enrichedAt), inArray2(multiparkBookings.externalId, targetIds)) : isNull3(multiparkBookings.enrichedAt);
@@ -8399,7 +8413,7 @@ async function enrichBookingsBatch(arg = 100) {
     const ok = await enrichBookingIfNeeded(p.externalId, apiKey);
     if (ok) enriched++;
     else errs++;
-  });
+  }, deadlineAt);
   return { scanned: pending.length, enriched, errors: errs, noKey };
 }
 async function fetchAgentHistoryByName(agentName, date) {
@@ -8451,7 +8465,7 @@ async function fetchAgentHistoryByName(agentName, date) {
   });
   return { parks: parks.length, totalEntries, byType, perPark };
 }
-async function syncBookingHistoryBatch(limit = 50) {
+async function syncBookingHistoryBatch(limit = 50, deadlineAt) {
   const db2 = await getDb();
   if (!db2) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
   const { isNull: isNull3, and: andOp, gte: gte5 } = await import("drizzle-orm");
@@ -8515,7 +8529,7 @@ async function syncBookingHistoryBatch(limit = 50) {
     const ok = await syncBookingHistory(p.externalId, apiKey);
     if (ok) fetched++;
     else errs++;
-  });
+  }, deadlineAt);
   return { scanned: pending.length, fetched, errors: errs, noKey };
 }
 async function syncBookings(opts) {
@@ -8633,31 +8647,51 @@ function startBookingSyncScheduler() {
 }
 async function runRecentCronSync(windowMinutes = 30) {
   const t0 = Date.now();
+  const deadlineAt = t0 + CRON_BUDGET_MS;
   const now = /* @__PURE__ */ new Date();
-  const since = new Date(now.getTime() - windowMinutes * 6e4);
+  let since = new Date(now.getTime() - windowMinutes * 6e4);
+  try {
+    const last = await getLastSyncSuccessAt("api_sync");
+    if (last) {
+      const lastDate = /* @__PURE__ */ new Date(String(last).replace(" ", "T") + "Z");
+      if (!Number.isNaN(lastDate.getTime())) {
+        const candidate = new Date(lastDate.getTime() - 60 * 6e4);
+        if (candidate < since) since = candidate;
+      }
+    }
+  } catch {
+  }
+  const clampStart = new Date(now.getTime() - 3 * 864e5);
+  if (since < clampStart) since = clampStart;
   const fmt3 = (d) => d.toISOString().slice(0, 10);
   const report = await syncBookings({
     startDate: fmt3(since),
     endDate: fmt3(now)
   });
-  const targeted = await enrichBookingsBatch({
+  const targeted = Date.now() < deadlineAt - 5e3 ? await enrichBookingsBatch({
     externalIds: report.enrichTargets,
-    // Cap para caber no maxDuration do Vercel num burst; o resto fica enrichedAt
-    // NULL e é apanhado pelo backlog nos ciclos seguintes.
-    limit: Math.min(Math.max(report.enrichTargets.length, 1), 120)
-  });
-  const [backlogResult, historyResult] = await Promise.allSettled([
-    enrichBookingsBatch(20),
-    syncBookingHistoryBatch(30)
-  ]);
-  const backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
-  const enriched = targeted.enriched + backlogEnriched;
-  const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+    // Cap num burst; o resto fica enrichedAt NULL e é apanhado pelo
+    // backlog nos ciclos seguintes.
+    limit: Math.min(Math.max(report.enrichTargets.length, 1), 120),
+    deadlineAt
+  }) : { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+  let backlogEnriched = 0;
+  let historyFetched = 0;
+  if (Date.now() < deadlineAt - 5e3) {
+    const [backlogResult, historyResult] = await Promise.allSettled([
+      enrichBookingsBatch({ limit: 20, deadlineAt }),
+      syncBookingHistoryBatch(30, deadlineAt)
+    ]);
+    backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
+    historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
+  }
   return {
     report,
-    enriched,
+    enriched: targeted.enriched + backlogEnriched,
     historyFetched,
-    durationMs: Date.now() - t0
+    durationMs: Date.now() - t0,
+    windowStart: fmt3(since),
+    partial: Date.now() >= deadlineAt - 5e3
   };
 }
 async function runFutureCronSync(weeksAhead = 4) {
@@ -8672,7 +8706,7 @@ async function runFutureCronSync(weeksAhead = 4) {
   });
   return { report, durationMs: Date.now() - t0 };
 }
-var projectMapCache, projectMapCacheTime, CACHE_TTL, aliasResolverCache, aliasResolverCacheTime, CITY_TO_PT, ENRICH_CONCURRENCY, SYNC_INTERVAL;
+var projectMapCache, projectMapCacheTime, CACHE_TTL, aliasResolverCache, aliasResolverCacheTime, CITY_TO_PT, ENRICH_CONCURRENCY, SYNC_INTERVAL, CRON_BUDGET_MS;
 var init_multiparkBookingSync = __esm({
   "server/jobs/multiparkBookingSync.ts"() {
     "use strict";
@@ -8694,6 +8728,7 @@ var init_multiparkBookingSync = __esm({
     };
     ENRICH_CONCURRENCY = 5;
     SYNC_INTERVAL = 15 * 60 * 1e3;
+    CRON_BUDGET_MS = Number(process.env.CRON_BUDGET_MS || 5e4);
   }
 });
 
