@@ -40,12 +40,16 @@ __export(schema_exports, {
   googleReviews: () => googleReviews,
   gpsAlerts: () => gpsAlerts,
   incidents: () => incidents,
+  internalCampaignCosts: () => internalCampaignCosts,
+  internalCampaignKeys: () => internalCampaignKeys,
+  internalCampaigns: () => internalCampaigns,
   inviteTokens: () => inviteTokens,
   invoices: () => invoices,
   lostFoundItems: () => lostFoundItems,
   lostFoundMessages: () => lostFoundMessages,
   lostFoundPhotos: () => lostFoundPhotos,
   marketingExpenses: () => marketingExpenses,
+  multiparkBookingExtras: () => multiparkBookingExtras,
   multiparkBookingHistory: () => multiparkBookingHistory,
   multiparkBookings: () => multiparkBookings,
   multiparkDailySnapshots: () => multiparkDailySnapshots,
@@ -63,6 +67,7 @@ __export(schema_exports, {
   quizAttempts: () => quizAttempts,
   quizQuestions: () => quizQuestions,
   radioTranscriptions: () => radioTranscriptions,
+  recurringExpenses: () => recurringExpenses,
   schedules: () => schedules,
   services: () => services,
   speedAlerts: () => speedAlerts,
@@ -79,7 +84,7 @@ __export(schema_exports, {
   vehicles: () => vehicles
 });
 import { mysqlTable, bigint, int, varchar, text, timestamp, index, uniqueIndex, decimal, mysqlEnum, tinyint } from "drizzle-orm/mysql-core";
-var activityLogs, annualReports, apiKeys, campaignDailyStats, campaigns, careerExamAttempts, careerExamQuestions, careerExams, appNotifications, complaintDriversOnDuty, complaintPenaltyConfig, complaintMessages, complaintPhotos, complaints, dailyDriverHistory, employeeDocuments, employees, employeeLeaves, employeeSalaryHistory, employeePenalties, expenseCategories, expenses, extraRates, extrasDiaAssignments, faqs, googleReviews, gpsAlerts, incidents, inviteTokens, invoices, lostFoundItems, lostFoundMessages, lostFoundPhotos, bookingHistory, marketingExpenses, multiparkBookings, multiparkDailySnapshots, multiparkSyncLogs, partnershipInvoices, partnershipTransactions, partnerships, multiparkBookingHistory, partnerAliases, payslipHistory, pdaCheckins, pdas, performanceEvaluations, projectEmployees, projects, quizAttempts, quizQuestions, radioTranscriptions, schedules, services, speedAlerts, speedLimits, speedViolations, taskAssignees, tasks, timeRecords, trainingCategories, trainingManuals, trainingVideos, users, vehicleMovements, vehicles;
+var activityLogs, annualReports, apiKeys, campaignDailyStats, campaigns, internalCampaigns, internalCampaignKeys, internalCampaignCosts, careerExamAttempts, careerExamQuestions, careerExams, appNotifications, complaintDriversOnDuty, complaintPenaltyConfig, complaintMessages, complaintPhotos, complaints, dailyDriverHistory, employeeDocuments, employees, employeeLeaves, employeeSalaryHistory, employeePenalties, expenseCategories, expenses, recurringExpenses, extraRates, extrasDiaAssignments, faqs, googleReviews, gpsAlerts, incidents, inviteTokens, invoices, lostFoundItems, lostFoundMessages, lostFoundPhotos, bookingHistory, marketingExpenses, multiparkBookings, multiparkBookingExtras, multiparkDailySnapshots, multiparkSyncLogs, partnershipInvoices, partnershipTransactions, partnerships, multiparkBookingHistory, partnerAliases, payslipHistory, pdaCheckins, pdas, performanceEvaluations, projectEmployees, projects, quizAttempts, quizQuestions, radioTranscriptions, schedules, services, speedAlerts, speedLimits, speedViolations, taskAssignees, tasks, timeRecords, trainingCategories, trainingManuals, trainingVideos, users, vehicleMovements, vehicles;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -151,6 +156,56 @@ var init_schema = __esm({
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
       updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
     });
+    internalCampaigns = mysqlTable("internal_campaigns", {
+      id: int().autoincrement().primaryKey(),
+      name: varchar({ length: 256 }).notNull(),
+      projectId: int(),
+      // "para onde vai" — projeto/centro de custos
+      dailyBudget: decimal({ precision: 10, scale: 2 }),
+      // orçamento diário (Google Ads); gasto estimado = dailyBudget × dias
+      city: varchar({ length: 64 }),
+      brand: varchar({ length: 32 }),
+      campaignStatus: mysqlEnum(["active", "paused", "completed"]).default("active").notNull(),
+      notes: text(),
+      createdById: int(),
+      createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
+      updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
+    });
+    internalCampaignKeys = mysqlTable(
+      "internal_campaign_keys",
+      {
+        id: int().autoincrement().primaryKey(),
+        campaignType: mysqlEnum(["internal", "ad"]).default("internal").notNull(),
+        // internal_campaigns ou campaigns
+        campaignId: int().notNull(),
+        // FK -> internal_campaigns.id OU campaigns.id (conforme campaignType)
+        keyType: mysqlEnum(["campaign_id", "campaign_name", "url_pattern"]).notNull(),
+        keyValue: varchar({ length: 512 }).notNull(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        uniqueIndex("internal_campaign_keys_type_value_unique").on(table.keyType, table.keyValue),
+        index("idx_internal_campaign_keys_campaign").on(table.campaignId)
+      ]
+    );
+    internalCampaignCosts = mysqlTable(
+      "internal_campaign_costs",
+      {
+        id: int().autoincrement().primaryKey(),
+        campaignType: mysqlEnum(["internal", "ad"]).default("internal").notNull(),
+        campaignId: int().notNull(),
+        // FK -> internal_campaigns.id OU campaigns.id
+        costDate: varchar({ length: 10 }).notNull(),
+        // YYYY-MM-DD
+        amount: decimal({ precision: 10, scale: 2 }).notNull(),
+        notes: varchar({ length: 255 }),
+        createdById: int(),
+        createdAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        uniqueIndex("internal_campaign_costs_campaign_date_unique").on(table.campaignType, table.campaignId, table.costDate)
+      ]
+    );
     careerExamAttempts = mysqlTable("career_exam_attempts", {
       id: int().autoincrement().primaryKey(),
       examId: int().notNull(),
@@ -420,6 +475,24 @@ var init_schema = __esm({
       invoiceImageKey: varchar({ length: 512 }),
       extractedByAi: tinyint().default(0),
       notes: text(),
+      recurringTemplateId: int(),
+      // se gerada por um modelo recorrente
+      createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
+      updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
+    });
+    recurringExpenses = mysqlTable("recurring_expenses", {
+      id: int().autoincrement().primaryKey(),
+      description: text(),
+      supplier: varchar({ length: 256 }),
+      amount: decimal({ precision: 10, scale: 2 }).notNull(),
+      currency: varchar({ length: 8 }).default("EUR").notNull(),
+      paymentMethod: mysqlEnum(["cash", "card", "transfer", "check", "other"]).default("transfer"),
+      categoryId: int(),
+      projectId: int(),
+      dayOfMonth: int().default(1).notNull(),
+      active: tinyint().default(1).notNull(),
+      notes: text(),
+      createdById: int(),
       createdAt: timestamp({ mode: "string" }).defaultNow().notNull(),
       updatedAt: timestamp({ mode: "string" }).defaultNow().onUpdateNow().notNull()
     });
@@ -698,6 +771,15 @@ var init_schema = __esm({
         spotType: mysqlEnum(["covered", "uncovered", "indoor", "unknown"]),
         parkBrand: varchar({ length: 16 }),
         paymentMethod: varchar({ length: 128 }),
+        totalPaid: decimal({ precision: 10, scale: 2 }),
+        pro: tinyint().default(0),
+        partnerId: varchar({ length: 128 }),
+        partnerName: varchar({ length: 256 }),
+        campaignId: varchar({ length: 128 }),
+        campaignName: varchar({ length: 256 }),
+        cashValidatedByName: varchar({ length: 256 }),
+        driverValidatedByName: varchar({ length: 256 }),
+        cashierClosedByName: varchar({ length: 256 }),
         cancelledAt: timestamp({ mode: "string" }),
         cancelReason: text(),
         notes: text(),
@@ -708,6 +790,22 @@ var init_schema = __esm({
       },
       (table) => [
         uniqueIndex("multipark_bookings_externalId_unique").on(table.externalId)
+      ]
+    );
+    multiparkBookingExtras = mysqlTable(
+      "multipark_booking_extras",
+      {
+        id: int().autoincrement().primaryKey(),
+        bookingExternalId: varchar({ length: 128 }).notNull(),
+        extraId: varchar({ length: 128 }),
+        name: varchar({ length: 256 }),
+        description: varchar({ length: 512 }),
+        price: decimal({ precision: 10, scale: 2 }),
+        done: tinyint().default(0),
+        syncedAt: timestamp({ mode: "string" }).defaultNow().notNull()
+      },
+      (table) => [
+        index("idx_mp_booking_extras_booking").on(table.bookingExternalId)
       ]
     );
     multiparkDailySnapshots = mysqlTable("multipark_daily_snapshots", {
@@ -1160,11 +1258,22 @@ __export(partnerTypes_exports, {
   PARTNER_TYPE_BY_ID: () => PARTNER_TYPE_BY_ID,
   getPartnerType: () => getPartnerType,
   parsePartnerConfig: () => parsePartnerConfig,
+  partnerFormFields: () => partnerFormFields,
   serializePartnerConfig: () => serializePartnerConfig
 });
 function getPartnerType(id) {
   if (!id) return PARTNER_TYPE_BY_ID["outro"];
   return PARTNER_TYPE_BY_ID[id] ?? PARTNER_TYPE_BY_ID["outro"];
+}
+function partnerFormFields(typeId) {
+  const cm = getPartnerType(typeId).chargeModel;
+  return {
+    commission: cm === "commission_on_revenue" || cm === "small_commission",
+    invoiceTiming: cm === "commission_on_revenue" || cm === "monthly_invoice_discount",
+    monthlyFee: cm === "monthly_fee" || cm === "yearly_fee",
+    avencaDate: cm === "monthly_fee" || cm === "yearly_fee",
+    discountApplied: cm === "prepaid_with_discount" || cm === "monthly_invoice_discount"
+  };
 }
 function parsePartnerConfig(notes) {
   if (!notes) return {};
@@ -1188,6 +1297,12 @@ function serializePartnerConfig(cfg, plainNotes = "") {
   }
   if (typeof cfg.prizeBudget === "number" && Number.isFinite(cfg.prizeBudget)) {
     clean.prizeBudget = cfg.prizeBudget;
+  }
+  if (typeof cfg.avencaDate === "string" && cfg.avencaDate.trim()) {
+    clean.avencaDate = cfg.avencaDate.trim();
+  }
+  if (typeof cfg.invoiceDay === "number" && Number.isFinite(cfg.invoiceDay)) {
+    clean.invoiceDay = cfg.invoiceDay;
   }
   if (Object.keys(clean).length === 0) return plainNotes;
   return JSON.stringify(clean);
@@ -1580,12 +1695,13 @@ __export(db_exports, {
   updateUser: () => updateUser,
   updateUserRole: () => updateUserRole,
   updateVehicle: () => updateVehicle,
+  upsertBookingExtras: () => upsertBookingExtras,
   upsertDailySnapshot: () => upsertDailySnapshot,
   upsertMultiparkBooking: () => upsertMultiparkBooking,
   upsertSchedule: () => upsertSchedule,
   upsertUser: () => upsertUser
 });
-import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
 function toMysqlDateTime(d) {
@@ -1606,8 +1722,8 @@ async function getDb() {
 }
 async function upsertUser(user) {
   if (!user.openId) throw new Error("User openId is required for upsert");
-  const db = await getDb();
-  if (!db) return;
+  const db2 = await getDb();
+  if (!db2) return;
   const values = { openId: user.openId };
   const updateSet = {};
   const textFields = ["name", "email", "loginMethod"];
@@ -1632,35 +1748,35 @@ async function upsertUser(user) {
   const nowMysql2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (!values.lastSignedIn) values.lastSignedIn = nowMysql2;
   if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = nowMysql2;
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  await db2.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 async function getUserByOpenId(openId) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
 }
 async function getAllUsers() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(users).orderBy(desc(users.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(users).orderBy(desc(users.createdAt));
 }
 async function updateUserRole(userId, role) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(users).set({ role }).where(eq(users.id, userId));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(users).set({ role }).where(eq(users.id, userId));
 }
 async function getUserByEmail(email) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(users).where(eq(users.email, email)).limit(1);
   return result[0];
 }
 async function createManualUser(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   const openId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  await db.insert(users).values({
+  await db2.insert(users).values({
     openId,
     name: data.name,
     email: data.email,
@@ -1669,12 +1785,12 @@ async function createManualUser(data) {
     loginMethod: "manual",
     isActive: 1
   });
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db2.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
 }
 async function updateUser(userId, data) {
-  const db = await getDb();
-  if (!db) return;
+  const db2 = await getDb();
+  if (!db2) return;
   const updates = {};
   if (data.name !== void 0) updates.name = data.name;
   if (data.email !== void 0) updates.email = data.email;
@@ -1682,48 +1798,48 @@ async function updateUser(userId, data) {
   if (data.department !== void 0) updates.department = data.department;
   if (data.isActive !== void 0) updates.isActive = data.isActive ? 1 : 0;
   if (Object.keys(updates).length > 0) {
-    await db.update(users).set(updates).where(eq(users.id, userId));
+    await db2.update(users).set(updates).where(eq(users.id, userId));
   }
 }
 async function toggleUserActive(userId, isActive) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(users).set({ isActive: isActive ? 1 : 0 }).where(eq(users.id, userId));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(users).set({ isActive: isActive ? 1 : 0 }).where(eq(users.id, userId));
 }
 async function getUserById(userId) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(users).where(eq(users.id, userId)).limit(1);
   return result[0];
 }
 async function getSuperAdmins() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(users).where(eq(users.role, "super_admin"));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(users).where(eq(users.role, "super_admin"));
 }
 async function getAllCategories() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(expenseCategories).orderBy(expenseCategories.name);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(expenseCategories).orderBy(expenseCategories.name);
 }
 async function createCategory(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(expenseCategories).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(expenseCategories).values(data);
 }
 async function seedDefaultCategories() {
-  const db = await getDb();
-  if (!db) return;
-  const existing = await db.select().from(expenseCategories).limit(1);
+  const db2 = await getDb();
+  if (!db2) return;
+  const existing = await db2.select().from(expenseCategories).limit(1);
   if (existing.length > 0) {
-    await db.update(expenseCategories).set({ name: "Terminal" }).where(eq(expenseCategories.name, "Terminal de Pagamento"));
+    await db2.update(expenseCategories).set({ name: "Terminal" }).where(eq(expenseCategories.name, "Terminal de Pagamento"));
     for (const cat of [
       { name: "Bancos", department: "Financeiro", color: "#1d4ed8" },
       { name: "Impostos", department: "Financeiro", color: "#dc2626" },
       { name: "TI", department: "RH", color: "#0284c7" }
     ]) {
-      const found = await db.select().from(expenseCategories).where(eq(expenseCategories.name, cat.name)).limit(1);
-      if (found.length === 0) await db.insert(expenseCategories).values(cat);
+      const found = await db2.select().from(expenseCategories).where(eq(expenseCategories.name, cat.name)).limit(1);
+      if (found.length === 0) await db2.insert(expenseCategories).values(cat);
     }
     return;
   }
@@ -1748,11 +1864,11 @@ async function seedDefaultCategories() {
     { name: "Despesas Operacionais", department: "Operacional", color: "#d97706" },
     { name: "Outros", department: "Geral", color: "#94a3b8" }
   ];
-  await db.insert(expenseCategories).values(defaults);
+  await db2.insert(expenseCategories).values(defaults);
 }
 async function getExpenses(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.startDate) conditions.push(gte(expenses.expenseDate, toMysqlDateTime(filters.startDate)));
   if (filters.endDate) conditions.push(lte(expenses.expenseDate, toMysqlDateTime(filters.endDate)));
@@ -1768,7 +1884,7 @@ async function getExpenses(filters = {}) {
       )
     );
   }
-  const query = db.select({
+  const query = db2.select({
     expense: expenses,
     category: expenseCategories,
     project: projects,
@@ -1781,9 +1897,9 @@ async function getExpenses(filters = {}) {
   return query;
 }
 async function getExpenseById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select({
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select({
     expense: expenses,
     category: expenseCategories,
     project: projects,
@@ -1793,24 +1909,24 @@ async function getExpenseById(id) {
   return result[0];
 }
 async function createExpense(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const result = await db.insert(expenses).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const result = await db2.insert(expenses).values(data);
   return result;
 }
 async function updateExpense(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(expenses).set(data).where(eq(expenses.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(expenses).set(data).where(eq(expenses.id, id));
 }
 async function deleteExpense(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(expenses).where(eq(expenses.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(expenses).where(eq(expenses.id, id));
 }
 async function getExpenseStats() {
-  const db = await getDb();
-  if (!db) return null;
+  const db2 = await getDb();
+  if (!db2) return null;
   const now = /* @__PURE__ */ new Date();
   const startOfDay2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfWeek = new Date(now);
@@ -1818,33 +1934,33 @@ async function getExpenseStats() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   const [daily, weekly, monthly, yearly, byCategory, byProject, byUser, pending, overdue] = await Promise.all([
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfDay2))),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfWeek))),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfYear))),
-    db.select({
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfDay2))),
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfWeek))),
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))),
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(gte(expenses.expenseDate, toMysqlDateTime(startOfYear))),
+    db2.select({
       categoryId: expenses.categoryId,
       categoryName: expenseCategories.name,
       color: expenseCategories.color,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
     }).from(expenses).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.categoryId, expenseCategories.name, expenseCategories.color).orderBy(desc(sql`SUM(expenses.amount)`)).limit(8),
-    db.select({
+    db2.select({
       projectId: expenses.projectId,
       projectName: projects.name,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
     }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.projectId, projects.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
-    db.select({
+    db2.select({
       userId: expenses.insertedById,
       userName: users.name,
       total: sql`COALESCE(SUM(expenses.amount), 0)`,
       count: sql`COUNT(*)`
     }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(gte(expenses.expenseDate, toMysqlDateTime(startOfMonth))).groupBy(expenses.insertedById, users.name).orderBy(desc(sql`SUM(expenses.amount)`)).limit(5),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "pending")),
-    db.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "overdue"))
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "pending")),
+    db2.select({ total: sql`COALESCE(SUM(amount), 0)`, count: sql`COUNT(*)` }).from(expenses).where(eq(expenses.status, "overdue"))
   ]);
-  const monthlyTrend = await db.select({
+  const monthlyTrend = await db2.select({
     month: sql`DATE_FORMAT(expenseDate, '%Y-%m')`,
     total: sql`COALESCE(SUM(amount), 0)`,
     count: sql`COUNT(*)`
@@ -1863,12 +1979,12 @@ async function getExpenseStats() {
   };
 }
 async function getUpcomingPayments(daysAhead = 7) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const now = /* @__PURE__ */ new Date();
   const future = /* @__PURE__ */ new Date();
   future.setDate(future.getDate() + daysAhead);
-  return db.select({
+  return db2.select({
     expense: expenses,
     insertedBy: users,
     project: projects
@@ -1881,70 +1997,70 @@ async function getUpcomingPayments(daysAhead = 7) {
   ).orderBy(expenses.paymentDueDate);
 }
 async function getOverdueExpenses() {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const now = /* @__PURE__ */ new Date();
-  return db.select({ expense: expenses, insertedBy: users }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
+  return db2.select({ expense: expenses, insertedBy: users }).from(expenses).leftJoin(users, eq(expenses.insertedById, users.id)).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 async function markOverdueExpenses() {
-  const db = await getDb();
-  if (!db) return;
+  const db2 = await getDb();
+  if (!db2) return;
   const now = /* @__PURE__ */ new Date();
-  await db.update(expenses).set({ status: "overdue" }).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
+  await db2.update(expenses).set({ status: "overdue" }).where(and(eq(expenses.status, "pending"), lte(expenses.paymentDueDate, toMysqlDateTime(now))));
 }
 async function logActivity(data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(activityLogs).values(data);
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(activityLogs).values(data);
 }
 async function getActivityLogs(limit = 100, filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conds = [];
   if (filters.entity) conds.push(eq(activityLogs.entity, filters.entity));
   if (filters.action) conds.push(eq(activityLogs.action, filters.action));
   if (filters.userId) conds.push(eq(activityLogs.userId, filters.userId));
-  return db.select({ log: activityLogs, user: users }).from(activityLogs).leftJoin(users, eq(activityLogs.userId, users.id)).where(conds.length > 0 ? and(...conds) : void 0).orderBy(desc(activityLogs.createdAt)).limit(Math.min(Math.max(limit, 1), 2e3));
+  return db2.select({ log: activityLogs, user: users }).from(activityLogs).leftJoin(users, eq(activityLogs.userId, users.id)).where(conds.length > 0 ? and(...conds) : void 0).orderBy(desc(activityLogs.createdAt)).limit(Math.min(Math.max(limit, 1), 2e3));
 }
 async function getAllEmployees(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.isActive !== void 0) conditions.push(eq(employees.isActive, filters.isActive ? 1 : 0));
   if (filters.position) conditions.push(eq(employees.position, filters.position));
-  const q = db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).orderBy(employees.fullName);
+  const q = db2.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).orderBy(employees.fullName);
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
 async function getEmployeeById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.id, id)).limit(1);
   return result[0];
 }
 async function getEmployeeByUserId(userId) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.userId, userId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.userId, userId)).limit(1);
   return result[0];
 }
 async function createEmployee(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  return db.insert(employees).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  return db2.insert(employees).values(data);
 }
 async function updateEmployee(id, data, changedById) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   if (data.monthlySalary !== void 0 || data.mealAllowancePerDay !== void 0) {
-    const [current] = await db.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, id)).limit(1);
+    const [current] = await db2.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, id)).limit(1);
     const newSalary = data.monthlySalary !== void 0 ? data.monthlySalary : current?.monthlySalary;
     const newMeal = data.mealAllowancePerDay !== void 0 ? data.mealAllowancePerDay : current?.mealAllowancePerDay;
     const changed = String(current?.monthlySalary ?? "") !== String(newSalary ?? "") || String(current?.mealAllowancePerDay ?? "") !== String(newMeal ?? "");
     if (changed) {
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-      await db.update(employeeSalaryHistory).set({ effectiveUntil: yesterday }).where(and(eq(employeeSalaryHistory.employeeId, id), isNull(employeeSalaryHistory.effectiveUntil)));
-      await db.insert(employeeSalaryHistory).values({
+      await db2.update(employeeSalaryHistory).set({ effectiveUntil: yesterday }).where(and(eq(employeeSalaryHistory.employeeId, id), isNull(employeeSalaryHistory.effectiveUntil)));
+      await db2.insert(employeeSalaryHistory).values({
         employeeId: id,
         monthlySalary: newSalary ?? null,
         mealAllowancePerDay: newMeal ?? null,
@@ -1953,12 +2069,12 @@ async function updateEmployee(id, data, changedById) {
       });
     }
   }
-  await db.update(employees).set(data).where(eq(employees.id, id));
+  await db2.update(employees).set(data).where(eq(employees.id, id));
 }
 async function getEmployeeSalaryAt(employeeId, dateStr) {
-  const db = await getDb();
-  if (!db) return null;
-  const [hist] = await db.select().from(employeeSalaryHistory).where(and(
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [hist] = await db2.select().from(employeeSalaryHistory).where(and(
     eq(employeeSalaryHistory.employeeId, employeeId),
     lte(employeeSalaryHistory.effectiveFrom, dateStr),
     or(
@@ -1967,18 +2083,18 @@ async function getEmployeeSalaryAt(employeeId, dateStr) {
     )
   )).orderBy(desc(employeeSalaryHistory.effectiveFrom)).limit(1);
   if (hist) return { monthlySalary: hist.monthlySalary, mealAllowancePerDay: hist.mealAllowancePerDay };
-  const [emp] = await db.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+  const [emp] = await db2.select({ monthlySalary: employees.monthlySalary, mealAllowancePerDay: employees.mealAllowancePerDay }).from(employees).where(eq(employees.id, employeeId)).limit(1);
   return emp ?? null;
 }
 async function getEmployeeSalaryHistory(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(employeeSalaryHistory).where(eq(employeeSalaryHistory.employeeId, employeeId)).orderBy(desc(employeeSalaryHistory.effectiveFrom));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(employeeSalaryHistory).where(eq(employeeSalaryHistory.employeeId, employeeId)).orderBy(desc(employeeSalaryHistory.effectiveFrom));
 }
 async function createEmployeeLeave(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(employeeLeaves).values({
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(employeeLeaves).values({
     employeeId: data.employeeId,
     leaveType: data.leaveType,
     fromDate: data.fromDate,
@@ -1988,28 +2104,28 @@ async function createEmployeeLeave(data) {
   });
 }
 async function getEmployeeLeaves(employeeId, year) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conds = [eq(employeeLeaves.employeeId, employeeId)];
   if (year) {
     conds.push(gte(employeeLeaves.toDate, `${year}-01-01`));
     conds.push(lte(employeeLeaves.fromDate, `${year}-12-31`));
   }
-  return db.select().from(employeeLeaves).where(and(...conds)).orderBy(desc(employeeLeaves.fromDate));
+  return db2.select().from(employeeLeaves).where(and(...conds)).orderBy(desc(employeeLeaves.fromDate));
 }
 async function deleteEmployeeLeave(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(employeeLeaves).where(eq(employeeLeaves.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(employeeLeaves).where(eq(employeeLeaves.id, id));
 }
 async function getLeaveDaysForMonth(employeeId, year, month) {
-  const db = await getDb();
+  const db2 = await getDb();
   const out = /* @__PURE__ */ new Set();
-  if (!db) return out;
+  if (!db2) return out;
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-  const rows = await db.select({ fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate }).from(employeeLeaves).where(and(
+  const rows = await db2.select({ fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate }).from(employeeLeaves).where(and(
     eq(employeeLeaves.employeeId, employeeId),
     lte(employeeLeaves.fromDate, end),
     gte(employeeLeaves.toDate, start)
@@ -2027,9 +2143,9 @@ async function getLeaveDaysForMonth(employeeId, year, month) {
   return out;
 }
 async function createEmployeePenalty(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(employeePenalties).values({
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(employeePenalties).values({
     employeeId: data.employeeId,
     reason: data.reason,
     severity: data.severity ?? "penalty",
@@ -2039,28 +2155,28 @@ async function createEmployeePenalty(data) {
   });
 }
 async function getOpenPenalties(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(employeePenalties).where(and(eq(employeePenalties.employeeId, employeeId), isNull(employeePenalties.clearedAt))).orderBy(desc(employeePenalties.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(employeePenalties).where(and(eq(employeePenalties.employeeId, employeeId), isNull(employeePenalties.clearedAt))).orderBy(desc(employeePenalties.createdAt));
 }
 async function getAllOpenPenaltiesByEmployee() {
-  const db = await getDb();
-  if (!db) return /* @__PURE__ */ new Map();
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return /* @__PURE__ */ new Map();
+  const rows = await db2.select({
     employeeId: employeePenalties.employeeId,
     totalPoints: sql`COALESCE(SUM(${employeePenalties.points}), 0)`
   }).from(employeePenalties).where(isNull(employeePenalties.clearedAt)).groupBy(employeePenalties.employeeId);
   return new Map(rows.map((r) => [r.employeeId, Number(r.totalPoints)]));
 }
 async function clearPenalty(id, clearedById) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(employeePenalties).set({ clearedAt: toMysqlDateTime(/* @__PURE__ */ new Date()), clearedById }).where(eq(employeePenalties.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(employeePenalties).set({ clearedAt: toMysqlDateTime(/* @__PURE__ */ new Date()), clearedById }).where(eq(employeePenalties.id, id));
 }
 async function unblockEmployeeLogin(employeeId, clearedById) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
   await logActivity({
     userId: clearedById,
     action: "unblock",
@@ -2070,9 +2186,9 @@ async function unblockEmployeeLogin(employeeId, clearedById) {
   });
 }
 async function checkExtraDocsCompliance(employeeId) {
-  const db = await getDb();
-  if (!db) return null;
-  const [emp] = await db.select({
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [emp] = await db2.select({
     id: employees.id,
     position: employees.position,
     contractStart: employees.contractStart,
@@ -2087,13 +2203,13 @@ async function checkExtraDocsCompliance(employeeId) {
   const missingDocs = checklist.filter((c) => !c.present).map((c) => c.docType);
   if (missingDocs.length === 0) {
     if (emp.loginBlocked || emp.docsWarningAt) {
-      await db.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
+      await db2.update(employees).set({ loginBlocked: 0, loginBlockedReason: null, docsWarningAt: null }).where(eq(employees.id, employeeId));
     }
     return { blocked: false, warning: false, missingDocs: [], daysSinceStart };
   }
   if (daysSinceStart >= 21) {
     if (!emp.loginBlocked) {
-      await db.update(employees).set({
+      await db2.update(employees).set({
         loginBlocked: 1,
         loginBlockedReason: `Documentos obrigat\xF3rios em falta h\xE1 ${daysSinceStart} dias: ${missingDocs.join(", ")}`
       }).where(eq(employees.id, employeeId));
@@ -2101,7 +2217,7 @@ async function checkExtraDocsCompliance(employeeId) {
     return { blocked: true, warning: true, missingDocs, daysSinceStart };
   }
   if (daysSinceStart >= 14 && !emp.docsWarningAt) {
-    await db.update(employees).set({ docsWarningAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(employees.id, employeeId));
+    await db2.update(employees).set({ docsWarningAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(employees.id, employeeId));
     return { blocked: false, warning: true, missingDocs, daysSinceStart };
   }
   return {
@@ -2112,8 +2228,8 @@ async function checkExtraDocsCompliance(employeeId) {
   };
 }
 async function getRhDashboardSummary(year, month, monthsLookback = 3) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const currentPayroll = await getPayrollData(year, month);
   const lookback = [];
   for (let i = 1; i <= monthsLookback; i++) {
@@ -2142,8 +2258,8 @@ async function getRhDashboardSummary(year, month, monthsLookback = 3) {
         netEstimate: r?.netEstimate ?? 0
       };
     });
-    const totalReceived = history.reduce((s, h) => s + h.totalPayment, 0);
-    const totalHoursLookback = history.reduce((s, h) => s + h.totalHours, 0);
+    const totalReceived = history.reduce((s, h2) => s + h2.totalPayment, 0);
+    const totalHoursLookback = history.reduce((s, h2) => s + h2.totalHours, 0);
     const avgPerHour = totalHoursLookback > 0 ? totalReceived / totalHoursLookback : 0;
     const openPoints = penaltiesByEmp.get(empId) ?? 0;
     out.push({
@@ -2169,9 +2285,9 @@ async function getRhDashboardSummary(year, month, monthsLookback = 3) {
   return out;
 }
 async function processExtraDiaNoShows(dateStr) {
-  const db = await getDb();
-  if (!db) return { scanned: 0, created: 0, blocked: [] };
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return { scanned: 0, created: 0, blocked: [] };
+  const rows = await db2.select({
     id: extrasDiaAssignments.id,
     employeeId: extrasDiaAssignments.employeeId,
     personName: extrasDiaAssignments.personName
@@ -2186,7 +2302,7 @@ async function processExtraDiaNoShows(dateStr) {
   const affected = /* @__PURE__ */ new Set();
   for (const r of rows) {
     if (r.employeeId == null) continue;
-    const [existing] = await db.select({ id: employeePenalties.id }).from(employeePenalties).where(and(
+    const [existing] = await db2.select({ id: employeePenalties.id }).from(employeePenalties).where(and(
       eq(employeePenalties.employeeId, r.employeeId),
       eq(employeePenalties.reason, "no_show_extra_dia"),
       eq(employeePenalties.relatedId, r.id)
@@ -2194,14 +2310,14 @@ async function processExtraDiaNoShows(dateStr) {
     if (existing) continue;
     const start = /* @__PURE__ */ new Date(`${dateStr}T00:00:00`);
     const end = /* @__PURE__ */ new Date(`${dateStr}T23:59:59`);
-    const checkIns = await db.select({ id: timeRecords.id }).from(timeRecords).where(and(
+    const checkIns = await db2.select({ id: timeRecords.id }).from(timeRecords).where(and(
       eq(timeRecords.employeeId, r.employeeId),
       eq(timeRecords.type, "check_in"),
       gte(timeRecords.recordedAt, toMysqlDateTime(start)),
       lte(timeRecords.recordedAt, toMysqlDateTime(end))
     )).limit(1);
     if (checkIns.length > 0) continue;
-    await db.insert(employeePenalties).values({
+    await db2.insert(employeePenalties).values({
       employeeId: r.employeeId,
       reason: "no_show_extra_dia",
       severity: "penalty",
@@ -2214,10 +2330,10 @@ async function processExtraDiaNoShows(dateStr) {
   }
   const blocked = [];
   for (const empId of affected) {
-    const [agg] = await db.select({ total: sql`COALESCE(SUM(${employeePenalties.points}), 0)` }).from(employeePenalties).where(and(eq(employeePenalties.employeeId, empId), isNull(employeePenalties.clearedAt)));
+    const [agg] = await db2.select({ total: sql`COALESCE(SUM(${employeePenalties.points}), 0)` }).from(employeePenalties).where(and(eq(employeePenalties.employeeId, empId), isNull(employeePenalties.clearedAt)));
     const points = Number(agg?.total ?? 0);
     if (points >= 3) {
-      await db.update(employees).set({
+      await db2.update(employees).set({
         loginBlocked: 1,
         loginBlockedReason: `${points} faltas em extras-dia sem aviso. Contacta o supervisor.`
       }).where(eq(employees.id, empId));
@@ -2227,30 +2343,30 @@ async function processExtraDiaNoShows(dateStr) {
   return { scanned: rows.length, created, blocked };
 }
 async function deleteEmployee(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(employees).set({ isActive: 0 }).where(eq(employees.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(employees).set({ isActive: 0 }).where(eq(employees.id, id));
 }
 async function getEmployeeDocuments(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(employeeDocuments).where(eq(employeeDocuments.employeeId, employeeId)).orderBy(desc(employeeDocuments.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(employeeDocuments).where(eq(employeeDocuments.employeeId, employeeId)).orderBy(desc(employeeDocuments.createdAt));
 }
 async function createEmployeeDocument(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  return db.insert(employeeDocuments).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  return db2.insert(employeeDocuments).values(data);
 }
 async function createEmployeeDocumentsBatch(docs) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   if (docs.length === 0) return;
-  return db.insert(employeeDocuments).values(docs);
+  return db2.insert(employeeDocuments).values(docs);
 }
 async function deleteEmployeeDocument(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(employeeDocuments).where(eq(employeeDocuments.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(employeeDocuments).where(eq(employeeDocuments.id, id));
 }
 async function getDocumentChecklistForEmployee(employeeId) {
   const docs = await getEmployeeDocuments(employeeId);
@@ -2267,9 +2383,9 @@ async function getDocumentChecklistForEmployee(employeeId) {
   return MANDATORY_TYPES.map((t2) => ({ docType: t2, present: existing.has(t2) }));
 }
 async function getAllEmployeesDocumentStatus() {
-  const db = await getDb();
-  if (!db) return [];
-  const docs = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const docs = await db2.select({
     employeeId: employeeDocuments.employeeId,
     docType: employeeDocuments.docType
   }).from(employeeDocuments);
@@ -2281,56 +2397,56 @@ async function getAllEmployeesDocumentStatus() {
   return map;
 }
 async function getEmployeeSchedules(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(schedules).where(eq(schedules.employeeId, employeeId)).orderBy(schedules.weekday);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(schedules).where(eq(schedules.employeeId, employeeId)).orderBy(schedules.weekday);
 }
 async function deleteSchedule(employeeId, weekday) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(schedules).where(and(eq(schedules.employeeId, employeeId), eq(schedules.weekday, weekday)));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(schedules).where(and(eq(schedules.employeeId, employeeId), eq(schedules.weekday, weekday)));
 }
 async function upsertSchedule(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [existing] = await db.select({ id: schedules.id }).from(schedules).where(and(eq(schedules.employeeId, data.employeeId), eq(schedules.weekday, data.weekday))).limit(1);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [existing] = await db2.select({ id: schedules.id }).from(schedules).where(and(eq(schedules.employeeId, data.employeeId), eq(schedules.weekday, data.weekday))).limit(1);
   if (existing) {
-    await db.update(schedules).set({ startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay }).where(eq(schedules.id, existing.id));
+    await db2.update(schedules).set({ startTime: data.startTime, endTime: data.endTime, isWorkDay: data.isWorkDay }).where(eq(schedules.id, existing.id));
     return;
   }
-  await db.insert(schedules).values(data);
+  await db2.insert(schedules).values(data);
 }
 async function getTimeRecords(employeeId, startDate, endDate) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [eq(timeRecords.employeeId, employeeId)];
   if (startDate) conditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
   if (endDate) conditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
-  return db.select().from(timeRecords).where(and(...conditions)).orderBy(desc(timeRecords.recordedAt));
+  return db2.select().from(timeRecords).where(and(...conditions)).orderBy(desc(timeRecords.recordedAt));
 }
 async function createTimeRecord(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  return db.insert(timeRecords).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  return db2.insert(timeRecords).values(data);
 }
 async function getMonthlyHours(employeeId, year, month) {
-  const db = await getDb();
-  if (!db) return { totalHours: 0, records: [] };
+  const db2 = await getDb();
+  if (!db2) return { totalHours: 0, records: [] };
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
-  const records = await db.select().from(timeRecords).where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end)))).orderBy(timeRecords.recordedAt);
+  const records = await db2.select().from(timeRecords).where(and(eq(timeRecords.employeeId, employeeId), gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end)))).orderBy(timeRecords.recordedAt);
   const totalHours = records.reduce((sum, r) => sum + parseFloat(String(r.hoursWorked ?? 0)), 0);
   return { totalHours, records };
 }
 async function getExtraRates() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(extraRates).orderBy(extraRates.level);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(extraRates).orderBy(extraRates.level);
 }
 async function seedExtraRates() {
-  const db = await getDb();
-  if (!db) return;
-  const existing = await db.select().from(extraRates).limit(1);
+  const db2 = await getDb();
+  if (!db2) return;
+  const existing = await db2.select().from(extraRates).limit(1);
   if (existing.length > 0) return;
   const defaults = [
     { level: 1, hourlyRate: "8.50", label: "Extra N\xEDvel 1" },
@@ -2339,22 +2455,22 @@ async function seedExtraRates() {
     { level: 4, hourlyRate: "5.00", label: "Extra N\xEDvel 4" },
     { level: 5, hourlyRate: "4.00", label: "Extra N\xEDvel 5" }
   ];
-  await db.insert(extraRates).values(defaults);
+  await db2.insert(extraRates).values(defaults);
 }
 async function updateExtraRate(level, hourlyRate) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(extraRates).set({ hourlyRate }).where(eq(extraRates.level, level));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(extraRates).set({ hourlyRate }).where(eq(extraRates.level, level));
 }
 async function getHRStats() {
-  const db = await getDb();
-  if (!db) return null;
-  const [total] = await db.select({ count: sql`count(*)` }).from(employees).where(eq(employees.isActive, 1));
-  const [extras] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.position, "extra")));
-  const [permanent] = await db.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.contractType, "permanent")));
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [total] = await db2.select({ count: sql`count(*)` }).from(employees).where(eq(employees.isActive, 1));
+  const [extras] = await db2.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.position, "extra")));
+  const [permanent] = await db2.select({ count: sql`count(*)` }).from(employees).where(and(eq(employees.isActive, 1), eq(employees.contractType, "permanent")));
   const now = /* @__PURE__ */ new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [hoursRow] = await db.select({ total: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
+  const [hoursRow] = await db2.select({ total: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)` }).from(timeRecords).where(gte(timeRecords.recordedAt, toMysqlDateTime(monthStart)));
   return {
     totalActive: total?.count ?? 0,
     totalExtras: extras?.count ?? 0,
@@ -2363,38 +2479,38 @@ async function getHRStats() {
   };
 }
 async function getProjects() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(projects).orderBy(projects.name);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(projects).orderBy(projects.name);
 }
 async function getProjectById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const rows = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const rows = await db2.select().from(projects).where(eq(projects.id, id)).limit(1);
   return rows[0];
 }
 async function createProject(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(projects).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(projects).values(data);
 }
 async function updateProject(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(projects).set(data).where(eq(projects.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(projects).set(data).where(eq(projects.id, id));
 }
 async function deleteProject(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(projects).where(eq(projects.parentId, id));
-  await db.delete(projects).where(eq(projects.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(projects).where(eq(projects.parentId, id));
+  await db2.delete(projects).where(eq(projects.id, id));
 }
 async function seedProjectHierarchy() {
-  const db = await getDb();
-  if (!db) return;
-  const existing = await db.select().from(projects).where(and(eq(projects.name, "Multipark"), eq(projects.level, "group"))).limit(1);
+  const db2 = await getDb();
+  if (!db2) return;
+  const existing = await db2.select().from(projects).where(and(eq(projects.name, "Multipark"), eq(projects.level, "group"))).limit(1);
   if (existing.length > 0) return;
-  const [group] = await db.insert(projects).values({
+  const [group] = await db2.insert(projects).values({
     name: "Multipark",
     level: "group",
     color: "#6366f1"
@@ -2406,7 +2522,7 @@ async function seedProjectHierarchy() {
   ];
   const cityIds = {};
   for (const c of cityCfg) {
-    const [row] = await db.insert(projects).values({
+    const [row] = await db2.insert(projects).values({
       name: c.name,
       level: "city",
       parentId: group.id,
@@ -2422,7 +2538,7 @@ async function seedProjectHierarchy() {
   const brandIds = {};
   for (const b of brandCfg) {
     for (const city of b.cities) {
-      const [row] = await db.insert(projects).values({
+      const [row] = await db2.insert(projects).values({
         name: b.name,
         level: "brand",
         parentId: cityIds[city],
@@ -2448,7 +2564,7 @@ async function seedProjectHierarchy() {
   ];
   for (const p of parkCfg) {
     const parentId = p.brand ? brandIds[`${p.brand}:${p.city}`] : cityIds[p.city];
-    await db.insert(projects).values({
+    await db2.insert(projects).values({
       name: p.name,
       level: "project",
       parentId,
@@ -2458,83 +2574,83 @@ async function seedProjectHierarchy() {
   console.log("[Seed] Hierarchy created: Multipark \u2192 3 cities \u2192 brands \u2192 10 parks");
 }
 async function moveProject(id, newParentId) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   if (newParentId === id) throw new Error("N\xE3o pode mover para si pr\xF3prio");
   if (newParentId !== null) {
     let current = newParentId;
     while (current) {
-      const [parent] = await db.select({ id: projects.id, parentId: projects.parentId }).from(projects).where(eq(projects.id, current)).limit(1);
+      const [parent] = await db2.select({ id: projects.id, parentId: projects.parentId }).from(projects).where(eq(projects.id, current)).limit(1);
       if (!parent) break;
       if (parent.parentId === id) throw new Error("N\xE3o pode mover para um descendente");
       current = parent.parentId;
     }
   }
-  await db.update(projects).set({ parentId: newParentId }).where(eq(projects.id, id));
+  await db2.update(projects).set({ parentId: newParentId }).where(eq(projects.id, id));
 }
 async function getProjectEmployees(projectId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(projectEmployees).where(eq(projectEmployees.projectId, projectId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(projectEmployees).where(eq(projectEmployees.projectId, projectId));
 }
 async function getEmployeeProjects(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(projectEmployees).where(eq(projectEmployees.employeeId, employeeId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(projectEmployees).where(eq(projectEmployees.employeeId, employeeId));
 }
 async function assignEmployeeToProject(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(projectEmployees).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(projectEmployees).values(data);
 }
 async function removeEmployeeFromProject(projectId, employeeId) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(projectEmployees).where(
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(projectEmployees).where(
     and(eq(projectEmployees.projectId, projectId), eq(projectEmployees.employeeId, employeeId))
   );
 }
 async function getTasks(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conds = [];
   if (filters?.projectId) conds.push(eq(tasks.projectId, filters.projectId));
   if (filters?.assigneeId) conds.push(eq(tasks.assigneeId, filters.assigneeId));
   if (filters?.status) conds.push(eq(tasks.taskStatus, filters.status));
-  return db.select().from(tasks).where(conds.length ? and(...conds) : void 0).orderBy(desc(tasks.updatedAt));
+  return db2.select().from(tasks).where(conds.length ? and(...conds) : void 0).orderBy(desc(tasks.updatedAt));
 }
 async function getTaskById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const rows = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const rows = await db2.select().from(tasks).where(eq(tasks.id, id)).limit(1);
   return rows[0];
 }
 async function createTask(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(tasks).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(tasks).values(data);
   return result.insertId;
 }
 async function updateTask(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(tasks).set(data).where(eq(tasks.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(tasks).set(data).where(eq(tasks.id, id));
 }
 async function deleteTask(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(tasks).where(eq(tasks.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(tasks).where(eq(tasks.id, id));
 }
 async function getTasksWithAssignees(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conds = [];
   if (filters?.projectId) conds.push(eq(tasks.projectId, filters.projectId));
   if (filters?.status) conds.push(eq(tasks.taskStatus, filters.status));
-  const taskRows = await db.select({ task: tasks, projectName: projects.name }).from(tasks).leftJoin(projects, eq(projects.id, tasks.projectId)).where(conds.length ? and(...conds) : void 0).orderBy(desc(tasks.updatedAt));
+  const taskRows = await db2.select({ task: tasks, projectName: projects.name }).from(tasks).leftJoin(projects, eq(projects.id, tasks.projectId)).where(conds.length ? and(...conds) : void 0).orderBy(desc(tasks.updatedAt));
   if (taskRows.length === 0) return [];
   const taskIds = taskRows.map((r) => r.task.id);
-  const assigneeRows = await db.select({
+  const assigneeRows = await db2.select({
     taskId: taskAssignees.taskId,
     employeeId: taskAssignees.employeeId,
     fullName: employees.fullName
@@ -2556,9 +2672,9 @@ async function getTasksWithAssignees(filters) {
   return result;
 }
 async function getTaskStats() {
-  const db = await getDb();
-  if (!db) return { total: 0, backlog: 0, todo: 0, inProgress: 0, review: 0, done: 0, overdue: 0 };
-  const all = await db.select().from(tasks);
+  const db2 = await getDb();
+  if (!db2) return { total: 0, backlog: 0, todo: 0, inProgress: 0, review: 0, done: 0, overdue: 0 };
+  const all = await db2.select().from(tasks);
   const now = /* @__PURE__ */ new Date();
   return {
     total: all.length,
@@ -2571,12 +2687,12 @@ async function getTaskStats() {
   };
 }
 async function getCampaigns(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.platform) conditions.push(eq(campaigns.platform, filters.platform));
   if (filters.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       ids.add(parentId);
@@ -2588,45 +2704,45 @@ async function getCampaigns(filters = {}) {
     conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(ids).join(",") || "0")})`);
   }
   if (filters.status) conditions.push(eq(campaigns.campaignStatus, filters.status));
-  const q = db.select({ campaign: campaigns, project: projects }).from(campaigns).leftJoin(projects, eq(campaigns.projectId, projects.id)).orderBy(desc(campaigns.createdAt));
+  const q = db2.select({ campaign: campaigns, project: projects }).from(campaigns).leftJoin(projects, eq(campaigns.projectId, projects.id)).orderBy(desc(campaigns.createdAt));
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
 async function getCampaignById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
   return result[0];
 }
 async function createCampaign(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(campaigns).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(campaigns).values(data);
   return result[0].insertId;
 }
 async function updateCampaign(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(campaigns).set(data).where(eq(campaigns.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.update(campaigns).set(data).where(eq(campaigns.id, id));
 }
 async function deleteCampaign(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(campaignDailyStats).where(eq(campaignDailyStats.campaignId, id));
-  await db.delete(campaigns).where(eq(campaigns.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(campaignDailyStats).where(eq(campaignDailyStats.campaignId, id));
+  await db2.delete(campaigns).where(eq(campaigns.id, id));
 }
 async function getCampaignStats(campaignId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(campaignDailyStats).where(eq(campaignDailyStats.campaignId, campaignId)).orderBy(desc(campaignDailyStats.date));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(campaignDailyStats).where(eq(campaignDailyStats.campaignId, campaignId)).orderBy(desc(campaignDailyStats.date));
 }
 async function getAllDailyStats(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
   if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (filters.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       ids.add(parentId);
@@ -2637,53 +2753,53 @@ async function getAllDailyStats(filters = {}) {
     addChildren(filters.projectId);
     conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(ids).join(","))})`);
   }
-  const q = db.select({ stat: campaignDailyStats, campaign: campaigns, project: projects }).from(campaignDailyStats).leftJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).leftJoin(projects, eq(campaigns.projectId, projects.id)).orderBy(desc(campaignDailyStats.date));
+  const q = db2.select({ stat: campaignDailyStats, campaign: campaigns, project: projects }).from(campaignDailyStats).leftJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).leftJoin(projects, eq(campaigns.projectId, projects.id)).orderBy(desc(campaignDailyStats.date));
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
 async function importDailyStats(rows) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
   if (rows.length === 0) return;
-  await db.insert(campaignDailyStats).values(rows);
+  await db2.insert(campaignDailyStats).values(rows);
 }
 async function deleteDailyStat(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(campaignDailyStats).where(eq(campaignDailyStats.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(campaignDailyStats).where(eq(campaignDailyStats.id, id));
 }
 async function getMarketingExpenses(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.category) conditions.push(eq(marketingExpenses.mktCategory, filters.category));
   if (filters.projectId) conditions.push(eq(marketingExpenses.projectId, filters.projectId));
   if (filters.from) conditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
   if (filters.to) conditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
-  const q = db.select({ expense: marketingExpenses, project: projects }).from(marketingExpenses).leftJoin(projects, eq(marketingExpenses.projectId, projects.id)).orderBy(desc(marketingExpenses.date));
+  const q = db2.select({ expense: marketingExpenses, project: projects }).from(marketingExpenses).leftJoin(projects, eq(marketingExpenses.projectId, projects.id)).orderBy(desc(marketingExpenses.date));
   return conditions.length > 0 ? q.where(and(...conditions)) : q;
 }
 async function createMarketingExpense(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(marketingExpenses).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(marketingExpenses).values(data);
   return result[0].insertId;
 }
 async function updateMarketingExpense(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(marketingExpenses).set(data).where(eq(marketingExpenses.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.update(marketingExpenses).set(data).where(eq(marketingExpenses.id, id));
 }
 async function deleteMarketingExpense(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(marketingExpenses).where(eq(marketingExpenses.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(marketingExpenses).where(eq(marketingExpenses.id, id));
 }
 async function getMarketingDashboardStats(filters = {}) {
-  const db = await getDb();
-  if (!db) return { totalSpend: 0, totalReservations: 0, costPerReservation: 0, avgConversionValue: 0, totalMktExpenses: 0, campaignCount: 0 };
+  const db2 = await getDb();
+  if (!db2) return { totalSpend: 0, totalReservations: 0, costPerReservation: 0, avgConversionValue: 0, totalMktExpenses: 0, campaignCount: 0 };
   let projectIds = null;
   if (filters.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     projectIds = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       projectIds.add(parentId);
@@ -2697,7 +2813,7 @@ async function getMarketingDashboardStats(filters = {}) {
   if (filters.from) conditions.push(gte(campaignDailyStats.date, toMysqlDateTime(filters.from)));
   if (filters.to) conditions.push(lte(campaignDailyStats.date, toMysqlDateTime(filters.to)));
   if (projectIds) conditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
-  const statsQ = db.select({
+  const statsQ = db2.select({
     totalSpend: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
     totalReservations: sql`COALESCE(SUM(${campaignDailyStats.conversions}), 0)`,
     totalConversionValue: sql`COALESCE(SUM(${campaignDailyStats.conversionValue}), 0)`,
@@ -2710,22 +2826,48 @@ async function getMarketingDashboardStats(filters = {}) {
   if (filters.from) mktConditions.push(gte(marketingExpenses.date, toMysqlDateTime(filters.from)));
   if (filters.to) mktConditions.push(lte(marketingExpenses.date, toMysqlDateTime(filters.to)));
   if (projectIds) mktConditions.push(sql`${marketingExpenses.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
-  const mktQ = db.select({
+  const mktQ = db2.select({
     total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)`
   }).from(marketingExpenses);
   const mktResult = mktConditions.length > 0 ? await mktQ.where(and(...mktConditions)) : await mktQ;
   const campConditions = [];
   if (projectIds) campConditions.push(sql`${campaigns.projectId} IN (${sql.raw(Array.from(projectIds).join(","))})`);
-  const campQ = db.select({ count: sql`COUNT(*)` }).from(campaigns);
+  const campQ = db2.select({ count: sql`COUNT(*)` }).from(campaigns);
   const campCount = campConditions.length > 0 ? await campQ.where(and(...campConditions)) : await campQ;
-  const totalSpend = parseFloat(s.totalSpend || "0");
-  const totalReservations = s.totalReservations || 0;
+  const periodDays = filters.from && filters.to ? Math.max(1, Math.floor((filters.to.getTime() - filters.from.getTime()) / 864e5) + 1) : 30;
+  const campRowsQ = db2.select({ id: campaigns.id, budget: campaigns.budget }).from(campaigns);
+  const campRows = campConditions.length > 0 ? await campRowsQ.where(and(...campConditions)) : await campRowsQ;
+  const campIdSet = new Set(campRows.map((c) => c.id));
+  const budgetSpend = campRows.reduce((acc, c) => acc + parseFloat(c.budget || "0"), 0) * periodDays;
+  const keysRaw = await db2.execute(sql`SELECT campaignId, keyType, keyValue FROM internal_campaign_keys WHERE campaignType = 'ad'`);
+  const keys = (Array.isArray(keysRaw[0]) ? keysRaw[0] : keysRaw).filter((k) => campIdSet.has(k.campaignId));
+  let linkReservations = 0, linkRevenue = 0;
+  if (keys.length) {
+    const conds = [];
+    const names = keys.filter((k) => k.keyType === "campaign_name").map((k) => k.keyValue);
+    if (names.length) conds.push(sql`campaignName IN (${sql.join(names.map((v) => sql`${v}`), sql`, `)})`);
+    for (const k of keys.filter((k2) => k2.keyType === "campaign_id")) conds.push(sql`originUrl LIKE ${"%campaignId=" + k.keyValue + "%"}`);
+    for (const k of keys.filter((k2) => k2.keyType === "url_pattern")) conds.push(sql`originUrl LIKE ${k.keyValue}`);
+    if (conds.length) {
+      const dateC = filters.from && filters.to ? sql` AND checkIn >= ${toMysqlDateTime(filters.from)} AND checkIn <= ${toMysqlDateTime(filters.to)}` : sql``;
+      const r = await db2.execute(sql`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql.join(conds, sql` OR `)})${dateC}`);
+      const row = (Array.isArray(r[0]) ? r[0] : r)[0];
+      linkReservations = Number(row?.c ?? 0);
+      linkRevenue = Number(row?.rev ?? 0);
+    }
+  }
+  const realSpend = parseFloat(s.totalSpend || "0");
+  const totalSpend = realSpend > 0 ? realSpend : budgetSpend;
+  const totalReservations = linkReservations > 0 ? linkReservations : s.totalReservations || 0;
+  const conversionValue = linkRevenue > 0 ? linkRevenue : parseFloat(s.totalConversionValue || "0");
   const totalMktExpenses = parseFloat(mktResult[0].total || "0");
   return {
     totalSpend,
+    spendEstimated: realSpend === 0 && budgetSpend > 0,
     totalReservations,
+    totalRevenue: conversionValue,
     costPerReservation: totalReservations > 0 ? (totalSpend + totalMktExpenses) / totalReservations : 0,
-    avgConversionValue: totalReservations > 0 ? parseFloat(s.totalConversionValue || "0") / totalReservations : 0,
+    avgConversionValue: totalReservations > 0 ? conversionValue / totalReservations : 0,
     totalMktExpenses,
     campaignCount: campCount[0].count,
     totalImpressions: s.totalImpressions || 0,
@@ -2733,15 +2875,15 @@ async function getMarketingDashboardStats(filters = {}) {
   };
 }
 async function getBookingRevenueByProject(filters = {}) {
-  const db = await getDb();
-  if (!db) return { total: 0, revenue: 0, byProject: [] };
+  const db2 = await getDb();
+  if (!db2) return { total: 0, revenue: 0, byProject: [] };
   const conditions = [
     sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (filters.from) conditions.push(gte(multiparkBookings.bookingCreatedAt, filters.from));
   if (filters.to) conditions.push(lte(multiparkBookings.bookingCreatedAt, filters.to + " 23:59:59"));
   if (filters.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       ids.add(parentId);
@@ -2752,7 +2894,7 @@ async function getBookingRevenueByProject(filters = {}) {
     addChildren(filters.projectId);
     conditions.push(sql`${multiparkBookings.projectId} IN (${sql.raw(Array.from(ids).join(","))})`);
   }
-  const rows = await db.select({
+  const rows = await db2.select({
     parkName: multiparkBookings.parkName,
     city: multiparkBookings.city,
     count: sql`COUNT(*)`,
@@ -2776,9 +2918,9 @@ async function getBookingRevenueByProject(filters = {}) {
   };
 }
 async function getVehicles(filters) {
-  const db = await getDb();
-  if (!db) return [];
-  let query = db.select().from(vehicles).orderBy(desc(vehicles.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  let query = db2.select().from(vehicles).orderBy(desc(vehicles.createdAt));
   const conditions = [];
   if (filters?.status) conditions.push(eq(vehicles.vehicleStatus, filters.status));
   if (filters?.projectId) conditions.push(eq(vehicles.projectId, filters.projectId));
@@ -2786,31 +2928,31 @@ async function getVehicles(filters) {
   return query;
 }
 async function getVehicleById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(vehicles).where(eq(vehicles.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(vehicles).where(eq(vehicles.id, id)).limit(1);
   return result[0];
 }
 async function createVehicle(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const result = await db.insert(vehicles).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const result = await db2.insert(vehicles).values(data);
   return result[0].insertId;
 }
 async function updateVehicle(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(vehicles).set(data).where(eq(vehicles.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(vehicles).set(data).where(eq(vehicles.id, id));
 }
 async function deleteVehicle(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(vehicles).where(eq(vehicles.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(vehicles).where(eq(vehicles.id, id));
 }
 async function getVehicleMovements(filters) {
-  const db = await getDb();
-  if (!db) return [];
-  let query = db.select().from(vehicleMovements).orderBy(desc(vehicleMovements.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  let query = db2.select().from(vehicleMovements).orderBy(desc(vehicleMovements.createdAt));
   const conditions = [];
   if (filters?.vehicleId) conditions.push(eq(vehicleMovements.vehicleId, filters.vehicleId));
   if (filters?.employeeId) conditions.push(eq(vehicleMovements.employeeId, filters.employeeId));
@@ -2819,15 +2961,15 @@ async function getVehicleMovements(filters) {
   return query;
 }
 async function createVehicleMovement(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const result = await db.insert(vehicleMovements).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const result = await db2.insert(vehicleMovements).values(data);
   return result[0].insertId;
 }
 async function getSpeedAlerts(filters) {
-  const db = await getDb();
-  if (!db) return [];
-  let query = db.select().from(speedAlerts).orderBy(desc(speedAlerts.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  let query = db2.select().from(speedAlerts).orderBy(desc(speedAlerts.createdAt));
   const conditions = [];
   if (filters?.vehicleId) conditions.push(eq(speedAlerts.vehicleId, filters.vehicleId));
   if (filters?.acknowledged !== void 0) conditions.push(eq(speedAlerts.acknowledged, filters.acknowledged ? 1 : 0));
@@ -2836,20 +2978,20 @@ async function getSpeedAlerts(filters) {
   return query;
 }
 async function createSpeedAlert(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const result = await db.insert(speedAlerts).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const result = await db2.insert(speedAlerts).values(data);
   return result[0].insertId;
 }
 async function acknowledgeSpeedAlert(id, userId) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(speedAlerts).set({ acknowledged: 1, acknowledgedById: userId, acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedAlerts.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(speedAlerts).set({ acknowledged: 1, acknowledgedById: userId, acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedAlerts.id, id));
 }
 async function getRadioTranscriptions(filters) {
-  const db = await getDb();
-  if (!db) return [];
-  let query = db.select().from(radioTranscriptions).orderBy(desc(radioTranscriptions.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  let query = db2.select().from(radioTranscriptions).orderBy(desc(radioTranscriptions.createdAt));
   const conditions = [];
   if (filters?.employeeId) conditions.push(eq(radioTranscriptions.employeeId, filters.employeeId));
   if (filters?.vehicleId) conditions.push(eq(radioTranscriptions.vehicleId, filters.vehicleId));
@@ -2858,120 +3000,120 @@ async function getRadioTranscriptions(filters) {
   return query;
 }
 async function createRadioTranscription(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const result = await db.insert(radioTranscriptions).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const result = await db2.insert(radioTranscriptions).values(data);
   return result[0].insertId;
 }
 async function getOperationalStats() {
-  const db = await getDb();
-  if (!db) return { totalVehicles: 0, activeVehicles: 0, todayAlerts: 0, unacknowledgedAlerts: 0, todayMovements: 0 };
-  const allVehicles = await db.select().from(vehicles);
+  const db2 = await getDb();
+  if (!db2) return { totalVehicles: 0, activeVehicles: 0, todayAlerts: 0, unacknowledgedAlerts: 0, todayMovements: 0 };
+  const allVehicles = await db2.select().from(vehicles);
   const totalVehicles = allVehicles.length;
   const activeVehicles = allVehicles.filter((v) => v.vehicleStatus === "active").length;
   const today = /* @__PURE__ */ new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = toMysqlDateTime(today);
-  const allAlerts = await db.select().from(speedAlerts).where(gte(speedAlerts.createdAt, todayStr));
+  const allAlerts = await db2.select().from(speedAlerts).where(gte(speedAlerts.createdAt, todayStr));
   const todayAlerts = allAlerts.length;
-  const allUnack = await db.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, 0));
+  const allUnack = await db2.select().from(speedAlerts).where(eq(speedAlerts.acknowledged, 0));
   const unacknowledgedAlerts = allUnack.length;
-  const allMovements = await db.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, todayStr));
+  const allMovements = await db2.select().from(vehicleMovements).where(gte(vehicleMovements.createdAt, todayStr));
   const todayMovements = allMovements.length;
   return { totalVehicles, activeVehicles, todayAlerts, unacknowledgedAlerts, todayMovements };
 }
 async function getVehicleDriverHistory(vehicleId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(vehicleMovements).where(eq(vehicleMovements.vehicleId, vehicleId)).orderBy(desc(vehicleMovements.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(vehicleMovements).where(eq(vehicleMovements.vehicleId, vehicleId)).orderBy(desc(vehicleMovements.createdAt));
 }
 async function getApiKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
 }
 async function createApiKey(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(apiKeys).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(apiKeys).values(data);
   return Number(result[0].insertId);
 }
 async function toggleApiKey(id, active) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(apiKeys).set({ active: active ? 1 : 0 }).where(eq(apiKeys.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.update(apiKeys).set({ active: active ? 1 : 0 }).where(eq(apiKeys.id, id));
 }
 async function deleteApiKey(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(apiKeys).where(eq(apiKeys.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(apiKeys).where(eq(apiKeys.id, id));
 }
 async function getComplaints(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.status) conditions.push(eq(complaints.complaintStatus, filters.status));
   if (filters?.type) conditions.push(eq(complaints.complaintType, filters.type));
   if (filters?.vehicleId) conditions.push(eq(complaints.vehicleId, filters.vehicleId));
   if (filters?.assignedToId) conditions.push(eq(complaints.assignedToId, filters.assignedToId));
   if (filters?.projectId) conditions.push(eq(complaints.projectId, filters.projectId));
-  return db.select().from(complaints).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(complaints.createdAt));
+  return db2.select({ ...getTableColumns(complaints), assignedToName: employees.fullName }).from(complaints).leftJoin(employees, eq(complaints.assignedToId, employees.id)).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(complaints.createdAt));
 }
 async function getComplaintById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(complaints).where(eq(complaints.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select({ ...getTableColumns(complaints), assignedToName: employees.fullName }).from(complaints).leftJoin(employees, eq(complaints.assignedToId, employees.id)).where(eq(complaints.id, id)).limit(1);
   return result[0];
 }
 async function createComplaint(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(complaints).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(complaints).values(data);
   return Number(result[0].insertId);
 }
 async function updateComplaint(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(complaints).set(data).where(eq(complaints.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.update(complaints).set(data).where(eq(complaints.id, id));
 }
 async function deleteComplaint(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(complaintPhotos).where(eq(complaintPhotos.complaintId, id));
-  await db.delete(complaintMessages).where(eq(complaintMessages.complaintId, id));
-  await db.delete(complaints).where(eq(complaints.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(complaintPhotos).where(eq(complaintPhotos.complaintId, id));
+  await db2.delete(complaintMessages).where(eq(complaintMessages.complaintId, id));
+  await db2.delete(complaints).where(eq(complaints.id, id));
 }
 async function getComplaintMessages(complaintId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(complaintMessages).where(eq(complaintMessages.complaintId, complaintId)).orderBy(complaintMessages.createdAt);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(complaintMessages).where(eq(complaintMessages.complaintId, complaintId)).orderBy(complaintMessages.createdAt);
 }
 async function addComplaintMessage(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(complaintMessages).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(complaintMessages).values(data);
   return Number(result[0].insertId);
 }
 async function getComplaintPhotos(complaintId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(complaintPhotos).where(eq(complaintPhotos.complaintId, complaintId)).orderBy(complaintPhotos.createdAt);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(complaintPhotos).where(eq(complaintPhotos.complaintId, complaintId)).orderBy(complaintPhotos.createdAt);
 }
 async function addComplaintPhoto(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(complaintPhotos).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  const result = await db2.insert(complaintPhotos).values(data);
   return Number(result[0].insertId);
 }
 async function deleteComplaintPhoto(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(complaintPhotos).where(eq(complaintPhotos.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
+  await db2.delete(complaintPhotos).where(eq(complaintPhotos.id, id));
 }
-async function getComplaintStats() {
-  const db = await getDb();
-  if (!db) return { total: 0, new: 0, analyzing: 0, waitingClient: 0, resolved: 0, closed: 0, overdue: 0 };
-  const all = await db.select().from(complaints);
+async function getComplaintStats(projectId) {
+  const db2 = await getDb();
+  if (!db2) return { total: 0, new: 0, analyzing: 0, waitingClient: 0, resolved: 0, closed: 0, overdue: 0 };
+  const all = await db2.select().from(complaints).where(projectId !== void 0 ? eq(complaints.projectId, projectId) : void 0);
   const now = /* @__PURE__ */ new Date();
   return {
     total: all.length,
@@ -2984,36 +3126,36 @@ async function getComplaintStats() {
   };
 }
 async function createGoogleReview(data) {
-  const db = await getDb();
-  if (!db) return;
-  const result = await db.insert(googleReviews).values(data);
+  const db2 = await getDb();
+  if (!db2) return;
+  const result = await db2.insert(googleReviews).values(data);
   return result[0].insertId;
 }
 async function getGoogleReviews(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.rating) conditions.push(eq(googleReviews.rating, filters.rating));
   if (filters?.status) conditions.push(eq(googleReviews.status, filters.status));
   if (filters?.projectId) conditions.push(eq(googleReviews.projectId, filters.projectId));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(googleReviews).where(where).orderBy(desc(googleReviews.createdAt));
+  return db2.select().from(googleReviews).where(where).orderBy(desc(googleReviews.createdAt));
 }
 async function getGoogleReviewById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(googleReviews).where(eq(googleReviews.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(googleReviews).where(eq(googleReviews.id, id)).limit(1);
   return result[0];
 }
 async function updateGoogleReview(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(googleReviews).set(data).where(eq(googleReviews.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(googleReviews).set(data).where(eq(googleReviews.id, id));
 }
 async function getGoogleReviewStats() {
-  const db = await getDb();
-  if (!db) return { total: 0, avg: 0, star1: 0, star2: 0, star3: 0, star4: 0, star5: 0, pending: 0, responded: 0, complaints: 0 };
-  const all = await db.select().from(googleReviews);
+  const db2 = await getDb();
+  if (!db2) return { total: 0, avg: 0, star1: 0, star2: 0, star3: 0, star4: 0, star5: 0, pending: 0, responded: 0, complaints: 0 };
+  const all = await db2.select().from(googleReviews);
   const total = all.length;
   const avg = total > 0 ? all.reduce((s, r) => s + r.rating, 0) / total : 0;
   const star1 = all.filter((r) => r.rating === 1).length;
@@ -3027,123 +3169,123 @@ async function getGoogleReviewStats() {
   return { total, avg: Math.round(avg * 10) / 10, star1, star2, star3, star4, star5, pending, responded, complaints: complaints2 };
 }
 async function searchClientHistory(name, email, plate) {
-  const db = await getDb();
-  if (!db) return { complaints: [], movements: [], reviews: [] };
+  const db2 = await getDb();
+  if (!db2) return { complaints: [], movements: [], reviews: [] };
   const results = { complaints: [], movements: [], reviews: [] };
   if (name || email || plate) {
     const conds = [];
     if (name) conds.push(sql`${complaints.clientName} LIKE ${"%" + name + "%"}`);
     if (email) conds.push(sql`${complaints.clientEmail} LIKE ${"%" + email + "%"}`);
     if (plate) conds.push(sql`${complaints.vehiclePlate} LIKE ${"%" + plate + "%"}`);
-    results.complaints = await db.select().from(complaints).where(or(...conds)).limit(20);
+    results.complaints = await db2.select().from(complaints).where(or(...conds)).limit(20);
   }
   if (plate) {
-    const vehs = await db.select().from(vehicles).where(sql`${vehicles.plate} LIKE ${"%" + plate + "%"}`).limit(5);
+    const vehs = await db2.select().from(vehicles).where(sql`${vehicles.plate} LIKE ${"%" + plate + "%"}`).limit(5);
     if (vehs.length > 0) {
-      results.movements = await db.select().from(vehicleMovements).where(eq(vehicleMovements.vehicleId, vehs[0].id)).orderBy(desc(vehicleMovements.createdAt)).limit(20);
+      results.movements = await db2.select().from(vehicleMovements).where(eq(vehicleMovements.vehicleId, vehs[0].id)).orderBy(desc(vehicleMovements.createdAt)).limit(20);
     }
   }
   if (name || email) {
     const rConds = [];
     if (name) rConds.push(sql`${googleReviews.reviewerName} LIKE ${"%" + name + "%"}`);
     if (email) rConds.push(sql`${googleReviews.reviewerEmail} LIKE ${"%" + email + "%"}`);
-    results.reviews = await db.select().from(googleReviews).where(or(...rConds)).limit(20);
+    results.reviews = await db2.select().from(googleReviews).where(or(...rConds)).limit(20);
   }
   return results;
 }
 async function getTrainingCategories() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(trainingCategories).orderBy(trainingCategories.sortOrder);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(trainingCategories).orderBy(trainingCategories.sortOrder);
 }
 async function createTrainingCategory(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(trainingCategories).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(trainingCategories).values(data).$returningId();
   return result;
 }
 async function deleteTrainingCategory(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(trainingCategories).where(eq(trainingCategories.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(trainingCategories).where(eq(trainingCategories.id, id));
 }
 async function getTrainingVideos(categoryId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = categoryId ? [eq(trainingVideos.categoryId, categoryId)] : [];
-  return db.select().from(trainingVideos).where(conditions.length ? and(...conditions) : void 0).orderBy(trainingVideos.sortOrder);
+  return db2.select().from(trainingVideos).where(conditions.length ? and(...conditions) : void 0).orderBy(trainingVideos.sortOrder);
 }
 async function createTrainingVideo(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(trainingVideos).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(trainingVideos).values(data).$returningId();
   return result;
 }
 async function deleteTrainingVideo(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(trainingVideos).where(eq(trainingVideos.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(trainingVideos).where(eq(trainingVideos.id, id));
 }
 async function getTrainingManuals(categoryId, type) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [eq(trainingManuals.published, 1)];
   if (categoryId) conditions.push(eq(trainingManuals.categoryId, categoryId));
   if (type) conditions.push(eq(trainingManuals.type, type));
-  return db.select().from(trainingManuals).where(and(...conditions)).orderBy(desc(trainingManuals.createdAt));
+  return db2.select().from(trainingManuals).where(and(...conditions)).orderBy(desc(trainingManuals.createdAt));
 }
 async function createTrainingManual(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(trainingManuals).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(trainingManuals).values(data).$returningId();
   return result;
 }
 async function updateTrainingManual(id, data) {
-  const db = await getDb();
-  if (!db) return;
+  const db2 = await getDb();
+  if (!db2) return;
   const { published, ...rest } = data;
   const updates = { ...rest };
   if (published !== void 0) updates.published = published ? 1 : 0;
-  await db.update(trainingManuals).set(updates).where(eq(trainingManuals.id, id));
+  await db2.update(trainingManuals).set(updates).where(eq(trainingManuals.id, id));
 }
 async function deleteTrainingManual(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(trainingManuals).where(eq(trainingManuals.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(trainingManuals).where(eq(trainingManuals.id, id));
 }
 async function getFAQs(categoryId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = categoryId ? [eq(faqs.categoryId, categoryId)] : [];
-  return db.select().from(faqs).where(conditions.length ? and(...conditions) : void 0).orderBy(faqs.sortOrder);
+  return db2.select().from(faqs).where(conditions.length ? and(...conditions) : void 0).orderBy(faqs.sortOrder);
 }
 async function createFAQ(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(faqs).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(faqs).values(data).$returningId();
   return result;
 }
 async function updateFAQ(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(faqs).set(data).where(eq(faqs.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(faqs).set(data).where(eq(faqs.id, id));
 }
 async function deleteFAQ(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(faqs).where(eq(faqs.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(faqs).where(eq(faqs.id, id));
 }
 async function getQuizQuestions(categoryId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = categoryId ? [eq(quizQuestions.categoryId, categoryId)] : [];
-  return db.select().from(quizQuestions).where(conditions.length ? and(...conditions) : void 0);
+  return db2.select().from(quizQuestions).where(conditions.length ? and(...conditions) : void 0);
 }
 async function getQuizQuestionsForPlayer(categoryId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = categoryId ? [eq(quizQuestions.categoryId, categoryId)] : [];
-  return db.select({
+  return db2.select({
     id: quizQuestions.id,
     categoryId: quizQuestions.categoryId,
     question: quizQuestions.question,
@@ -3156,26 +3298,26 @@ async function getQuizQuestionsForPlayer(categoryId) {
   }).from(quizQuestions).where(conditions.length ? and(...conditions) : void 0);
 }
 async function createQuizQuestion(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(quizQuestions).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(quizQuestions).values(data).$returningId();
   return result;
 }
 async function deleteQuizQuestion(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(quizQuestions).where(eq(quizQuestions.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(quizQuestions).where(eq(quizQuestions.id, id));
 }
 async function saveQuizAttempt(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(quizAttempts).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(quizAttempts).values(data).$returningId();
   return result;
 }
 async function getQuizRanking() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select({
     employeeId: quizAttempts.employeeId,
     totalScore: sql`SUM(${quizAttempts.score})`,
     totalAttempts: sql`COUNT(*)`,
@@ -3183,25 +3325,25 @@ async function getQuizRanking() {
   }).from(quizAttempts).groupBy(quizAttempts.employeeId).orderBy(desc(sql`SUM(${quizAttempts.score})`));
 }
 async function getCareerExams() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(careerExams).orderBy(careerExams.level);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(careerExams).orderBy(careerExams.level);
 }
 async function createCareerExam(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(careerExams).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(careerExams).values(data).$returningId();
   return result;
 }
 async function getCareerExamQuestions(examId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
 }
 async function getCareerExamQuestionsForPlayer(examId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select({
     id: careerExamQuestions.id,
     examId: careerExamQuestions.examId,
     question: careerExamQuestions.question,
@@ -3213,42 +3355,42 @@ async function getCareerExamQuestionsForPlayer(examId) {
   }).from(careerExamQuestions).where(eq(careerExamQuestions.examId, examId));
 }
 async function createCareerExamQuestion(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(careerExamQuestions).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(careerExamQuestions).values(data).$returningId();
   return result;
 }
 async function saveCareerExamAttempt(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   const { passed, ...rest } = data;
-  const [result] = await db.insert(careerExamAttempts).values({ ...rest, passed: passed ? 1 : 0 }).$returningId();
+  const [result] = await db2.insert(careerExamAttempts).values({ ...rest, passed: passed ? 1 : 0 }).$returningId();
   return result;
 }
 async function getCareerExamAttempts(employeeId, examId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (employeeId) conditions.push(eq(careerExamAttempts.employeeId, employeeId));
   if (examId) conditions.push(eq(careerExamAttempts.examId, examId));
-  return db.select().from(careerExamAttempts).where(conditions.length ? and(...conditions) : void 0).orderBy(desc(careerExamAttempts.createdAt));
+  return db2.select().from(careerExamAttempts).where(conditions.length ? and(...conditions) : void 0).orderBy(desc(careerExamAttempts.createdAt));
 }
 async function deleteCareerExam(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(careerExamQuestions).where(eq(careerExamQuestions.examId, id));
-  await db.delete(careerExamAttempts).where(eq(careerExamAttempts.examId, id));
-  await db.delete(careerExams).where(eq(careerExams.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(careerExamQuestions).where(eq(careerExamQuestions.examId, id));
+  await db2.delete(careerExamAttempts).where(eq(careerExamAttempts.examId, id));
+  await db2.delete(careerExams).where(eq(careerExams.id, id));
 }
 async function createLostFoundItem(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(lostFoundItems).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(lostFoundItems).values(data).$returningId();
   return result.id;
 }
 async function getLostFoundItems(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.status) conditions.push(eq(lostFoundItems.status, filters.status));
   if (filters?.itemType) conditions.push(eq(lostFoundItems.itemType, filters.itemType));
@@ -3259,63 +3401,63 @@ async function getLostFoundItems(filters) {
     like(lostFoundItems.vehiclePlate, `%${filters.search}%`)
   ));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(lostFoundItems).where(where).orderBy(desc(lostFoundItems.createdAt));
+  return db2.select().from(lostFoundItems).where(where).orderBy(desc(lostFoundItems.createdAt));
 }
 async function getLostFoundItemById(id) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(lostFoundItems).where(eq(lostFoundItems.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(lostFoundItems).where(eq(lostFoundItems.id, id)).limit(1);
   return rows[0] ?? null;
 }
 async function updateLostFoundItem(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(lostFoundItems).set(data).where(eq(lostFoundItems.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(lostFoundItems).set(data).where(eq(lostFoundItems.id, id));
 }
 async function deleteLostFoundItem(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(lostFoundPhotos).where(eq(lostFoundPhotos.itemId, id));
-  await db.delete(lostFoundMessages).where(eq(lostFoundMessages.itemId, id));
-  await db.delete(lostFoundItems).where(eq(lostFoundItems.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(lostFoundPhotos).where(eq(lostFoundPhotos.itemId, id));
+  await db2.delete(lostFoundMessages).where(eq(lostFoundMessages.itemId, id));
+  await db2.delete(lostFoundItems).where(eq(lostFoundItems.id, id));
 }
 async function addLostFoundPhoto(data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(lostFoundPhotos).values(data);
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(lostFoundPhotos).values(data);
 }
 async function getLostFoundPhotos(itemId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(lostFoundPhotos).where(eq(lostFoundPhotos.itemId, itemId)).orderBy(desc(lostFoundPhotos.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(lostFoundPhotos).where(eq(lostFoundPhotos.itemId, itemId)).orderBy(desc(lostFoundPhotos.createdAt));
 }
 async function addLostFoundMessage(data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(lostFoundMessages).values(data);
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(lostFoundMessages).values(data);
 }
 async function getLostFoundMessages(itemId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(lostFoundMessages).where(eq(lostFoundMessages.itemId, itemId)).orderBy(lostFoundMessages.createdAt);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(lostFoundMessages).where(eq(lostFoundMessages.itemId, itemId)).orderBy(lostFoundMessages.createdAt);
 }
 async function getLostFoundDriverRanking() {
-  const db = await getDb();
-  if (!db) return [];
-  const items = await db.select().from(lostFoundItems).where(sql`${lostFoundItems.vehiclePlate} IS NOT NULL AND ${lostFoundItems.vehiclePlate} != ''`);
+  const db2 = await getDb();
+  if (!db2) return [];
+  const items = await db2.select().from(lostFoundItems).where(sql`${lostFoundItems.vehiclePlate} IS NOT NULL AND ${lostFoundItems.vehiclePlate} != ''`);
   if (items.length === 0) return [];
   const plates = items.map((i) => i.vehiclePlate);
-  const allMovements = await db.select().from(vehicleMovements);
+  const allMovements = await db2.select().from(vehicleMovements);
   const relevantMovements = allMovements.filter((m) => {
     return true;
   });
-  const allVehicles = await db.select().from(vehicles);
+  const allVehicles = await db2.select().from(vehicles);
   const vehiclePlateMap = new Map(allVehicles.map((v) => [v.id, v.plate]));
   const plateVehicleMap = new Map(allVehicles.map((v) => [v.plate, v.id]));
   const affectedVehicleIds = plates.map((p) => plateVehicleMap.get(p)).filter(Boolean);
   const movements = allMovements.filter((m) => affectedVehicleIds.includes(m.vehicleId));
   const { employees: employees2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const allEmployees = await db.select().from(employees2);
+  const allEmployees = await db2.select().from(employees2);
   const employeeMap = new Map(allEmployees.map((e) => [e.id, e.fullName]));
   const driverIncidents = /* @__PURE__ */ new Map();
   for (const mov of movements) {
@@ -3336,16 +3478,16 @@ async function getLostFoundDriverRanking() {
   })).sort((a, b) => b.incidentCount - a.incidentCount);
 }
 async function createIncident(data) {
-  const db = await getDb();
-  if (!db) return null;
+  const db2 = await getDb();
+  if (!db2) return null;
   const now = /* @__PURE__ */ new Date();
   const weekNum = getWeekNumber(now);
-  const [result] = await db.insert(incidents).values({ ...data, weekNumber: data.weekNumber || weekNum, yearNumber: data.yearNumber || now.getFullYear() }).$returningId();
+  const [result] = await db2.insert(incidents).values({ ...data, weekNumber: data.weekNumber || weekNum, yearNumber: data.yearNumber || now.getFullYear() }).$returningId();
   return result?.id;
 }
 async function getIncidents(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.status) conditions.push(eq(incidents.status, filters.status));
   if (filters?.severity) conditions.push(eq(incidents.severity, filters.severity));
@@ -3353,32 +3495,32 @@ async function getIncidents(filters) {
   if (filters?.weekNumber) conditions.push(eq(incidents.weekNumber, filters.weekNumber));
   if (filters?.yearNumber) conditions.push(eq(incidents.yearNumber, filters.yearNumber));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(incidents).where(where).orderBy(desc(incidents.createdAt));
+  return db2.select().from(incidents).where(where).orderBy(desc(incidents.createdAt));
 }
 async function getIncidentById(id) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(incidents).where(eq(incidents.id, id)).limit(1);
   return rows[0] || null;
 }
 async function updateIncident(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(incidents).set(data).where(eq(incidents.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(incidents).set(data).where(eq(incidents.id, id));
 }
 async function deleteIncident(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(incidents).where(eq(incidents.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(incidents).where(eq(incidents.id, id));
 }
 async function getIncidentStats(weekNumber, yearNumber) {
-  const db = await getDb();
-  if (!db) return { total: 0, open: 0, resolved: 0, critical: 0, byType: {} };
+  const db2 = await getDb();
+  if (!db2) return { total: 0, open: 0, resolved: 0, critical: 0, byType: {} };
   const conditions = [];
   if (weekNumber) conditions.push(eq(incidents.weekNumber, weekNumber));
   if (yearNumber) conditions.push(eq(incidents.yearNumber, yearNumber));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  const all = await db.select().from(incidents).where(where);
+  const all = await db2.select().from(incidents).where(where);
   const byType = {};
   let open = 0, resolved = 0, critical = 0;
   for (const i of all) {
@@ -3390,9 +3532,9 @@ async function getIncidentStats(weekNumber, yearNumber) {
   return { total: all.length, open, resolved, critical, byType };
 }
 async function getIncidentsByEmployee(employeeId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(incidents).where(eq(incidents.employeeId, employeeId)).orderBy(desc(incidents.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(incidents).where(eq(incidents.employeeId, employeeId)).orderBy(desc(incidents.createdAt));
 }
 function getWeekNumber(d) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -3421,44 +3563,44 @@ function speedAlertPoints(speed, limit) {
   return 15;
 }
 async function createPerformanceEvaluation(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(performanceEvaluations).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(performanceEvaluations).values(data).$returningId();
   return result?.id;
 }
 async function getPerformanceEvaluations(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.weekNumber) conditions.push(eq(performanceEvaluations.weekNumber, filters.weekNumber));
   if (filters?.yearNumber) conditions.push(eq(performanceEvaluations.yearNumber, filters.yearNumber));
   if (filters?.employeeId) conditions.push(eq(performanceEvaluations.employeeId, filters.employeeId));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(performanceEvaluations).where(where).orderBy(desc(performanceEvaluations.totalPoints));
+  return db2.select().from(performanceEvaluations).where(where).orderBy(desc(performanceEvaluations.totalPoints));
 }
 async function updatePerformanceEvaluation(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(performanceEvaluations).set(data).where(eq(performanceEvaluations.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(performanceEvaluations).set(data).where(eq(performanceEvaluations.id, id));
 }
 async function deletePerformanceEvaluation(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(performanceEvaluations).where(eq(performanceEvaluations.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(performanceEvaluations).where(eq(performanceEvaluations.id, id));
 }
 async function generateWeeklyEvaluation(weekNumber, yearNumber) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const { start, end } = isoWeekRange(yearNumber, weekNumber);
   const startStr = toMysqlDateTime(start);
   const endStr = toMysqlDateTime(end);
-  const drivers = await db.select({ id: employees.id, fullName: employees.fullName, position: employees.position }).from(employees).where(and(
+  const drivers = await db2.select({ id: employees.id, fullName: employees.fullName, position: employees.position }).from(employees).where(and(
     eq(employees.isActive, 1),
     inArray(employees.position, ["driver", "senior_driver", "extra"])
   ));
   if (drivers.length === 0) return [];
   const driverIds = drivers.map((d) => d.id);
-  const hoursRows = await db.select({
+  const hoursRows = await db2.select({
     employeeId: timeRecords.employeeId,
     hours: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)`
   }).from(timeRecords).where(and(
@@ -3468,16 +3610,16 @@ async function generateWeeklyEvaluation(weekNumber, yearNumber) {
     lte(timeRecords.recordedAt, endStr)
   )).groupBy(timeRecords.employeeId);
   const hoursMap = new Map(hoursRows.map((r) => [r.employeeId, Number(r.hours)]));
-  const movRows = await db.select({
-    employeeId: vehicleMovements.employeeId,
+  const movRows = await db2.select({
+    employeeId: employees.id,
     count: sql`COUNT(*)`
-  }).from(vehicleMovements).where(and(
-    inArray(vehicleMovements.employeeId, driverIds),
-    gte(vehicleMovements.createdAt, startStr),
-    lte(vehicleMovements.createdAt, endStr)
-  )).groupBy(vehicleMovements.employeeId);
-  const movMap = new Map(movRows.map((r) => [Number(r.employeeId ?? 0), Number(r.count)]));
-  const alertRows = await db.select({
+  }).from(multiparkBookingHistory).innerJoin(employees, eq(employees.multiparkAgentName, multiparkBookingHistory.agentName)).where(and(
+    inArray(employees.id, driverIds),
+    gte(multiparkBookingHistory.actionTime, startStr),
+    lte(multiparkBookingHistory.actionTime, endStr)
+  )).groupBy(employees.id);
+  const movMap = new Map(movRows.map((r) => [Number(r.employeeId), Number(r.count)]));
+  const alertRows = await db2.select({
     employeeId: speedAlerts.employeeId,
     speed: speedAlerts.speed,
     speedLimit: speedAlerts.speedLimit
@@ -3496,7 +3638,7 @@ async function generateWeeklyEvaluation(weekNumber, yearNumber) {
     stats.points += speedAlertPoints(Number(a.speed), Number(a.speedLimit));
     alertStats.set(empId, stats);
   }
-  const incidentRows = await db.select({
+  const incidentRows = await db2.select({
     reportedBy: incidents.reportedBy,
     employeeId: incidents.employeeId,
     severity: incidents.severity
@@ -3521,7 +3663,7 @@ async function generateWeeklyEvaluation(weekNumber, yearNumber) {
       negIncidents.set(targetId, cur);
     }
   }
-  const penaltyRows = await db.select({
+  const penaltyRows = await db2.select({
     employeeId: employeePenalties.employeeId,
     totalPoints: sql`COALESCE(SUM(${employeePenalties.points}), 0)`
   }).from(employeePenalties).where(and(
@@ -3531,7 +3673,7 @@ async function generateWeeklyEvaluation(weekNumber, yearNumber) {
   )).groupBy(employeePenalties.employeeId);
   const PENALTY_WEIGHT = 5;
   const penaltyMap = new Map(penaltyRows.map((r) => [r.employeeId, Number(r.totalPoints) * PENALTY_WEIGHT]));
-  const existingEvals = await db.select().from(performanceEvaluations).where(and(
+  const existingEvals = await db2.select().from(performanceEvaluations).where(and(
     eq(performanceEvaluations.weekNumber, weekNumber),
     eq(performanceEvaluations.yearNumber, yearNumber),
     inArray(performanceEvaluations.employeeId, driverIds)
@@ -3568,30 +3710,30 @@ async function generateWeeklyEvaluation(weekNumber, yearNumber) {
     };
     const existing = existingMap.get(emp.id);
     if (existing) {
-      await db.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing.id));
+      await db2.update(performanceEvaluations).set(evalData).where(eq(performanceEvaluations.id, existing.id));
       results.push({ ...evalData, id: existing.id, employeeName: emp.fullName, notes: existing.notes });
     } else {
-      const [result] = await db.insert(performanceEvaluations).values(evalData).$returningId();
+      const [result] = await db2.insert(performanceEvaluations).values(evalData).$returningId();
       results.push({ ...evalData, id: result?.id, employeeName: emp.fullName, notes: null });
     }
   }
   return results.sort((a, b) => b.totalPoints - a.totalPoints);
 }
 async function createService(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(services).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(services).values(data).$returningId();
   return result?.id;
 }
 async function getServices(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.serviceType) conditions.push(eq(services.serviceType, filters.serviceType));
   if (filters?.employeeId) conditions.push(eq(services.employeeId, filters.employeeId));
   if (filters?.projectId) conditions.push(eq(services.projectId, filters.projectId));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  const all = await db.select().from(services).where(where).orderBy(desc(services.serviceDate));
+  const all = await db2.select().from(services).where(where).orderBy(desc(services.serviceDate));
   if (filters?.month && filters?.year) {
     return all.filter((s) => {
       const d = new Date(s.serviceDate);
@@ -3601,19 +3743,19 @@ async function getServices(filters) {
   return all;
 }
 async function updateService(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(services).set(data).where(eq(services.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(services).set(data).where(eq(services.id, id));
 }
 async function deleteService(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(services).where(eq(services.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(services).where(eq(services.id, id));
 }
 async function getServiceStats(month, year) {
-  const db = await getDb();
-  if (!db) return { total: 0, revenue: 0, cost: 0, profit: 0, byType: {}, byEmployee: [] };
-  let all = await db.select().from(services).orderBy(desc(services.serviceDate));
+  const db2 = await getDb();
+  if (!db2) return { total: 0, revenue: 0, cost: 0, profit: 0, byType: {}, byEmployee: [] };
+  let all = await db2.select().from(services).orderBy(desc(services.serviceDate));
   if (month && year) {
     all = all.filter((s) => {
       const d = new Date(s.serviceDate);
@@ -3638,7 +3780,7 @@ async function getServiceStats(month, year) {
     }
   }
   const { employees: empTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const allEmps = await db.select().from(empTable);
+  const allEmps = await db2.select().from(empTable);
   const empMap = new Map(allEmps.map((e) => [e.id, e.fullName]));
   const byEmployee = Object.entries(byEmp).map(([id, data]) => ({
     employeeId: Number(id),
@@ -3648,14 +3790,14 @@ async function getServiceStats(month, year) {
   return { total: all.length, revenue: totalRevenue, cost: totalCost, profit: totalRevenue - totalCost, byType, byEmployee };
 }
 async function createInvoice(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(invoices).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(invoices).values(data).$returningId();
   return result?.id;
 }
 async function getInvoices(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.status) conditions.push(eq(invoices.status, filters.status));
   if (filters?.projectId) conditions.push(eq(invoices.projectId, filters.projectId));
@@ -3667,7 +3809,7 @@ async function getInvoices(filters) {
     ));
   }
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  const all = await db.select().from(invoices).where(where).orderBy(desc(invoices.issueDate));
+  const all = await db2.select().from(invoices).where(where).orderBy(desc(invoices.issueDate));
   if (filters?.month && filters?.year) {
     return all.filter((i) => {
       const d = new Date(i.issueDate);
@@ -3677,25 +3819,25 @@ async function getInvoices(filters) {
   return all;
 }
 async function getInvoiceById(id) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(invoices).where(eq(invoices.id, id)).limit(1);
   return rows[0] || null;
 }
 async function updateInvoice(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(invoices).set(data).where(eq(invoices.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(invoices).set(data).where(eq(invoices.id, id));
 }
 async function deleteInvoice(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(invoices).where(eq(invoices.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(invoices).where(eq(invoices.id, id));
 }
 async function getInvoiceStats(month, year) {
-  const db = await getDb();
-  if (!db) return { total: 0, totalAmount: 0, paid: 0, overdue: 0, draft: 0 };
-  let all = await db.select().from(invoices).orderBy(desc(invoices.issueDate));
+  const db2 = await getDb();
+  if (!db2) return { total: 0, totalAmount: 0, paid: 0, overdue: 0, draft: 0 };
+  let all = await db2.select().from(invoices).orderBy(desc(invoices.issueDate));
   if (month && year) {
     all = all.filter((i) => {
       const d = new Date(i.issueDate);
@@ -3712,9 +3854,9 @@ async function getInvoiceStats(month, year) {
   return { total: all.length, totalAmount, paid, overdue, draft };
 }
 async function resolveProjectIds(projectId) {
-  const db = await getDb();
-  if (!db) return [projectId];
-  const allProjects = await db.select().from(projects);
+  const db2 = await getDb();
+  if (!db2) return [projectId];
+  const allProjects = await db2.select().from(projects);
   const ids = /* @__PURE__ */ new Set();
   const addChildren = (pid) => {
     ids.add(pid);
@@ -3738,21 +3880,21 @@ function bucketSqlExpr(col, granularity) {
   }
 }
 async function diagnoseBilling(filters) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB unavailable");
   const fromStr = toMysqlDateTime(new Date(filters.from));
   const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
   let projectIds = null;
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
-  const [a1] = await db.select({
+  const [a1] = await db2.select({
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr)));
-  const [a2] = await db.select({
+  const [a2] = await db2.select({
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(gte(multiparkBookings.checkOut, fromStr), lte(multiparkBookings.checkOut, toStr), isNotNull(multiparkBookings.checkOut)));
-  const [a3] = await db.select({
+  const [a3] = await db2.select({
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(
@@ -3766,31 +3908,31 @@ async function diagnoseBilling(filters) {
     sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (projectIds) filteredConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const [a4] = await db.select({
+  const [a4] = await db2.select({
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...filteredConds));
-  const distinctRow = await db.select({
+  const distinctRow = await db2.select({
     total: sql`COUNT(*)`,
     distinct: sql`COUNT(DISTINCT ${multiparkBookings.externalId})`
   }).from(multiparkBookings).where(and(...filteredConds));
   const dup = distinctRow[0];
-  const duplicates = await db.select({
+  const duplicates = await db2.select({
     externalId: multiparkBookings.externalId,
     count: sql`COUNT(*)`
   }).from(multiparkBookings).where(and(...filteredConds)).groupBy(multiparkBookings.externalId).having(sql`COUNT(*) > 1`).orderBy(desc(sql`COUNT(*)`)).limit(20);
-  const byProj = await db.select({
+  const byProj = await db2.select({
     projectId: multiparkBookings.projectId,
     projectName: projects.name,
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).leftJoin(projects, eq(projects.id, multiparkBookings.projectId)).where(and(...filteredConds)).groupBy(multiparkBookings.projectId, projects.name).orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
-  const byCamp = await db.select({
+  const byCamp = await db2.select({
     campaign: multiparkBookings.campaign,
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...filteredConds)).groupBy(multiparkBookings.campaign).orderBy(desc(sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`));
-  const byStatus = await db.select({
+  const byStatus = await db2.select({
     status: multiparkBookings.status,
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -3802,11 +3944,11 @@ async function diagnoseBilling(filters) {
     isNotNull(multiparkBookings.cancelledAt)
   ];
   if (projectIds) cancelConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const [cancelled] = await db.select({
+  const [cancelled] = await db2.select({
     count: sql`COUNT(*)`,
     sum: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...cancelConds));
-  const top = await db.select({
+  const top = await db2.select({
     id: multiparkBookings.id,
     externalId: multiparkBookings.externalId,
     bookingNumber: multiparkBookings.bookingNumber,
@@ -3846,9 +3988,9 @@ async function diagnoseBilling(filters) {
   };
 }
 async function getBillingData(filters) {
-  const db = await getDb();
+  const db2 = await getDb();
   const granularity = filters.granularity ?? "day";
-  if (!db) {
+  if (!db2) {
     return {
       summary: {
         produced: 0,
@@ -3890,7 +4032,7 @@ async function getBillingData(filters) {
     sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (projectIds) deliveryConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const deliveryRows = await db.select({
+  const deliveryRows = await db2.select({
     projectId: multiparkBookings.projectId,
     projectName: projects.name,
     count: sql`COUNT(*)`,
@@ -3899,33 +4041,36 @@ async function getBillingData(filters) {
     deliveryCharges: sql`COALESCE(SUM(${multiparkBookings.deliveryCharges}), 0)`,
     extrasRevenue: sql`COALESCE(SUM(${multiparkBookings.extrasTotal}), 0)`
   }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...deliveryConds)).groupBy(multiparkBookings.projectId, projects.name);
+  const revenueByProjectId = /* @__PURE__ */ new Map();
+  for (const r of deliveryRows) {
+    if (r.projectId != null) revenueByProjectId.set(r.projectId, Number(r.totalRevenue ?? 0));
+  }
   const invConds = [
     gte(invoices.issueDate, fromStr),
     lte(invoices.issueDate, toStr),
     sql`${invoices.status} != 'cancelled'`
   ];
   if (projectIds) invConds.push(inArray(invoices.projectId, projectIds));
-  const invoicedRows = await db.select({
+  const invoicedRows = await db2.select({
     projectId: invoices.projectId,
     projectName: projects.name,
     count: sql`COUNT(*)`,
     totalAmount: sql`COALESCE(SUM(${invoices.totalAmount}), 0)`,
     paidAmount: sql`COALESCE(SUM(CASE WHEN ${invoices.status} = 'paid' THEN ${invoices.totalAmount} ELSE 0 END), 0)`
   }).from(invoices).leftJoin(projects, eq(invoices.projectId, projects.id)).where(and(...invConds)).groupBy(invoices.projectId, projects.name);
-  const paidConds = [
-    eq(expenses.status, "paid"),
-    isNotNull(expenses.paidAt),
-    gte(expenses.paidAt, fromStr),
-    lte(expenses.paidAt, toStr)
+  const insertedConds = [
+    sql`${expenses.status} != 'cancelled'`,
+    gte(expenses.expenseDate, fromStr),
+    lte(expenses.expenseDate, toStr)
   ];
-  if (projectIds) paidConds.push(inArray(expenses.projectId, projectIds));
-  const expPaidRows = await db.select({
+  if (projectIds) insertedConds.push(inArray(expenses.projectId, projectIds));
+  const expPaidRows = await db2.select({
     projectId: expenses.projectId,
     projectName: projects.name,
     categoryName: expenseCategories.name,
     count: sql`COUNT(*)`,
     totalAmount: sql`COALESCE(SUM(${expenses.amount}), 0)`
-  }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(and(...paidConds)).groupBy(expenses.projectId, projects.name, expenseCategories.name);
+  }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(and(...insertedConds)).groupBy(expenses.projectId, projects.name, expenseCategories.name);
   const pendConds = [
     inArray(expenses.status, ["pending", "overdue"]),
     isNotNull(expenses.paymentDueDate),
@@ -3933,7 +4078,7 @@ async function getBillingData(filters) {
     lte(expenses.paymentDueDate, toStr)
   ];
   if (projectIds) pendConds.push(inArray(expenses.projectId, projectIds));
-  const expPendRows = await db.select({
+  const expPendRows = await db2.select({
     projectId: expenses.projectId,
     projectName: projects.name,
     categoryName: expenseCategories.name,
@@ -3941,7 +4086,7 @@ async function getBillingData(filters) {
     count: sql`COUNT(*)`,
     totalAmount: sql`COALESCE(SUM(${expenses.amount}), 0)`
   }).from(expenses).leftJoin(projects, eq(expenses.projectId, projects.id)).leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id)).where(and(...pendConds)).groupBy(expenses.projectId, projects.name, expenseCategories.name, expenses.supplier);
-  const extrasRows = await db.select({
+  const extrasRows = await db2.select({
     level: extrasDiaAssignments.level,
     hours: sql`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`,
     headcount: sql`COUNT(*)`
@@ -3966,7 +4111,7 @@ async function getBillingData(filters) {
     lte(marketingExpenses.date, toStr)
   ];
   if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
-  const mktExpRows = await db.select({
+  const mktExpRows = await db2.select({
     projectId: marketingExpenses.projectId,
     projectName: projects.name,
     category: marketingExpenses.mktCategory,
@@ -3980,27 +4125,27 @@ async function getBillingData(filters) {
   if (projectIds) {
     mktAdsConds.push(inArray(campaigns.projectId, projectIds));
   }
-  const mktAdsRows = await db.select({
+  const mktAdsRows = await db2.select({
     projectId: campaigns.projectId,
     projectName: projects.name,
     totalSpend: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`,
     conversions: sql`COALESCE(SUM(${campaignDailyStats.conversions}), 0)`
   }).from(campaignDailyStats).innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).leftJoin(projects, eq(campaigns.projectId, projects.id)).where(and(...mktAdsConds)).groupBy(campaigns.projectId, projects.name);
-  const bookingsByCampaignRows = await db.select({
+  const bookingsByCampaignRows = await db2.select({
     campaign: multiparkBookings.campaign,
     projectId: multiparkBookings.projectId,
     projectName: projects.name,
     bookingsCount: sql`COUNT(*)`,
     revenueGross: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...deliveryConds, isNotNull(multiparkBookings.campaign))).groupBy(multiparkBookings.campaign, multiparkBookings.projectId, projects.name);
-  const allPartners = await db.select({
+  const allPartners = await db2.select({
     id: partnerships.id,
     name: partnerships.name,
     campaignKey: partnerships.campaignKey,
     commissionRate: partnerships.commissionRate,
     updatedAt: partnerships.updatedAt
   }).from(partnerships);
-  const allAliases = await db.select({
+  const allAliases = await db2.select({
     partnershipId: partnerAliases.partnershipId,
     aliasValue: partnerAliases.aliasValue
   }).from(partnerAliases);
@@ -4059,54 +4204,51 @@ async function getBillingData(filters) {
     }
   }
   const salesCommissions = Array.from(salesAgg.values()).sort((a, b) => b.commission - a.commission);
-  const partnerInvRows = await db.select({
-    status: partnershipInvoices.invoiceStatus,
-    totalAmount: sql`COALESCE(SUM(${partnershipInvoices.amount}), 0)`,
-    count: sql`COUNT(*)`
-  }).from(partnershipInvoices).where(
-    and(
-      gte(partnershipInvoices.sentAt, fromStr),
-      lte(partnershipInvoices.sentAt, toStr),
-      sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`
-    )
-  ).groupBy(partnershipInvoices.invoiceStatus);
-  const partnerOpRows = await db.select({
-    invoiceId: partnershipInvoices.id,
-    partnershipId: partnershipInvoices.partnershipId,
-    partnerName: partnerships.name,
+  const { parsePartnerConfig: parseOpPartnerConfig } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
+  const opPartnerRows = await db2.select({
+    id: partnerships.id,
+    name: partnerships.name,
     partnerType: partnerships.partnerType,
-    amount: partnershipInvoices.amount,
-    status: partnershipInvoices.invoiceStatus,
-    sentAt: partnershipInvoices.sentAt,
-    paidAt: partnershipInvoices.paidAt,
-    referenceMonth: partnershipInvoices.referenceMonth,
-    referenceYear: partnershipInvoices.referenceYear
-  }).from(partnershipInvoices).innerJoin(partnerships, eq(partnerships.id, partnershipInvoices.partnershipId)).where(
-    and(
-      gte(partnershipInvoices.sentAt, fromStr),
-      lte(partnershipInvoices.sentAt, toStr),
-      sql`${partnershipInvoices.invoiceStatus} != 'cancelled'`
-    )
-  );
-  const allProjsForPartnerMap = await db.select({ id: projects.id, name: projects.name }).from(projects);
-  const operationalPartners = partnerOpRows.map((r) => {
-    const pname = (r.partnerName ?? "").toLowerCase();
-    const matched = allProjsForPartnerMap.find((p) => p.name && pname.includes(p.name.toLowerCase()));
-    return {
-      invoiceId: r.invoiceId,
-      partnerName: r.partnerName,
-      partnerType: r.partnerType,
-      amount: Number(r.amount ?? 0),
-      status: r.status,
-      sentAt: r.sentAt,
-      paidAt: r.paidAt,
-      referenceMonth: r.referenceMonth,
-      referenceYear: r.referenceYear,
-      projectId: matched?.id ?? null,
-      projectName: matched?.name ?? null
-    };
-  });
-  const allEmps = await db.select({
+    commissionRate: partnerships.commissionRate,
+    notes: partnerships.notes
+  }).from(partnerships).where(eq(partnerships.partnerType, "operacional"));
+  const operationalPartners = [];
+  for (const p of opPartnerRows) {
+    const cfg = parseOpPartnerConfig(p.notes ?? null);
+    const roots = cfg.operatesProjects ?? [];
+    if (roots.length === 0) continue;
+    const leaves = /* @__PURE__ */ new Set();
+    for (const root of roots) {
+      const ids = await resolveProjectIds(root);
+      for (const pid of ids) {
+        if (!projectIds || projectIds.includes(pid)) leaves.add(pid);
+      }
+    }
+    if (leaves.size === 0) continue;
+    let revenue = 0, bookingsCount = 0;
+    const projNames = [];
+    for (const dr of deliveryRows) {
+      if (dr.projectId != null && leaves.has(dr.projectId)) {
+        revenue += Number(dr.totalRevenue ?? 0);
+        bookingsCount += Number(dr.count ?? 0);
+        if (dr.projectName) projNames.push(dr.projectName);
+      }
+    }
+    const rate = Number(p.commissionRate ?? 0);
+    operationalPartners.push({
+      partnershipId: p.id,
+      partnerName: p.name,
+      partnerType: p.partnerType,
+      projectNames: projNames,
+      bookingsCount,
+      revenueGross: revenue,
+      commissionRate: rate,
+      commission: revenue * (rate / 100)
+    });
+  }
+  operationalPartners.sort((a, b) => b.commission - a.commission);
+  const operationalPartnersTotal = operationalPartners.reduce((s, p) => s + p.commission, 0);
+  const allEmps = await db2.select({
     id: employees.id,
     fullName: employees.fullName,
     projectId: employees.projectId,
@@ -4114,7 +4256,7 @@ async function getBillingData(filters) {
     monthlySalary: employees.monthlySalary,
     isActive: employees.isActive
   }).from(employees).where(eq(employees.isActive, 1));
-  const allProjectsForHierarchy = await db.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
+  const allProjectsForHierarchy = await db2.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
   const childrenMap = /* @__PURE__ */ new Map();
   for (const p of allProjectsForHierarchy) {
     if (p.parentId != null) {
@@ -4170,15 +4312,21 @@ async function getBillingData(filters) {
     return { projectId: pid, projectName: p?.name ?? null, cost };
   }).sort((a, b) => b.cost - a.cost);
   const now = /* @__PURE__ */ new Date();
-  const forecastFrom = now > new Date(filters.from) ? toMysqlDateTime(now) : fromStr;
+  const forecastFromDate = now > new Date(filters.from) ? now : new Date(filters.from);
+  let forecastToDate = /* @__PURE__ */ new Date(filters.to + "T23:59:59");
+  if (forecastToDate.getTime() <= now.getTime()) {
+    forecastToDate = new Date(now.getTime() + 30 * msPerDay);
+  }
+  const forecastFrom = toMysqlDateTime(forecastFromDate);
+  const forecastToStr = toMysqlDateTime(forecastToDate);
   const forecastConds = [
     gte(multiparkBookings.checkIn, forecastFrom),
-    lte(multiparkBookings.checkIn, toStr),
+    lte(multiparkBookings.checkIn, forecastToStr),
     isNull(multiparkBookings.checkOut),
     isNull(multiparkBookings.cancelledAt)
   ];
   if (projectIds) forecastConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const forecastRows = await db.select({
+  const forecastRows = await db2.select({
     projectId: multiparkBookings.projectId,
     projectName: projects.name,
     count: sql`COUNT(*)`,
@@ -4186,32 +4334,62 @@ async function getBillingData(filters) {
   }).from(multiparkBookings).leftJoin(projects, eq(multiparkBookings.projectId, projects.id)).where(and(...forecastConds)).groupBy(multiparkBookings.projectId, projects.name);
   const checkOutBucket = bucketSqlExpr(multiparkBookings.checkOut, granularity);
   const issueBucket = bucketSqlExpr(invoices.issueDate, granularity);
-  const paidAtBucket = bucketSqlExpr(expenses.paidAt, granularity);
+  const expenseDateBucket = bucketSqlExpr(expenses.expenseDate, granularity);
   const checkInBucket = bucketSqlExpr(multiparkBookings.checkIn, granularity);
   const mktDateBucket = bucketSqlExpr(marketingExpenses.date, granularity);
   const adsDateBucket = bucketSqlExpr(campaignDailyStats.date, granularity);
-  const tsProduced = await db.select({ bucket: checkOutBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...deliveryConds)).groupBy(checkOutBucket);
-  const tsInvoiced = await db.select({ bucket: issueBucket, total: sql`COALESCE(SUM(${invoices.totalAmount}), 0)` }).from(invoices).where(and(...invConds)).groupBy(issueBucket);
-  const tsExpensesPaid = await db.select({ bucket: paidAtBucket, total: sql`COALESCE(SUM(${expenses.amount}), 0)` }).from(expenses).where(and(...paidConds)).groupBy(paidAtBucket);
-  const tsForecast = await db.select({ bucket: checkInBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...forecastConds)).groupBy(checkInBucket);
-  const tsMktExpenses = await db.select({ bucket: mktDateBucket, total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)` }).from(marketingExpenses).where(and(...mktExpConds)).groupBy(mktDateBucket);
-  const tsMktAds = await db.select({ bucket: adsDateBucket, total: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)` }).from(campaignDailyStats).innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).where(and(...mktAdsConds)).groupBy(adsDateBucket);
+  const tsProduced = await db2.select({ bucket: checkOutBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...deliveryConds)).groupBy(checkOutBucket);
+  const tsInvoiced = await db2.select({ bucket: issueBucket, total: sql`COALESCE(SUM(${invoices.totalAmount}), 0)` }).from(invoices).where(and(...invConds)).groupBy(issueBucket);
+  const tsExpensesPaid = await db2.select({ bucket: expenseDateBucket, total: sql`COALESCE(SUM(${expenses.amount}), 0)` }).from(expenses).where(and(...insertedConds)).groupBy(expenseDateBucket);
+  const tsForecast = await db2.select({ bucket: checkInBucket, total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...forecastConds)).groupBy(checkInBucket);
+  const tsMktExpenses = await db2.select({ bucket: mktDateBucket, total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)` }).from(marketingExpenses).where(and(...mktExpConds)).groupBy(mktDateBucket);
+  const tsMktAds = await db2.select({ bucket: adsDateBucket, total: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)` }).from(campaignDailyStats).innerJoin(campaigns, eq(campaignDailyStats.campaignId, campaigns.id)).where(and(...mktAdsConds)).groupBy(adsDateBucket);
+  const tsSalariesTotal = Array.from(salaryPerProject.values()).reduce((s, v) => s + v, 0);
+  const tsSalesTotal = salesCommissions.reduce((s, c) => s + c.commission, 0);
+  const tsPartnersTotal = operationalPartnersTotal + tsSalesTotal;
+  const tsExtrasTotal = extrasDiaSummary.reduce((s, r) => s + r.cost, 0);
+  function emptyPoint(bk) {
+    return { bucket: bk, produced: 0, invoiced: 0, expenses: 0, marketingCost: 0, salaries: 0, partners: 0, extrasCost: 0, revenueForecast: 0, totalCost: 0, margin: 0, expensesPaid: 0 };
+  }
   const tsMap = /* @__PURE__ */ new Map();
   function bump(arr, key) {
     for (const r of arr) {
       const bk = r.bucket;
       if (!bk) continue;
-      const ex = tsMap.get(bk) ?? { bucket: bk, produced: 0, invoiced: 0, expensesPaid: 0, revenueForecast: 0, marketingCost: 0 };
+      const ex = tsMap.get(bk) ?? emptyPoint(bk);
       ex[key] += Number(r.total ?? 0);
       tsMap.set(bk, ex);
     }
   }
   bump(tsProduced, "produced");
   bump(tsInvoiced, "invoiced");
-  bump(tsExpensesPaid, "expensesPaid");
+  bump(tsExpensesPaid, "expenses");
   bump(tsForecast, "revenueForecast");
   bump(tsMktExpenses, "marketingCost");
   bump(tsMktAds, "marketingCost");
+  const producedBuckets = tsProduced.filter((r) => r.bucket).map((r) => ({ bucket: r.bucket, weight: Number(r.total ?? 0) }));
+  const producedWeightSum = producedBuckets.reduce((s, b) => s + b.weight, 0);
+  function distribute(total, key) {
+    if (!total) return;
+    const useWeight = producedBuckets.length > 0 && producedWeightSum > 0;
+    const targets = producedBuckets.length > 0 ? producedBuckets : Array.from(tsMap.keys()).map((bk) => ({ bucket: bk, weight: 1 }));
+    if (targets.length === 0) return;
+    const weightSum = useWeight ? producedWeightSum : targets.length;
+    for (const t2 of targets) {
+      const share = total * ((useWeight ? t2.weight : 1) / weightSum);
+      const ex = tsMap.get(t2.bucket) ?? emptyPoint(t2.bucket);
+      ex[key] += share;
+      tsMap.set(t2.bucket, ex);
+    }
+  }
+  distribute(tsSalariesTotal, "salaries");
+  distribute(tsPartnersTotal, "partners");
+  distribute(tsExtrasTotal, "extrasCost");
+  for (const p of tsMap.values()) {
+    p.totalCost = p.expenses + p.marketingCost + p.salaries + p.partners + p.extrasCost;
+    p.margin = p.produced - p.totalCost;
+    p.expensesPaid = p.expenses;
+  }
   const timeseries = Array.from(tsMap.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
   const produced = deliveryRows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
   const invoiced = invoicedRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
@@ -4221,9 +4399,8 @@ async function getBillingData(filters) {
   const mktExpensesTotal = mktExpRows.reduce((s, r) => s + Number(r.totalAmount ?? 0), 0);
   const mktAdsSpend = mktAdsRows.reduce((s, r) => s + Number(r.totalSpend ?? 0), 0);
   const marketingCost = mktExpensesTotal + mktAdsSpend;
-  const partnerInvByStatus = new Map(partnerInvRows.map((r) => [r.status, Number(r.totalAmount ?? 0)]));
-  const operationalPartnersPaid = partnerInvByStatus.get("paid") ?? 0;
-  const operationalPartnersPending = (partnerInvByStatus.get("sent") ?? 0) + (partnerInvByStatus.get("overdue") ?? 0) + (partnerInvByStatus.get("draft") ?? 0);
+  const operationalPartnersPaid = operationalPartnersTotal;
+  const operationalPartnersPending = 0;
   const salesCommissionsTotal = salesCommissions.reduce((s, r) => s + r.commission, 0);
   const totalSalaries = Array.from(salaryPerProject.values()).reduce((s, v) => s + v, 0);
   const totalCostsPaid = expensesPaidTotal + extrasDiaCost + marketingCost + operationalPartnersPaid + salesCommissionsTotal + totalSalaries;
@@ -4262,12 +4439,12 @@ async function getBillingData(filters) {
     invoices: invoicedRows,
     extrasDia: extrasDiaSummary,
     marketing: { expenses: mktExpRows, ads: mktAdsRows },
-    partnerCommissions: partnerInvRows,
-    // back-compat (estado agregado)
+    partnerCommissions: [],
+    // back-compat (deixou de vir de partnership_invoices)
     salesCommissions,
-    // novo: comissões parceiros de venda por projeto
+    // comissões parceiros de venda por projeto
     operationalPartners,
-    // novo: faturas a parceiros operacionais com projeto inferido
+    // parceiros operacionais: comissão s/ reservas dos projetos operados
     salaries: {
       byProject: salariesByProject,
       details: salaryDetailRows,
@@ -4276,8 +4453,8 @@ async function getBillingData(filters) {
   };
 }
 async function getPartnershipAnalytics(filters) {
-  const db = await getDb();
-  if (!db) return { partners: [], proBookings: [], totals: { partnerBookings: 0, partnerRevenue: 0, directBookings: 0, directRevenue: 0, proBookings: 0, proRevenue: 0 } };
+  const db2 = await getDb();
+  if (!db2) return { partners: [], proBookings: [], totals: { partnerBookings: 0, partnerRevenue: 0, directBookings: 0, directRevenue: 0, proBookings: 0, proRevenue: 0 } };
   let projectIds;
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
   const baseConds = [
@@ -4286,7 +4463,7 @@ async function getPartnershipAnalytics(filters) {
     lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59")))
   ];
   if (projectIds) baseConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const partnerRows = await db.select({
+  const partnerRows = await db2.select({
     campaign: multiparkBookings.campaign,
     city: multiparkBookings.city,
     parkName: multiparkBookings.parkName,
@@ -4295,12 +4472,12 @@ async function getPartnershipAnalytics(filters) {
     avgPrice: sql`COALESCE(AVG(${multiparkBookings.totalPrice}), 0)`,
     totalDiscount: sql`COALESCE(SUM(${multiparkBookings.discount}), 0)`
   }).from(multiparkBookings).where(and(...baseConds, isNotNull(multiparkBookings.campaign))).groupBy(multiparkBookings.campaign, multiparkBookings.city, multiparkBookings.parkName);
-  const allRows = await db.select({
+  const allRows = await db2.select({
     hasPartner: sql`CASE WHEN ${multiparkBookings.campaign} IS NOT NULL AND ${multiparkBookings.campaign} != '' THEN 1 ELSE 0 END`,
     count: sql`COUNT(*)`,
     totalRevenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...baseConds)).groupBy(sql`CASE WHEN ${multiparkBookings.campaign} IS NOT NULL AND ${multiparkBookings.campaign} != '' THEN 1 ELSE 0 END`);
-  const proRows = await db.select({
+  const proRows = await db2.select({
     parkName: multiparkBookings.parkName,
     city: multiparkBookings.city,
     count: sql`COUNT(*)`,
@@ -4348,8 +4525,8 @@ async function getPartnershipAnalytics(filters) {
   };
 }
 async function getBookingsByCampaign(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   let projectIds;
   if (filters.projectId) projectIds = await resolveProjectIds(filters.projectId);
   const conds = [
@@ -4359,7 +4536,7 @@ async function getBookingsByCampaign(filters) {
     lte(multiparkBookings.checkOut, toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59")))
   ];
   if (projectIds) conds.push(inArray(multiparkBookings.projectId, projectIds));
-  const rows = await db.select({
+  const rows = await db2.select({
     id: multiparkBookings.id,
     bookingNumber: multiparkBookings.bookingNumber,
     clientFirstName: multiparkBookings.clientFirstName,
@@ -4385,24 +4562,24 @@ async function getBookingsByCampaign(filters) {
   }));
 }
 async function createPartnership(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(partnerships).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(partnerships).values(data).$returningId();
   return result?.id;
 }
 async function getPartnerships(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.partnerType) conditions.push(eq(partnerships.partnerType, filters.partnerType));
   if (filters?.status) conditions.push(eq(partnerships.partnerStatus, filters.status));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(partnerships).where(where).orderBy(desc(partnerships.createdAt));
+  return db2.select().from(partnerships).where(where).orderBy(desc(partnerships.createdAt));
 }
 async function inferPartnersFromBookings() {
-  const db = await getDb();
-  if (!db) return [];
-  const [rawRows] = await db.execute(sql`
+  const db2 = await getDb();
+  if (!db2) return [];
+  const [rawRows] = await db2.execute(sql`
     SELECT
       JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) AS partnerId,
       paymentMethod,
@@ -4443,13 +4620,13 @@ async function inferPartnersFromBookings() {
     }
   }
   const aliasIndex = /* @__PURE__ */ new Map();
-  const aliases = await db.select({
+  const aliases = await db2.select({
     partnershipId: partnerAliases.partnershipId,
     aliasType: partnerAliases.aliasType,
     aliasValue: partnerAliases.aliasValue
   }).from(partnerAliases);
   const partnersById = /* @__PURE__ */ new Map();
-  const partnersAll = await db.select({ id: partnerships.id, name: partnerships.name }).from(partnerships);
+  const partnersAll = await db2.select({ id: partnerships.id, name: partnerships.name }).from(partnerships);
   for (const p of partnersAll) partnersById.set(p.id, p.name);
   for (const a of aliases) {
     const key = `${a.aliasType}:${a.aliasValue}`;
@@ -4505,25 +4682,25 @@ async function inferPartnersFromBookings() {
   return result;
 }
 async function addPartnerAlias(partnershipId, aliasType, aliasValue, applyToBookings) {
-  const db = await getDb();
-  if (!db) return 0;
+  const db2 = await getDb();
+  if (!db2) return 0;
   try {
-    await db.insert(partnerAliases).values({ partnershipId, aliasType, aliasValue });
+    await db2.insert(partnerAliases).values({ partnershipId, aliasType, aliasValue });
   } catch (err) {
     if (!String(err.message).includes("Duplicate")) throw err;
   }
   if (!applyToBookings) return 0;
-  const [p] = await db.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  const [p] = await db2.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
   if (!p) return 0;
   if (aliasType === "multipark_partner_id") {
-    const [r] = await db.execute(sql`
+    const [r] = await db2.execute(sql`
       UPDATE multipark_bookings
       SET campaign = ${p.name}
       WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${aliasValue}
     `);
     return r.affectedRows ?? 0;
   } else {
-    const [r] = await db.execute(sql`
+    const [r] = await db2.execute(sql`
       UPDATE multipark_bookings
       SET campaign = ${p.name}
       WHERE paymentMethod = ${aliasValue}
@@ -4533,8 +4710,8 @@ async function addPartnerAlias(partnershipId, aliasType, aliasValue, applyToBook
   }
 }
 async function getPartnerInvoicingSummary(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const fromStr = toMysqlDateTime(new Date(filters.from));
   const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
   const msPerDay = 1e3 * 60 * 60 * 24;
@@ -4544,7 +4721,7 @@ async function getPartnerInvoicingSummary(filters) {
   );
   const monthFraction = periodDays / 30;
   const yearFraction = periodDays / 365;
-  const partnerRows = await db.select({
+  const partnerRows = await db2.select({
     id: partnerships.id,
     name: partnerships.name,
     partnerType: partnerships.partnerType,
@@ -4554,11 +4731,11 @@ async function getPartnerInvoicingSummary(filters) {
   }).from(partnerships).where(filters.partnerType ? eq(partnerships.partnerType, filters.partnerType) : void 0);
   if (partnerRows.length === 0) return [];
   const { parsePartnerConfig: parsePartnerConfig2 } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
-  const aliasRows = await db.select({
+  const aliasRows = await db2.select({
     partnershipId: partnerAliases.partnershipId,
     aliasValue: partnerAliases.aliasValue
   }).from(partnerAliases);
-  const bookingRows = await db.select({
+  const bookingRows = await db2.select({
     campaign: multiparkBookings.campaign,
     bookingsCount: sql`COUNT(*)`,
     revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -4592,7 +4769,7 @@ async function getPartnerInvoicingSummary(filters) {
     existing.revenue += Number(b.revenue ?? 0);
     bookingsByPartner.set(pid, existing);
   }
-  const invRows = await db.select({
+  const invRows = await db2.select({
     partnershipId: partnershipInvoices.partnershipId,
     status: partnershipInvoices.invoiceStatus,
     total: sql`COALESCE(SUM(${partnershipInvoices.amount}), 0)`,
@@ -4628,7 +4805,7 @@ async function getPartnerInvoicingSummary(filters) {
       for (const pid of ids) expanded.add(pid);
     }
     if (expanded.size > 0) {
-      const opBookings = await db.select({
+      const opBookings = await db2.select({
         projectId: multiparkBookings.projectId,
         count: sql`COUNT(*)`,
         revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -4709,8 +4886,8 @@ async function getPartnerInvoicingSummary(filters) {
   }).sort((a, b) => b.aFaturar - a.aFaturar);
 }
 async function getPartnerInvoicingDetailByType(filters) {
-  const db = await getDb();
-  if (!db) return { partnerType: filters.partnerType, partners: [] };
+  const db2 = await getDb();
+  if (!db2) return { partnerType: filters.partnerType, partners: [] };
   const fromStr = toMysqlDateTime(new Date(filters.from));
   const toStr = toMysqlDateTime(/* @__PURE__ */ new Date(filters.to + "T23:59:59"));
   const msPerDay = 1e3 * 60 * 60 * 24;
@@ -4721,7 +4898,7 @@ async function getPartnerInvoicingDetailByType(filters) {
   const monthFraction = periodDays / 30;
   const yearFraction = periodDays / 365;
   const { parsePartnerConfig: parsePartnerConfig2 } = await Promise.resolve().then(() => (init_partnerTypes(), partnerTypes_exports));
-  const partnerRows = await db.select({
+  const partnerRows = await db2.select({
     id: partnerships.id,
     name: partnerships.name,
     partnerType: partnerships.partnerType,
@@ -4730,7 +4907,7 @@ async function getPartnerInvoicingDetailByType(filters) {
     notes: partnerships.notes
   }).from(partnerships).where(eq(partnerships.partnerType, filters.partnerType));
   if (partnerRows.length === 0) return { partnerType: filters.partnerType, partners: [] };
-  const aliasRows = await db.select({
+  const aliasRows = await db2.select({
     partnershipId: partnerAliases.partnershipId,
     aliasValue: partnerAliases.aliasValue
   }).from(partnerAliases);
@@ -4742,7 +4919,7 @@ async function getPartnerInvoicingDetailByType(filters) {
   }
   for (const p of partnerRows) reg(p.name, p.id);
   for (const a of aliasRows) reg(a.aliasValue, a.partnershipId);
-  const bookingRows = await db.select({
+  const bookingRows = await db2.select({
     campaign: multiparkBookings.campaign,
     projectId: multiparkBookings.projectId,
     count: sql`COUNT(*)`,
@@ -4781,7 +4958,7 @@ async function getPartnerInvoicingDetailByType(filters) {
         for (const pid of ids) expanded.add(pid);
       }
       if (expanded.size === 0) continue;
-      const rows = await db.select({
+      const rows = await db2.select({
         count: sql`COUNT(*)`,
         revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
       }).from(multiparkBookings).where(
@@ -4843,14 +5020,14 @@ async function getPartnerInvoicingDetailByType(filters) {
   return { partnerType: filters.partnerType, partners };
 }
 async function listPartnerAliases(partnershipId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(partnerAliases).where(eq(partnerAliases.partnershipId, partnershipId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(partnerAliases).where(eq(partnerAliases.partnershipId, partnershipId));
 }
 async function aliasCountsByPartner() {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     partnershipId: partnerAliases.partnershipId,
     aliasType: partnerAliases.aliasType,
     aliasValue: partnerAliases.aliasValue,
@@ -4872,18 +5049,18 @@ async function aliasCountsByPartner() {
   })).sort((a, b) => b.total - a.total);
 }
 async function deletePartnerAlias(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(partnerAliases).where(eq(partnerAliases.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(partnerAliases).where(eq(partnerAliases.id, id));
 }
 async function linkMultiparkPartnerId(partnershipId, multiparkPartnerId, applyToBookings) {
-  const db = await getDb();
-  if (!db) return 0;
-  await db.update(partnerships).set({ multiparkPartnerId }).where(eq(partnerships.id, partnershipId));
+  const db2 = await getDb();
+  if (!db2) return 0;
+  await db2.update(partnerships).set({ multiparkPartnerId }).where(eq(partnerships.id, partnershipId));
   if (!applyToBookings) return 0;
-  const [p] = await db.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
+  const [p] = await db2.select({ name: partnerships.name }).from(partnerships).where(eq(partnerships.id, partnershipId)).limit(1);
   if (!p) return 0;
-  const [result] = await db.execute(sql`
+  const [result] = await db2.execute(sql`
     UPDATE multipark_bookings
     SET campaign = ${p.name}
     WHERE JSON_UNQUOTE(JSON_EXTRACT(rawJson, '$.partnerId')) = ${multiparkPartnerId}
@@ -4891,65 +5068,65 @@ async function linkMultiparkPartnerId(partnershipId, multiparkPartnerId, applyTo
   return result.affectedRows ?? 0;
 }
 async function getPartnershipById(id) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(partnerships).where(eq(partnerships.id, id)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(partnerships).where(eq(partnerships.id, id)).limit(1);
   return rows[0] || null;
 }
 async function updatePartnership(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(partnerships).set(data).where(eq(partnerships.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(partnerships).set(data).where(eq(partnerships.id, id));
 }
 async function deletePartnership(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(partnershipTransactions).where(eq(partnershipTransactions.partnershipId, id));
-  await db.delete(partnerships).where(eq(partnerships.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(partnershipTransactions).where(eq(partnershipTransactions.partnershipId, id));
+  await db2.delete(partnerships).where(eq(partnerships.id, id));
 }
 async function createPartnershipTransaction(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(partnershipTransactions).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(partnershipTransactions).values(data).$returningId();
   return result?.id;
 }
 async function getPartnershipTransactions(partnershipId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(partnershipTransactions).where(eq(partnershipTransactions.partnershipId, partnershipId)).orderBy(desc(partnershipTransactions.transactionDate));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(partnershipTransactions).where(eq(partnershipTransactions.partnershipId, partnershipId)).orderBy(desc(partnershipTransactions.transactionDate));
 }
 async function createPartnershipInvoice(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(partnershipInvoices).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(partnershipInvoices).values(data).$returningId();
   return result?.id;
 }
 async function getPartnershipInvoices(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.partnershipId) conditions.push(eq(partnershipInvoices.partnershipId, filters.partnershipId));
   if (filters?.status) conditions.push(eq(partnershipInvoices.invoiceStatus, filters.status));
   if (filters?.year) conditions.push(eq(partnershipInvoices.referenceYear, filters.year));
   if (filters?.month) conditions.push(eq(partnershipInvoices.referenceMonth, filters.month));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(partnershipInvoices).where(where).orderBy(desc(partnershipInvoices.createdAt));
+  return db2.select().from(partnershipInvoices).where(where).orderBy(desc(partnershipInvoices.createdAt));
 }
 async function updatePartnershipInvoice(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(partnershipInvoices).set(data).where(eq(partnershipInvoices.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(partnershipInvoices).set(data).where(eq(partnershipInvoices.id, id));
 }
 async function deletePartnershipInvoice(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(partnershipInvoices).where(eq(partnershipInvoices.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(partnershipInvoices).where(eq(partnershipInvoices.id, id));
 }
 async function markOverduePartnershipInvoices() {
-  const db = await getDb();
-  if (!db) return 0;
+  const db2 = await getDb();
+  if (!db2) return 0;
   const now = /* @__PURE__ */ new Date();
-  const result = await db.update(partnershipInvoices).set({ invoiceStatus: "overdue" }).where(
+  const result = await db2.update(partnershipInvoices).set({ invoiceStatus: "overdue" }).where(
     and(
       eq(partnershipInvoices.invoiceStatus, "sent"),
       sql`${partnershipInvoices.dueDate} < ${toMysqlDateTime(now)}`
@@ -4958,11 +5135,11 @@ async function markOverduePartnershipInvoices() {
   return result[0]?.affectedRows || 0;
 }
 async function getPartnershipDashboardStats() {
-  const db = await getDb();
-  if (!db) return null;
-  const allPartners = await db.select().from(partnerships);
-  const allInvoices = await db.select().from(partnershipInvoices);
-  const allTx = await db.select().from(partnershipTransactions);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const allPartners = await db2.select().from(partnerships);
+  const allInvoices = await db2.select().from(partnershipInvoices);
+  const allTx = await db2.select().from(partnershipTransactions);
   const totalPartners = allPartners.length;
   const activePartners = allPartners.filter((p) => p.partnerStatus === "active").length;
   const byType = {};
@@ -5007,33 +5184,33 @@ async function getPartnershipDashboardStats() {
   };
 }
 async function createAnnualReport(data) {
-  const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(annualReports).values(data).$returningId();
+  const db2 = await getDb();
+  if (!db2) return null;
+  const [result] = await db2.insert(annualReports).values(data).$returningId();
   return result?.id;
 }
 async function getAnnualReports(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.year) conditions.push(eq(annualReports.year, filters.year));
   if (filters?.projectId) conditions.push(eq(annualReports.projectId, filters.projectId));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(annualReports).where(where).orderBy(annualReports.month);
+  return db2.select().from(annualReports).where(where).orderBy(annualReports.month);
 }
 async function updateAnnualReport(id, data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(annualReports).set(data).where(eq(annualReports.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(annualReports).set(data).where(eq(annualReports.id, id));
 }
 async function deleteAnnualReport(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(annualReports).where(eq(annualReports.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(annualReports).where(eq(annualReports.id, id));
 }
 async function getAnnualBreakdown(year, projectId) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const VAT_RATE = 0.23;
   let projectIds;
   if (projectId) projectIds = await resolveProjectIds(projectId);
@@ -5043,7 +5220,7 @@ async function getAnnualBreakdown(year, projectId) {
     sql`${multiparkBookings.status} != 'CANCELLED'`
   ];
   if (projectIds) revConds.push(inArray(multiparkBookings.projectId, projectIds));
-  const revenueRows = await db.select({
+  const revenueRows = await db2.select({
     month: sql`MONTH(${multiparkBookings.checkOut})`,
     total: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
   }).from(multiparkBookings).where(and(...revConds)).groupBy(sql`MONTH(${multiparkBookings.checkOut})`);
@@ -5053,7 +5230,7 @@ async function getAnnualBreakdown(year, projectId) {
     lte(expenses.expenseDate, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
   ];
   if (projectIds) expConds.push(inArray(expenses.projectId, projectIds));
-  const expenseRows = await db.select({
+  const expenseRows = await db2.select({
     month: sql`MONTH(${expenses.expenseDate})`,
     total: sql`COALESCE(SUM(${expenses.amount}), 0)`
   }).from(expenses).where(and(...expConds)).groupBy(sql`MONTH(${expenses.expenseDate})`);
@@ -5062,7 +5239,7 @@ async function getAnnualBreakdown(year, projectId) {
     lte(marketingExpenses.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
   ];
   if (projectIds) mktExpConds.push(inArray(marketingExpenses.projectId, projectIds));
-  const mktExpRows = await db.select({
+  const mktExpRows = await db2.select({
     month: sql`MONTH(${marketingExpenses.date})`,
     total: sql`COALESCE(SUM(${marketingExpenses.amount}), 0)`
   }).from(marketingExpenses).where(and(...mktExpConds)).groupBy(sql`MONTH(${marketingExpenses.date})`);
@@ -5071,11 +5248,11 @@ async function getAnnualBreakdown(year, projectId) {
     lte(campaignDailyStats.date, toMysqlDateTime(/* @__PURE__ */ new Date(`${year}-12-31T23:59:59`)))
   ];
   if (projectIds) adsConds.push(inArray(campaigns.projectId, projectIds));
-  const adsRows = await db.select({
+  const adsRows = await db2.select({
     month: sql`MONTH(${campaignDailyStats.date})`,
     total: sql`COALESCE(SUM(${campaignDailyStats.spend}), 0)`
   }).from(campaignDailyStats).innerJoin(campaigns, eq(campaigns.id, campaignDailyStats.campaignId)).where(and(...adsConds)).groupBy(sql`MONTH(${campaignDailyStats.date})`);
-  const extrasRows = await db.select({
+  const extrasRows = await db2.select({
     date: extrasDiaAssignments.assignmentDate,
     level: extrasDiaAssignments.level,
     hours: sql`COALESCE(SUM(GREATEST(${extrasDiaAssignments.endHour} - ${extrasDiaAssignments.startHour}, 0)), 0)`
@@ -5093,7 +5270,7 @@ async function getAnnualBreakdown(year, projectId) {
     if (!m) continue;
     extrasDiaByMonth[m] = (extrasDiaByMonth[m] ?? 0) + Number(r.hours) * rate;
   }
-  const allPartners = await db.select({
+  const allPartners = await db2.select({
     id: partnerships.id,
     name: partnerships.name,
     campaignKey: partnerships.campaignKey,
@@ -5102,7 +5279,7 @@ async function getAnnualBreakdown(year, projectId) {
     notes: partnerships.notes,
     updatedAt: partnerships.updatedAt
   }).from(partnerships);
-  const allAliases = await db.select({ partnershipId: partnerAliases.partnershipId, aliasValue: partnerAliases.aliasValue }).from(partnerAliases);
+  const allAliases = await db2.select({ partnershipId: partnerAliases.partnershipId, aliasValue: partnerAliases.aliasValue }).from(partnerAliases);
   const partnerByCampaign = /* @__PURE__ */ new Map();
   const registerKey = (k, id, name, rate, updatedAt) => {
     if (!k) return;
@@ -5125,7 +5302,7 @@ async function getAnnualBreakdown(year, projectId) {
     if (!p) continue;
     registerKey(a.aliasValue, p.id, p.name, Number(p.commissionRate ?? 0), p.updatedAt ?? "");
   }
-  const bookingsByMonthCampaign = await db.select({
+  const bookingsByMonthCampaign = await db2.select({
     month: sql`MONTH(${multiparkBookings.checkOut})`,
     campaign: multiparkBookings.campaign,
     revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -5148,7 +5325,7 @@ async function getAnnualBreakdown(year, projectId) {
       for (const pid of ids) expanded.add(pid);
     }
     if (expanded.size === 0) continue;
-    const rows = await db.select({
+    const rows = await db2.select({
       month: sql`MONTH(${multiparkBookings.checkOut})`,
       revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
     }).from(multiparkBookings).where(
@@ -5165,7 +5342,7 @@ async function getAnnualBreakdown(year, projectId) {
       operationalCommissionByMonth[m] = (operationalCommissionByMonth[m] ?? 0) + Number(r.revenue) * rate;
     }
   }
-  const allProjsForRateio = await db.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
+  const allProjsForRateio = await db2.select({ id: projects.id, name: projects.name, parentId: projects.parentId, level: projects.level }).from(projects);
   const childrenMap = /* @__PURE__ */ new Map();
   for (const p of allProjsForRateio) {
     if (p.parentId != null) {
@@ -5260,19 +5437,19 @@ async function getAnnualBreakdown(year, projectId) {
   return months;
 }
 async function generateAnnualSummary(year, projectId, splitPartner = 60) {
-  const db = await getDb();
-  if (!db) return [];
-  const allInvoices = await db.select().from(invoices);
+  const db2 = await getDb();
+  if (!db2) return [];
+  const allInvoices = await db2.select().from(invoices);
   const yearInvoices = allInvoices.filter((i) => {
     const d = new Date(i.issueDate);
     return d.getFullYear() === year && (!projectId || i.projectId === projectId);
   });
-  const allServices = await db.select().from(services);
+  const allServices = await db2.select().from(services);
   const yearServices = allServices.filter((s) => {
     const d = new Date(s.serviceDate);
     return d.getFullYear() === year;
   });
-  const allExpenses = await db.select().from(expenses);
+  const allExpenses = await db2.select().from(expenses);
   const yearExpenses = allExpenses.filter((e) => {
     const d = new Date(e.createdAt);
     return d.getFullYear() === year && (!projectId || e.projectId === projectId);
@@ -5302,7 +5479,7 @@ async function generateAnnualSummary(year, projectId, splitPartner = 60) {
     const profit = revenue - expenseTotal;
     const partnerShare = Math.round(profit * partnerPct);
     const companyShare = Math.round(profit * companyPct);
-    const existing = await db.select().from(annualReports).where(
+    const existing = await db2.select().from(annualReports).where(
       and(
         eq(annualReports.month, m),
         eq(annualReports.year, year),
@@ -5320,21 +5497,23 @@ async function generateAnnualSummary(year, projectId, splitPartner = 60) {
       splitRatio: splitLabel
     };
     if (existing.length > 0) {
-      await db.update(annualReports).set(reportData).where(eq(annualReports.id, existing[0].id));
+      await db2.update(annualReports).set(reportData).where(eq(annualReports.id, existing[0].id));
       results.push({ ...reportData, id: existing[0].id });
     } else {
-      const [result] = await db.insert(annualReports).values(reportData).$returningId();
+      const [result] = await db2.insert(annualReports).values(reportData).$returningId();
       results.push({ ...reportData, id: result?.id });
     }
   }
   return results;
 }
 async function getMultiparkBookings(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.status) conditions.push(eq(multiparkBookings.status, filters.status));
   if (filters?.parkingType) conditions.push(eq(multiparkBookings.parkingType, filters.parkingType));
+  if (filters?.city) conditions.push(eq(multiparkBookings.city, filters.city));
+  if (filters?.parkId) conditions.push(eq(multiparkBookings.parkId, filters.parkId));
   if (filters?.from) conditions.push(gte(multiparkBookings.checkIn, toMysqlDateTime(filters.from)));
   if (filters?.to) conditions.push(lte(multiparkBookings.checkIn, toMysqlDateTime(filters.to)));
   if (filters?.search) {
@@ -5350,11 +5529,11 @@ async function getMultiparkBookings(filters) {
     );
   }
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(multiparkBookings).where(where).orderBy(desc(multiparkBookings.checkIn)).limit(filters?.limit ?? 100).offset(filters?.offset ?? 0);
+  return db2.select().from(multiparkBookings).where(where).orderBy(desc(multiparkBookings.checkIn)).limit(filters?.limit ?? 100).offset(filters?.offset ?? 0);
 }
 async function getLocalBookingsByAction(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   const endWithTime = filters.endDate + " 23:59:59";
   switch (filters.actionType) {
@@ -5379,7 +5558,7 @@ async function getLocalBookingsByAction(filters) {
       break;
   }
   if (filters.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       ids.add(parentId);
@@ -5390,13 +5569,13 @@ async function getLocalBookingsByAction(filters) {
     addChildren(filters.projectId);
     conditions.push(sql`${multiparkBookings.projectId} IN (${sql.raw(Array.from(ids).join(","))})`);
   }
-  return db.select().from(multiparkBookings).where(and(...conditions)).orderBy(desc(multiparkBookings.bookingCreatedAt)).limit(5e3);
+  return db2.select().from(multiparkBookings).where(and(...conditions)).orderBy(desc(multiparkBookings.bookingCreatedAt)).limit(5e3);
 }
 async function searchBookingByRef(search) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const s = `%${search.trim()}%`;
-  return db.select({
+  return db2.select({
     id: multiparkBookings.id,
     externalId: multiparkBookings.externalId,
     bookingNumber: multiparkBookings.bookingNumber,
@@ -5422,30 +5601,49 @@ async function searchBookingByRef(search) {
   )).orderBy(desc(multiparkBookings.bookingCreatedAt)).limit(10);
 }
 async function getMultiparkBookingByExternalId(externalId) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const rows = await db.select().from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const rows = await db2.select().from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
   return rows[0];
 }
 async function upsertMultiparkBooking(data) {
-  const db = await getDb();
-  if (!db) return;
+  const db2 = await getDb();
+  if (!db2) return;
   const { externalId, ...rest } = data;
-  const before = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
-  await db.insert(multiparkBookings).values(data).onDuplicateKeyUpdate({ set: rest });
-  if (before.length > 0) {
-    return { id: before[0].id, action: "updated" };
+  const before = await db2.select({ id: multiparkBookings.id, status: multiparkBookings.status }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  const existed = before.length > 0;
+  const statusChanged = existed && (before[0].status ?? null) !== (data.status ?? null);
+  const setOnDup = statusChanged ? { ...rest, enrichedAt: null } : rest;
+  await db2.insert(multiparkBookings).values(data).onDuplicateKeyUpdate({ set: setOnDup });
+  if (existed) {
+    return { id: before[0].id, action: "updated", statusChanged };
   }
-  const [row] = await db.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
-  return { id: row?.id, action: "created" };
+  const [row] = await db2.select({ id: multiparkBookings.id }).from(multiparkBookings).where(eq(multiparkBookings.externalId, externalId)).limit(1);
+  return { id: row?.id, action: "created", statusChanged: false };
+}
+async function upsertBookingExtras(bookingExternalId, extras) {
+  const db2 = await getDb();
+  if (!db2) return;
+  if (!Array.isArray(extras) || extras.length === 0) return;
+  await db2.delete(multiparkBookingExtras).where(eq(multiparkBookingExtras.bookingExternalId, bookingExternalId));
+  await db2.insert(multiparkBookingExtras).values(
+    extras.map((e) => ({
+      bookingExternalId,
+      extraId: e.id ? String(e.id).slice(0, 128) : null,
+      name: typeof e.name === "string" ? e.name.slice(0, 256) : null,
+      description: typeof e.description === "string" ? e.description.slice(0, 512) : null,
+      price: e.price != null ? String(e.price) : null,
+      done: e.done ? 1 : 0
+    }))
+  );
 }
 async function getMultiparkBookingStats(filters) {
-  const db = await getDb();
+  const db2 = await getDb();
   const empty = { total: 0, reservasHoje: 0, checkinHoje: 0, checkoutHoje: 0, canceladosHoje: 0, reservasMes: 0, checkinMes: 0, checkoutMes: 0, canceladosMes: 0, receitaHoje: 0, receitaMes: 0, receitaPeriodo: 0, byCity: [], byDay: [], byBrand: [] };
-  if (!db) return empty;
+  if (!db2) return empty;
   let projectFilter = void 0;
   if (filters?.projectId) {
-    const allProjects = await db.select().from(projects);
+    const allProjects = await db2.select().from(projects);
     const ids = /* @__PURE__ */ new Set();
     const addChildren = (parentId) => {
       ids.add(parentId);
@@ -5464,7 +5662,7 @@ async function getMultiparkBookingStats(filters) {
     const conds = [gte(dateCol, start), lte(dateCol, end)];
     if (excludeCancelled) conds.push(sql`${multiparkBookings.status} != 'CANCELLED'`);
     if (projectFilter) conds.push(projectFilter);
-    return db.select({
+    return db2.select({
       count: sql`COUNT(*)`,
       revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
     }).from(multiparkBookings).where(and(...conds));
@@ -5486,7 +5684,7 @@ async function getMultiparkBookingStats(filters) {
     byDayRows,
     byBrandRows
   ] = await Promise.all([
-    db.select({ count: sql`COUNT(*)` }).from(multiparkBookings).where(projectFilter ? and(projectFilter) : void 0),
+    db2.select({ count: sql`COUNT(*)` }).from(multiparkBookings).where(projectFilter ? and(projectFilter) : void 0),
     countQuery(multiparkBookings.bookingCreatedAt, todayStr, todayEnd),
     countQuery(multiparkBookings.bookingCreatedAt, monthStart, todayEnd),
     countQuery(multiparkBookings.checkIn, todayStr, todayEnd),
@@ -5499,13 +5697,13 @@ async function getMultiparkBookingStats(filters) {
     (() => {
       const conds = [gte(multiparkBookings.checkIn, periodFrom), lte(multiparkBookings.checkIn, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({ revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)` }).from(multiparkBookings).where(and(...conds));
+      return db2.select({ revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)` }).from(multiparkBookings).where(and(...conds));
     })(),
     // By city
     (() => {
       const conds = [gte(multiparkBookings.bookingCreatedAt, periodFrom), lte(multiparkBookings.bookingCreatedAt, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({
+      return db2.select({
         name: multiparkBookings.city,
         bookings: sql`COUNT(*)`,
         revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -5515,7 +5713,7 @@ async function getMultiparkBookingStats(filters) {
     (() => {
       const conds = [gte(multiparkBookings.bookingCreatedAt, periodFrom), lte(multiparkBookings.bookingCreatedAt, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({
+      return db2.select({
         date: sql`DATE(${multiparkBookings.bookingCreatedAt})`,
         reservas: sql`COUNT(*)`,
         revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -5525,7 +5723,7 @@ async function getMultiparkBookingStats(filters) {
     (() => {
       const conds = [gte(multiparkBookings.bookingCreatedAt, periodFrom), lte(multiparkBookings.bookingCreatedAt, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({
+      return db2.select({
         name: multiparkBookings.parkName,
         bookings: sql`COUNT(*)`,
         revenue: sql`COALESCE(SUM(${multiparkBookings.totalPrice}), 0)`
@@ -5536,17 +5734,17 @@ async function getMultiparkBookingStats(filters) {
     (() => {
       const conds = [gte(multiparkBookings.checkIn, periodFrom), lte(multiparkBookings.checkIn, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({ date: sql`DATE(${multiparkBookings.checkIn})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.checkIn})`);
+      return db2.select({ date: sql`DATE(${multiparkBookings.checkIn})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.checkIn})`);
     })(),
     (() => {
       const conds = [gte(multiparkBookings.checkOut, periodFrom), lte(multiparkBookings.checkOut, periodTo), sql`${multiparkBookings.status} != 'CANCELLED'`];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({ date: sql`DATE(${multiparkBookings.checkOut})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.checkOut})`);
+      return db2.select({ date: sql`DATE(${multiparkBookings.checkOut})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.checkOut})`);
     })(),
     (() => {
       const conds = [gte(multiparkBookings.cancelledAt, periodFrom), lte(multiparkBookings.cancelledAt, periodTo)];
       if (projectFilter) conds.push(projectFilter);
-      return db.select({ date: sql`DATE(${multiparkBookings.cancelledAt})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.cancelledAt})`);
+      return db2.select({ date: sql`DATE(${multiparkBookings.cancelledAt})`, count: sql`COUNT(*)` }).from(multiparkBookings).where(and(...conds)).groupBy(sql`DATE(${multiparkBookings.cancelledAt})`);
     })()
   ]);
   const ciMap = new Map(ciByDay.map((r) => [r.date, r.count]));
@@ -5579,19 +5777,19 @@ async function getMultiparkBookingStats(filters) {
   };
 }
 async function createSyncLog(data) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(multiparkSyncLogs).values(data);
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(multiparkSyncLogs).values(data);
 }
 async function getSyncLogs(limit = 20) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(multiparkSyncLogs).orderBy(desc(multiparkSyncLogs.startedAt)).limit(limit);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(multiparkSyncLogs).orderBy(desc(multiparkSyncLogs.startedAt)).limit(limit);
 }
 async function upsertDailySnapshot(data) {
-  const db = await getDb();
-  if (!db) return;
-  const existing = await db.select({ id: multiparkDailySnapshots.id }).from(multiparkDailySnapshots).where(
+  const db2 = await getDb();
+  if (!db2) return;
+  const existing = await db2.select({ id: multiparkDailySnapshots.id }).from(multiparkDailySnapshots).where(
     and(
       eq(multiparkDailySnapshots.snapshotDate, data.snapshotDate),
       eq(multiparkDailySnapshots.parkName, data.parkName),
@@ -5600,33 +5798,33 @@ async function upsertDailySnapshot(data) {
   ).limit(1);
   if (existing.length > 0) {
     const { id, ...updateData } = data;
-    await db.update(multiparkDailySnapshots).set(updateData).where(eq(multiparkDailySnapshots.id, existing[0].id));
+    await db2.update(multiparkDailySnapshots).set(updateData).where(eq(multiparkDailySnapshots.id, existing[0].id));
     return { id: existing[0].id, action: "updated" };
   } else {
-    const [result] = await db.insert(multiparkDailySnapshots).values(data).$returningId();
+    const [result] = await db2.insert(multiparkDailySnapshots).values(data).$returningId();
     return { id: result?.id, action: "created" };
   }
 }
 async function getDailySnapshots(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
   if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.parkName) conditions.push(eq(multiparkDailySnapshots.parkName, filters.parkName));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  return db.select().from(multiparkDailySnapshots).where(where).orderBy(desc(multiparkDailySnapshots.snapshotDate)).limit(filters?.limit ?? 500);
+  return db2.select().from(multiparkDailySnapshots).where(where).orderBy(desc(multiparkDailySnapshots.snapshotDate)).limit(filters?.limit ?? 500);
 }
 async function getSnapshotKPIs(filters) {
-  const db = await getDb();
-  if (!db) return { totalBookings: 0, totalRevenue: 0, checkins: 0, checkouts: 0, cancelled: 0, reserved: 0, byPark: [], byCity: [], byDay: [], campaigns: {} };
+  const db2 = await getDb();
+  if (!db2) return { totalBookings: 0, totalRevenue: 0, checkins: 0, checkouts: 0, cancelled: 0, reserved: 0, byPark: [], byCity: [], byDay: [], campaigns: {} };
   const conditions = [];
   if (filters?.from) conditions.push(gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.from)));
   if (filters?.to) conditions.push(lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(filters.to)));
   if (filters?.city) conditions.push(eq(multiparkDailySnapshots.city, filters.city));
   const where = conditions.length > 0 ? and(...conditions) : void 0;
-  const rows = await db.select().from(multiparkDailySnapshots).where(where).orderBy(multiparkDailySnapshots.snapshotDate);
+  const rows = await db2.select().from(multiparkDailySnapshots).where(where).orderBy(multiparkDailySnapshots.snapshotDate);
   let totalBookings = 0, totalRevenue = 0, checkins = 0, checkouts = 0, cancelled = 0, reserved = 0;
   const parkMap = {};
   const cityMap = {};
@@ -5677,9 +5875,9 @@ async function getSnapshotKPIs(filters) {
   };
 }
 async function deleteSnapshotsByDateRange(from, to) {
-  const db = await getDb();
-  if (!db) return 0;
-  const result = await db.delete(multiparkDailySnapshots).where(
+  const db2 = await getDb();
+  if (!db2) return 0;
+  const result = await db2.delete(multiparkDailySnapshots).where(
     and(
       gte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(from)),
       lte(multiparkDailySnapshots.snapshotDate, toMysqlDateTime(to))
@@ -5688,11 +5886,11 @@ async function deleteSnapshotsByDateRange(from, to) {
   return result?.[0]?.affectedRows ?? 0;
 }
 async function createInviteToken(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   const token = crypto.randomBytes(48).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
-  await db.insert(inviteTokens).values({
+  await db2.insert(inviteTokens).values({
     token,
     email: data.email,
     userId: data.userId,
@@ -5703,45 +5901,45 @@ async function createInviteToken(data) {
   return { token, expiresAt };
 }
 async function getInviteByToken(token) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(inviteTokens).where(eq(inviteTokens.token, token)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(inviteTokens).where(eq(inviteTokens.token, token)).limit(1);
   return result[0];
 }
 async function acceptInviteToken(token) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(inviteTokens).set({ inviteStatus: "accepted", acceptedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(inviteTokens.token, token));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(inviteTokens).set({ inviteStatus: "accepted", acceptedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(inviteTokens.token, token));
 }
 async function getInvitesByUser(userId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(inviteTokens).where(eq(inviteTokens.userId, userId)).orderBy(desc(inviteTokens.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(inviteTokens).where(eq(inviteTokens.userId, userId)).orderBy(desc(inviteTokens.createdAt));
 }
 async function getInvitesByEmail(email) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(inviteTokens).where(eq(inviteTokens.email, email)).orderBy(desc(inviteTokens.createdAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(inviteTokens).where(eq(inviteTokens.email, email)).orderBy(desc(inviteTokens.createdAt));
 }
 async function linkInviteToOAuthUser(manualUserId, oauthOpenId, oauthName, oauthEmail) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   const updates = { openId: oauthOpenId, loginMethod: "oauth" };
   if (oauthName) updates.name = oauthName;
   if (oauthEmail) updates.email = oauthEmail;
-  await db.update(users).set(updates).where(eq(users.id, manualUserId));
+  await db2.update(users).set(updates).where(eq(users.id, manualUserId));
 }
 async function getPayrollData(year, month) {
-  const db = await getDb();
-  if (!db) return [];
-  const emps = await db.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.isActive, 1)).orderBy(employees.fullName);
-  const rates = await db.select().from(extraRates).orderBy(extraRates.level);
+  const db2 = await getDb();
+  if (!db2) return [];
+  const emps = await db2.select({ employee: employees, project: projects }).from(employees).leftJoin(projects, eq(employees.projectId, projects.id)).where(eq(employees.isActive, 1)).orderBy(employees.fullName);
+  const rates = await db2.select().from(extraRates).orderBy(extraRates.level);
   const rateMap = new Map(rates.map((r) => [r.level, parseFloat(String(r.hourlyRate))]));
   const rateByName = new Map(rates.map((r) => [String(r.levelName ?? ""), parseFloat(String(r.hourlyRate))]));
   const monthFirstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
-  const records = await db.select().from(timeRecords).where(and(gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end))));
+  const records = await db2.select().from(timeRecords).where(and(gte(timeRecords.recordedAt, toMysqlDateTime(start)), lte(timeRecords.recordedAt, toMysqlDateTime(end))));
   const hoursByEmployee = /* @__PURE__ */ new Map();
   for (const r of records) {
     if (!hoursByEmployee.has(r.employeeId)) {
@@ -5758,10 +5956,43 @@ async function getPayrollData(year, month) {
   const OVERTIME_RATE_SUBSEQUENT = 1.375;
   const NIGHT_RATE_MULTIPLIER = 1.25;
   const WEEKEND_RATE_MULTIPLIER = 1.5;
-  const empMeta = await Promise.all(emps.map(async ({ employee: emp }) => {
-    const snapshot = await getEmployeeSalaryAt(emp.id, monthFirstDay);
-    const leaveDays = await getLeaveDaysForMonth(emp.id, year, month);
-    return { empId: emp.id, snapshot, leaveDays };
+  const empIds = emps.map(({ employee }) => employee.id);
+  const histAll = empIds.length ? await db2.select().from(employeeSalaryHistory).where(and(
+    inArray(employeeSalaryHistory.employeeId, empIds),
+    lte(employeeSalaryHistory.effectiveFrom, monthFirstDay),
+    or(isNull(employeeSalaryHistory.effectiveUntil), gte(employeeSalaryHistory.effectiveUntil, monthFirstDay))
+  )).orderBy(desc(employeeSalaryHistory.effectiveFrom)) : [];
+  const snapshotByEmp = /* @__PURE__ */ new Map();
+  for (const h2 of histAll) {
+    if (!snapshotByEmp.has(h2.employeeId)) snapshotByEmp.set(h2.employeeId, { monthlySalary: h2.monthlySalary, mealAllowancePerDay: h2.mealAllowancePerDay });
+  }
+  const lastDayNum = new Date(year, month, 0).getDate();
+  const monthEndStr = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+  const leavesAll = empIds.length ? await db2.select({ employeeId: employeeLeaves.employeeId, fromDate: employeeLeaves.fromDate, toDate: employeeLeaves.toDate }).from(employeeLeaves).where(and(
+    inArray(employeeLeaves.employeeId, empIds),
+    lte(employeeLeaves.fromDate, monthEndStr),
+    gte(employeeLeaves.toDate, monthFirstDay)
+  )) : [];
+  const leavesByEmp = /* @__PURE__ */ new Map();
+  for (const r of leavesAll) {
+    let set = leavesByEmp.get(r.employeeId);
+    if (!set) {
+      set = /* @__PURE__ */ new Set();
+      leavesByEmp.set(r.employeeId, set);
+    }
+    const from = r.fromDate < monthFirstDay ? monthFirstDay : r.fromDate;
+    const to = r.toDate > monthEndStr ? monthEndStr : r.toDate;
+    const d = /* @__PURE__ */ new Date(from + "T00:00:00");
+    const limit = /* @__PURE__ */ new Date(to + "T00:00:00");
+    while (d <= limit) {
+      set.add(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  const empMeta = emps.map(({ employee: emp }) => ({
+    empId: emp.id,
+    snapshot: snapshotByEmp.get(emp.id) ?? { monthlySalary: emp.monthlySalary, mealAllowancePerDay: emp.mealAllowancePerDay },
+    leaveDays: leavesByEmp.get(emp.id) ?? /* @__PURE__ */ new Set()
   }));
   const metaById = new Map(empMeta.map((m) => [m.empId, m]));
   return emps.map(({ employee: emp, project }) => {
@@ -5872,69 +6103,69 @@ async function getPayrollData(year, month) {
   });
 }
 async function savePayslipRecord(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(payslipHistory).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.insert(payslipHistory).values(data);
 }
 async function getPayslipHistoryList(filters = {}) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters.year) conditions.push(eq(payslipHistory.year, filters.year));
   if (filters.month) conditions.push(eq(payslipHistory.month, filters.month));
   if (filters.employeeId) conditions.push(eq(payslipHistory.employeeId, filters.employeeId));
   if (filters.type) conditions.push(eq(payslipHistory.payslipType, filters.type));
-  const query = db.select().from(payslipHistory).orderBy(desc(payslipHistory.createdAt));
+  const query = db2.select().from(payslipHistory).orderBy(desc(payslipHistory.createdAt));
   if (conditions.length > 0) return query.where(and(...conditions));
   return query;
 }
 async function deletePayslipRecord(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(payslipHistory).where(eq(payslipHistory.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(payslipHistory).where(eq(payslipHistory.id, id));
 }
 async function getTaskAssignees(taskId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({ assignee: taskAssignees, employee: employees }).from(taskAssignees).leftJoin(employees, eq(taskAssignees.employeeId, employees.id)).where(eq(taskAssignees.taskId, taskId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select({ assignee: taskAssignees, employee: employees }).from(taskAssignees).leftJoin(employees, eq(taskAssignees.employeeId, employees.id)).where(eq(taskAssignees.taskId, taskId));
 }
 async function setTaskAssignees(taskId, employeeIds) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
   if (employeeIds.length > 0) {
-    await db.insert(taskAssignees).values(
+    await db2.insert(taskAssignees).values(
       employeeIds.map((employeeId) => ({ taskId, employeeId }))
     );
   }
 }
 async function getOverdueTasks() {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const now = /* @__PURE__ */ new Date();
-  return db.select().from(tasks).where(and(
+  return db2.select().from(tasks).where(and(
     lte(tasks.dueDate, toMysqlDateTime(now)),
     eq(tasks.notifiedOverdue, 0),
     sql`${tasks.taskStatus} != 'done'`
   ));
 }
 async function getRecentlyCompletedTasks() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(tasks).where(and(
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(tasks).where(and(
     eq(tasks.taskStatus, "done"),
     eq(tasks.notifiedComplete, 0)
   ));
 }
 async function markTaskNotified(taskId, field) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(tasks).set({ [field]: 1 }).where(eq(tasks.id, taskId));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(tasks).set({ [field]: 1 }).where(eq(tasks.id, taskId));
 }
 async function getProjectHierarchyManagers(projectId) {
-  const db = await getDb();
-  if (!db) return [];
-  const allProjects = await db.select().from(projects);
+  const db2 = await getDb();
+  if (!db2) return [];
+  const allProjects = await db2.select().from(projects);
   const managers = [];
   let current = allProjects.find((p) => p.id === projectId);
   while (current) {
@@ -5949,11 +6180,11 @@ async function getProjectHierarchyManagers(projectId) {
   return managers;
 }
 async function getProjectCosts(year, month) {
-  const db = await getDb();
-  if (!db) return [];
-  const allProjects = await db.select().from(projects).orderBy(projects.name);
-  const allAssignments = await db.select().from(projectEmployees);
-  const allEmployees = await db.select().from(employees);
+  const db2 = await getDb();
+  if (!db2) return [];
+  const allProjects = await db2.select().from(projects).orderBy(projects.name);
+  const allAssignments = await db2.select().from(projectEmployees);
+  const allEmployees = await db2.select().from(employees);
   const conditions = [];
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
@@ -5967,7 +6198,7 @@ async function getProjectCosts(year, month) {
     conditions.push(lte(expenses.expenseDate, toMysqlDateTime(endDate)));
   }
   conditions.push(sql`${expenses.status} != 'cancelled'`);
-  const expenseRows = await db.select({
+  const expenseRows = await db2.select({
     projectId: expenses.projectId,
     totalExpenses: sql`COALESCE(SUM(${expenses.amount}), 0)`,
     expenseCount: sql`COUNT(*)`,
@@ -5995,7 +6226,7 @@ async function getProjectCosts(year, month) {
     timeConditions.push(gte(timeRecords.recordedAt, toMysqlDateTime(startDate)));
     timeConditions.push(lte(timeRecords.recordedAt, toMysqlDateTime(endDate)));
   }
-  const timeRows = await db.select({
+  const timeRows = await db2.select({
     employeeId: timeRecords.employeeId,
     totalHours: sql`COALESCE(SUM(${timeRecords.hoursWorked}), 0)`
   }).from(timeRecords).where(timeConditions.length > 0 ? and(...timeConditions) : void 0).groupBy(timeRecords.employeeId);
@@ -6003,7 +6234,7 @@ async function getProjectCosts(year, month) {
   for (const row of timeRows) {
     hoursMap.set(row.employeeId, row.totalHours || 0);
   }
-  const rates = await db.select().from(extraRates).orderBy(extraRates.level);
+  const rates = await db2.select().from(extraRates).orderBy(extraRates.level);
   const salaryCostMap = /* @__PURE__ */ new Map();
   for (const proj of allProjects) {
     const assignedEmployeeIds = allAssignments.filter((a) => a.projectId === proj.id).map((a) => a.employeeId);
@@ -6024,7 +6255,7 @@ async function getProjectCosts(year, month) {
     }
     salaryCostMap.set(proj.id, { totalSalary, employeeCount: uniqueIds.length });
   }
-  const allUsers = await db.select().from(users);
+  const allUsers = await db2.select().from(users);
   const userMap = /* @__PURE__ */ new Map();
   for (const u of allUsers) userMap.set(u.id, u.name || u.email || "\u2014");
   return allProjects.map((proj) => {
@@ -6056,52 +6287,52 @@ async function getProjectCosts(year, month) {
   });
 }
 async function getSpeedLimits() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(speedLimits).where(eq(speedLimits.isActive, 1));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(speedLimits).where(eq(speedLimits.isActive, 1));
 }
 async function getDefaultSpeedLimit() {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(speedLimits).where(eq(speedLimits.isDefault, 1)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(speedLimits).where(eq(speedLimits.isDefault, 1)).limit(1);
   return rows[0] || null;
 }
 async function createSpeedLimit(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(speedLimits).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(speedLimits).values(data);
   return result.insertId;
 }
 async function updateSpeedLimit(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(speedLimits).set({ ...data, updatedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedLimits.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(speedLimits).set({ ...data, updatedAt: toMysqlDateTime(/* @__PURE__ */ new Date()) }).where(eq(speedLimits.id, id));
 }
 async function deleteSpeedLimit(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(speedLimits).where(eq(speedLimits.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(speedLimits).where(eq(speedLimits.id, id));
 }
 async function recordSpeedViolation(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(speedViolations).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(speedViolations).values(data);
   return result.insertId;
 }
 async function getSpeedViolations(filters) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const conditions = [];
   if (filters?.startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(filters.startDate)));
   if (filters?.endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(filters.endDate)));
   if (filters?.username) conditions.push(eq(speedViolations.zelloUsername, filters.username));
   if (filters?.acknowledged !== void 0) conditions.push(eq(speedViolations.acknowledged, filters.acknowledged ? 1 : 0));
-  return db.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(speedViolations.occurredAt));
+  return db2.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(speedViolations.occurredAt));
 }
 async function acknowledgeSpeedViolation(id, userId, notes) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(speedViolations).set({
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(speedViolations).set({
     acknowledged: 1,
     acknowledgedById: userId,
     acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date()),
@@ -6109,12 +6340,12 @@ async function acknowledgeSpeedViolation(id, userId, notes) {
   }).where(eq(speedViolations.id, id));
 }
 async function getSpeedViolationStats(startDate, endDate) {
-  const db = await getDb();
-  if (!db) return { total: 0, unacknowledged: 0, topOffenders: [] };
+  const db2 = await getDb();
+  if (!db2) return { total: 0, unacknowledged: 0, topOffenders: [] };
   const conditions = [];
   if (startDate) conditions.push(gte(speedViolations.occurredAt, toMysqlDateTime(startDate)));
   if (endDate) conditions.push(lte(speedViolations.occurredAt, toMysqlDateTime(endDate)));
-  const allViolations = await db.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0);
+  const allViolations = await db2.select().from(speedViolations).where(conditions.length > 0 ? and(...conditions) : void 0);
   const total = allViolations.length;
   const unacknowledged = allViolations.filter((v) => !v.acknowledged).length;
   const byUser = {};
@@ -6134,41 +6365,41 @@ async function getSpeedViolationStats(startDate, endDate) {
   return { total, unacknowledged, topOffenders };
 }
 async function createDailyDriverHistory(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(dailyDriverHistory).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(dailyDriverHistory).values(data);
   return result.insertId;
 }
 async function getDailyDriverHistoryByDate(dateStr) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const startOfDay2 = new Date(dateStr);
   startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  return db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay)))).orderBy(desc(dailyDriverHistory.totalKm));
+  return db2.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay)))).orderBy(desc(dailyDriverHistory.totalKm));
 }
 async function getDailyDriverHistoryByUser(username, limit = 30) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(dailyDriverHistory).where(eq(dailyDriverHistory.zelloUsername, username)).orderBy(desc(dailyDriverHistory.date)).limit(limit);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(dailyDriverHistory).where(eq(dailyDriverHistory.zelloUsername, username)).orderBy(desc(dailyDriverHistory.date)).limit(limit);
 }
 async function getDailyDriverHistoryRange(startDate, endDate) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(dailyDriverHistory).where(and(
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(dailyDriverHistory).where(and(
     gte(dailyDriverHistory.date, toMysqlDateTime(new Date(startDate))),
     lte(dailyDriverHistory.date, toMysqlDateTime(new Date(endDate)))
   )).orderBy(desc(dailyDriverHistory.date));
 }
 async function getDailyDriverStats(dateStr) {
-  const db = await getDb();
-  if (!db) return { totalDrivers: 0, totalKm: 0, totalHoursWorked: 0, totalHoursStopped: 0, maxSpeedOfDay: 0, avgBattery: 0, totalViolations: 0 };
+  const db2 = await getDb();
+  if (!db2) return { totalDrivers: 0, totalKm: 0, totalHoursWorked: 0, totalHoursStopped: 0, maxSpeedOfDay: 0, avgBattery: 0, totalViolations: 0 };
   const startOfDay2 = new Date(dateStr);
   startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  const rows = await db.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay))));
+  const rows = await db2.select().from(dailyDriverHistory).where(and(gte(dailyDriverHistory.date, toMysqlDateTime(startOfDay2)), lte(dailyDriverHistory.date, toMysqlDateTime(endOfDay))));
   const totalDrivers = rows.length;
   const totalKm = rows.reduce((s, r) => s + parseFloat(String(r.totalKm || "0")), 0);
   const totalHoursWorked = rows.reduce((s, r) => s + parseFloat(String(r.hoursWorked || "0")), 0);
@@ -6179,94 +6410,94 @@ async function getDailyDriverStats(dateStr) {
   return { totalDrivers, totalKm, totalHoursWorked, totalHoursStopped, maxSpeedOfDay, avgBattery, totalViolations };
 }
 async function createPda(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(pdas).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(pdas).values(data);
   return result.insertId;
 }
 async function updatePda(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(pdas).set(data).where(eq(pdas.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(pdas).set(data).where(eq(pdas.id, id));
 }
 async function deletePda(id) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(pdas).where(eq(pdas.id, id));
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.delete(pdas).where(eq(pdas.id, id));
 }
 async function listPdas() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(pdas).orderBy(pdas.name);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(pdas).orderBy(pdas.name);
 }
 async function getPdaById(id) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const [pda] = await db.select().from(pdas).where(eq(pdas.id, id));
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const [pda] = await db2.select().from(pdas).where(eq(pdas.id, id));
   return pda;
 }
 async function createPdaCheckin(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(pdaCheckins).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(pdaCheckins).values(data);
   return result.insertId;
 }
 async function checkoutPda(id, data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(pdaCheckins).set({
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(pdaCheckins).set({
     ...data,
     checkoutAt: toMysqlDateTime(/* @__PURE__ */ new Date()),
     checkinStatus: "checked_out"
   }).where(eq(pdaCheckins.id, id));
 }
 async function getActiveCheckins() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(pdaCheckins).where(eq(pdaCheckins.checkinStatus, "checked_in")).orderBy(desc(pdaCheckins.checkinAt));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(pdaCheckins).where(eq(pdaCheckins.checkinStatus, "checked_in")).orderBy(desc(pdaCheckins.checkinAt));
 }
 async function getCheckinsByDate(dateStr) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const startOfDay2 = new Date(dateStr);
   startOfDay2.setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateStr);
   endOfDay.setHours(23, 59, 59, 999);
-  return db.select().from(pdaCheckins).where(and(gte(pdaCheckins.checkinAt, toMysqlDateTime(startOfDay2)), lte(pdaCheckins.checkinAt, toMysqlDateTime(endOfDay)))).orderBy(desc(pdaCheckins.checkinAt));
+  return db2.select().from(pdaCheckins).where(and(gte(pdaCheckins.checkinAt, toMysqlDateTime(startOfDay2)), lte(pdaCheckins.checkinAt, toMysqlDateTime(endOfDay)))).orderBy(desc(pdaCheckins.checkinAt));
 }
 async function getCheckinsByPda(pdaId, limit = 30) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(pdaCheckins).where(eq(pdaCheckins.pdaId, pdaId)).orderBy(desc(pdaCheckins.checkinAt)).limit(limit);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(pdaCheckins).where(eq(pdaCheckins.pdaId, pdaId)).orderBy(desc(pdaCheckins.checkinAt)).limit(limit);
 }
 async function createGpsAlert(data) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(gpsAlerts).values(data);
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  const [result] = await db2.insert(gpsAlerts).values(data);
   return result.insertId;
 }
 async function getGpsAlerts(opts = {}) {
-  const db = await getDb();
-  if (!db) return [];
-  let query = db.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
+  const db2 = await getDb();
+  if (!db2) return [];
+  let query = db2.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
   if (opts.unacknowledgedOnly) {
-    return db.select().from(gpsAlerts).where(eq(gpsAlerts.acknowledged, 0)).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
+    return db2.select().from(gpsAlerts).where(eq(gpsAlerts.acknowledged, 0)).orderBy(desc(gpsAlerts.occurredAt)).limit(opts.limit || 50);
   }
   return query;
 }
 async function acknowledgeGpsAlert(id, userId) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(gpsAlerts).set({
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
+  await db2.update(gpsAlerts).set({
     acknowledged: 1,
     acknowledgedById: userId,
     acknowledgedAt: toMysqlDateTime(/* @__PURE__ */ new Date())
   }).where(eq(gpsAlerts.id, id));
 }
 async function getGpsAlertStats() {
-  const db = await getDb();
-  if (!db) return { total: 0, unacknowledged: 0, todayAlerts: 0, byType: {} };
-  const all = await db.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(200);
+  const db2 = await getDb();
+  if (!db2) return { total: 0, unacknowledged: 0, todayAlerts: 0, byType: {} };
+  const all = await db2.select().from(gpsAlerts).orderBy(desc(gpsAlerts.occurredAt)).limit(200);
   const total = all.length;
   const unacknowledged = all.filter((a) => !a.acknowledged).length;
   const today = /* @__PURE__ */ new Date();
@@ -6279,40 +6510,40 @@ async function getGpsAlertStats() {
   return { total, unacknowledged, todayAlerts, byType };
 }
 async function getCampaignByNameAndPlatform(name, platform) {
-  const db = await getDb();
-  if (!db) return void 0;
-  const result = await db.select().from(campaigns).where(and(eq(campaigns.name, name), eq(campaigns.platform, platform))).limit(1);
+  const db2 = await getDb();
+  if (!db2) return void 0;
+  const result = await db2.select().from(campaigns).where(and(eq(campaigns.name, name), eq(campaigns.platform, platform))).limit(1);
   return result[0];
 }
 async function getExistingStatsForCampaignAndDateRange(campaignId, startDate, endDate) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(campaignDailyStats).where(and(
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(campaignDailyStats).where(and(
     eq(campaignDailyStats.campaignId, campaignId),
     gte(campaignDailyStats.date, toMysqlDateTime(startDate)),
     lte(campaignDailyStats.date, toMysqlDateTime(endDate))
   ));
 }
 async function getReviewBySourceEmailId(sourceEmailId) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(googleReviews).where(eq(googleReviews.sourceEmailId, sourceEmailId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(googleReviews).where(eq(googleReviews.sourceEmailId, sourceEmailId)).limit(1);
   return rows[0] || null;
 }
 async function getIncidentBySourceEmailId(sourceEmailId) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(incidents).where(eq(incidents.sourceEmailId, sourceEmailId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return null;
+  const rows = await db2.select().from(incidents).where(eq(incidents.sourceEmailId, sourceEmailId)).limit(1);
   return rows[0] || null;
 }
 async function importBookingHistory(rows) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  const db2 = await getDb();
+  if (!db2) throw new Error("DB not available");
   let imported = 0;
   let skipped = 0;
   for (const row of rows) {
     try {
-      await db.insert(bookingHistory).values({
+      await db2.insert(bookingHistory).values({
         historyId: row.historyId,
         bookingId: row.bookingId,
         changeType: row.changeType,
@@ -6344,9 +6575,9 @@ function splitAgentName(full) {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 async function getLostFoundBookingRefSet() {
-  const db = await getDb();
-  if (!db) return /* @__PURE__ */ new Set();
-  const items = await db.select({ bookingRef: lostFoundItems.bookingRef }).from(lostFoundItems);
+  const db2 = await getDb();
+  if (!db2) return /* @__PURE__ */ new Set();
+  const items = await db2.select({ bookingRef: lostFoundItems.bookingRef }).from(lostFoundItems);
   const refs = /* @__PURE__ */ new Set();
   for (const it of items) {
     const r = it.bookingRef?.trim();
@@ -6376,9 +6607,9 @@ async function mapMultiparkHistoryRows(rows) {
   });
 }
 async function getBookingHistoryByBookingId(bookingId) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     id: multiparkBookingHistory.id,
     historyId: multiparkBookingHistory.historyId,
     bookingExternalId: multiparkBookingHistory.bookingExternalId,
@@ -6394,9 +6625,9 @@ async function getBookingHistoryByBookingId(bookingId) {
   return mapMultiparkHistoryRows(rows);
 }
 async function getBookingHistoryByPlate(plate) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     id: multiparkBookingHistory.id,
     historyId: multiparkBookingHistory.historyId,
     bookingExternalId: multiparkBookingHistory.bookingExternalId,
@@ -6412,10 +6643,10 @@ async function getBookingHistoryByPlate(plate) {
   return mapMultiparkHistoryRows(rows);
 }
 async function searchBookingHistory(search) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const s = `%${search}%`;
-  const rows = await db.select({
+  const rows = await db2.select({
     id: multiparkBookingHistory.id,
     historyId: multiparkBookingHistory.historyId,
     bookingExternalId: multiparkBookingHistory.bookingExternalId,
@@ -6436,12 +6667,12 @@ async function searchBookingHistory(search) {
   return mapMultiparkHistoryRows(rows);
 }
 async function getBookingHistoryCrossReference() {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const flaggedRefs = await getLostFoundBookingRefSet();
   if (flaggedRefs.size === 0) return [];
   const refs = Array.from(flaggedRefs);
-  const rows = await db.select({
+  const rows = await db2.select({
     agentName: multiparkBookingHistory.agentName,
     changeType: multiparkBookingHistory.changeType,
     bookingExternalId: multiparkBookingHistory.bookingExternalId,
@@ -6472,9 +6703,9 @@ async function getBookingHistoryCrossReference() {
   })).sort((a, b) => b.caseCount - a.caseCount);
 }
 async function getBookingHistoryDriverStats() {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     userName: multiparkBookingHistory.agentName,
     total: sql`COUNT(*)`,
     checkins: sql`SUM(CASE WHEN UPPER(${multiparkBookingHistory.changeType}) = 'CHECK_IN' THEN 1 ELSE 0 END)`,
@@ -6497,9 +6728,9 @@ async function getBookingHistoryDriverStats() {
   });
 }
 async function getVehicleAgentsByPlate(plate, currentBookingRef) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     agentName: multiparkBookingHistory.agentName,
     agentEmail: multiparkBookingHistory.agentEmail,
     changeType: multiparkBookingHistory.changeType,
@@ -6544,11 +6775,11 @@ async function getVehicleAgentsByPlate(plate, currentBookingRef) {
   })).sort((a, b) => b.flagged - a.flagged || b.actions - a.actions);
 }
 async function getCheckoutDriversFromDb(startDate, endDate) {
-  const db = await getDb();
-  if (!db) return { total: 0, period: { startDate, endDate }, drivers: [] };
+  const db2 = await getDb();
+  if (!db2) return { total: 0, period: { startDate, endDate }, drivers: [] };
   const startStr = toMysqlDateTime(new Date(startDate));
   const endStr = toMysqlDateTime(/* @__PURE__ */ new Date(endDate + "T23:59:59"));
-  const rows = await db.select({
+  const rows = await db2.select({
     agentName: multiparkBookingHistory.agentName,
     agentUserId: multiparkBookingHistory.agentUserId,
     count: sql`COUNT(*)`
@@ -6569,7 +6800,7 @@ async function getCheckoutDriversFromDb(startDate, endDate) {
   return { total, period: { startDate, endDate }, drivers };
 }
 async function getAgentHistoryFromDb(opts) {
-  const db = await getDb();
+  const db2 = await getDb();
   const empty = {
     total: 0,
     period: { startDate: opts.startDate, endDate: opts.endDate },
@@ -6577,7 +6808,7 @@ async function getAgentHistoryFromDb(opts) {
     agentUserId: opts.userId ?? "",
     history: []
   };
-  if (!db) return empty;
+  if (!db2) return empty;
   if (!opts.agentName && !opts.userId) return empty;
   const startStr = toMysqlDateTime(new Date(opts.startDate));
   const endStr = toMysqlDateTime(/* @__PURE__ */ new Date(opts.endDate + "T23:59:59"));
@@ -6590,7 +6821,7 @@ async function getAgentHistoryFromDb(opts) {
   } else if (opts.agentName) {
     conds.push(sql`LOWER(${multiparkBookingHistory.agentName}) LIKE LOWER(${"%" + opts.agentName + "%"})`);
   }
-  const rows = await db.select({
+  const rows = await db2.select({
     id: multiparkBookingHistory.historyId,
     changeType: multiparkBookingHistory.changeType,
     actionTime: multiparkBookingHistory.actionTime,
@@ -6659,14 +6890,14 @@ function classifyRemarks(remarks) {
   return { incidentType: "outro", severity: "low" };
 }
 async function syncIncidentsFromMultiparkHistory(opts = {}) {
-  const db = await getDb();
+  const db2 = await getDb();
   const empty = { scanned: 0, imported: 0, skipped: 0, errors: [], details: [] };
-  if (!db) return empty;
+  if (!db2) return empty;
   const lookbackDays = opts.lookbackDays ?? 30;
   const since = /* @__PURE__ */ new Date();
   since.setDate(since.getDate() - lookbackDays);
   const sinceStr = toMysqlDateTime(since);
-  const rows = await db.select({
+  const rows = await db2.select({
     historyId: multiparkBookingHistory.historyId,
     bookingExternalId: multiparkBookingHistory.bookingExternalId,
     remarks: multiparkBookingHistory.remarks,
@@ -6686,7 +6917,7 @@ async function syncIncidentsFromMultiparkHistory(opts = {}) {
     result.scanned++;
     const sourceKey = `mp:${row.historyId}`;
     try {
-      const existing = await db.select({ id: incidents.id }).from(incidents).where(eq(incidents.sourceEmailId, sourceKey)).limit(1);
+      const existing = await db2.select({ id: incidents.id }).from(incidents).where(eq(incidents.sourceEmailId, sourceKey)).limit(1);
       if (existing.length > 0) {
         result.skipped++;
         continue;
@@ -6698,7 +6929,7 @@ async function syncIncidentsFromMultiparkHistory(opts = {}) {
     const cls = classifyRemarks(remarks);
     let vehiclePlate;
     try {
-      const [booking] = await db.select({ plate: multiparkBookings.licensePlate }).from(multiparkBookings).where(eq(multiparkBookings.externalId, row.bookingExternalId)).limit(1);
+      const [booking] = await db2.select({ plate: multiparkBookings.licensePlate }).from(multiparkBookings).where(eq(multiparkBookings.externalId, row.bookingExternalId)).limit(1);
       vehiclePlate = booking?.plate ?? void 0;
     } catch {
     }
@@ -7123,7 +7354,28 @@ var init_multipark = __esm({
       { id: "FARO_SKYPARK", name: "Skypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_SKYPARK" },
       { id: "PORTO_AIRPARK", name: "Airpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_AIRPARK" },
       { id: "PORTO_REDPARK", name: "Redpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_REDPARK" },
-      { id: "PORTO_SKYPARK", name: "Skypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_SKYPARK" }
+      { id: "PORTO_SKYPARK", name: "Skypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_SKYPARK" },
+      { id: "LISBON_BOARDINGPARK", name: "Boardingpark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_BOARDINGPARK" },
+      { id: "LISBON_PARKDIRECT", name: "Parkdirect", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_PARKDIRECT" },
+      { id: "LISBON_PREMIUM_PARK", name: "Premium Park", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_PREMIUM_PARK" },
+      { id: "LISBON_READYPARK", name: "Readypark", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_READYPARK" },
+      { id: "LISBON_STOP_FLY_PARK", name: "Stop & Fly Park", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_STOP_FLY_PARK" },
+      { id: "LISBON_TRAVELPARKING", name: "Travelparking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_TRAVELPARKING" },
+      { id: "LISBON_VIAGENSPARKING", name: "Viagensparking", city: "Lisboa", envKey: "MULTIPARK_API_KEY_LISBON_VIAGENSPARKING" },
+      { id: "FARO_BOARDINGPARK", name: "Boardingpark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_BOARDINGPARK" },
+      { id: "FARO_PARKDIRECT", name: "Parkdirect", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_PARKDIRECT" },
+      { id: "FARO_PREMIUM_PARK", name: "Premium Park", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_PREMIUM_PARK" },
+      { id: "FARO_READYPARK", name: "Readypark", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_READYPARK" },
+      { id: "FARO_STOP_FLY_PARK", name: "Stop & Fly Park", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_STOP_FLY_PARK" },
+      { id: "FARO_TRAVELPARKING", name: "Travelparking", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_TRAVELPARKING" },
+      { id: "FARO_VIAGENSPARKING", name: "Viagensparking", city: "Faro", envKey: "MULTIPARK_API_KEY_FARO_VIAGENSPARKING" },
+      { id: "PORTO_BOARDINGPARK", name: "Boardingpark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_BOARDINGPARK" },
+      { id: "PORTO_PARKDIRECT", name: "Parkdirect", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_PARKDIRECT" },
+      { id: "PORTO_PREMIUM_PARK", name: "Premium Park", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_PREMIUM_PARK" },
+      { id: "PORTO_READYPARK", name: "Readypark", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_READYPARK" },
+      { id: "PORTO_STOP_FLY_PARK", name: "Stop & Fly Park", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_STOP_FLY_PARK" },
+      { id: "PORTO_TRAVELPARKING", name: "Travelparking", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_TRAVELPARKING" },
+      { id: "PORTO_VIAGENSPARKING", name: "Viagensparking", city: "Porto", envKey: "MULTIPARK_API_KEY_PORTO_VIAGENSPARKING" }
     ];
   }
 });
@@ -7163,13 +7415,13 @@ function minuteOf(ts) {
 function parseScheduledHM(timeStr, fallbackIso) {
   if (timeStr && /^\d{1,2}:\d{2}/.test(timeStr)) {
     const [hh, mm] = timeStr.split(":");
-    const h2 = parseInt(hh, 10);
+    const h3 = parseInt(hh, 10);
     const m2 = parseInt(mm, 10);
-    if (h2 >= 0 && h2 < 24 && m2 >= 0 && m2 < 60) return { hour: h2, minute: m2 };
+    if (h3 >= 0 && h3 < 24 && m2 >= 0 && m2 < 60) return { hour: h3, minute: m2 };
   }
-  const h = hourOf(fallbackIso);
+  const h2 = hourOf(fallbackIso);
   const m = minuteOf(fallbackIso);
-  if (h !== null && m !== null) return { hour: h, minute: m };
+  if (h2 !== null && m !== null) return { hour: h2, minute: m };
   return null;
 }
 function bookingHasLavagem(rawJson) {
@@ -7196,7 +7448,7 @@ function suggestShifts(hourlyCars, level = "junior") {
   const shifts = [];
   for (let slot = 0; slot < peak; slot++) {
     const active = [];
-    for (let h = 0; h < driversPerHour.length; h++) if (driversPerHour[h] > slot) active.push(h);
+    for (let h2 = 0; h2 < driversPerHour.length; h2++) if (driversPerHour[h2] > slot) active.push(h2);
     if (active.length === 0) continue;
     const start = active[0];
     const end = active[active.length - 1] + 1;
@@ -7231,12 +7483,12 @@ function classifyDeliveryType(dt) {
   return "other";
 }
 async function fetchBookingsInRange(field, startInclusive, endExclusive) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const col = field === "checkIn" ? multiparkBookings.checkIn : multiparkBookings.checkOut;
   const startStr = toMysqlDateTime2(startInclusive);
   const endStr = toMysqlDateTime2(endExclusive);
-  return db.select({
+  return db2.select({
     id: multiparkBookings.id,
     externalId: multiparkBookings.externalId,
     bookingNumber: multiparkBookings.bookingNumber,
@@ -7307,22 +7559,22 @@ function rowToAssignment(r, tlDailyCost, multiparkAgentName, multiparkAgentUserI
 }
 async function getEmployeeDailyCost(employeeId) {
   if (!employeeId) return 0;
-  const db = await getDb();
-  if (!db) return 0;
-  const [row] = await db.select({ monthlySalary: employees.monthlySalary }).from(employees).where(eq2(employees.id, employeeId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return 0;
+  const [row] = await db2.select({ monthlySalary: employees.monthlySalary }).from(employees).where(eq2(employees.id, employeeId)).limit(1);
   if (!row?.monthlySalary) return 0;
   const monthly = parseFloat(String(row.monthlySalary));
   if (!Number.isFinite(monthly)) return 0;
   return monthly / TL_WORKING_DAYS_PER_MONTH;
 }
 async function listAssignments(date) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.assignmentDate, date)).orderBy(asc(extrasDiaAssignments.startHour));
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.assignmentDate, date)).orderBy(asc(extrasDiaAssignments.startHour));
   const empIds = Array.from(new Set(rows.map((r) => r.employeeId).filter((x) => x !== null)));
   const empMap = /* @__PURE__ */ new Map();
   if (empIds.length > 0) {
-    const empRows = await db.select({
+    const empRows = await db2.select({
       id: employees.id,
       multiparkAgentName: employees.multiparkAgentName,
       multiparkAgentUserId: employees.multiparkAgentUserId
@@ -7346,11 +7598,11 @@ async function listAssignments(date) {
   return result;
 }
 async function upsertAssignment(input) {
-  const db = await getDb();
-  if (!db) return null;
+  const db2 = await getDb();
+  if (!db2) return null;
   const isTL = !!input.isTeamLeader;
   if (isTL) {
-    const existing = await db.select({ id: extrasDiaAssignments.id }).from(extrasDiaAssignments).where(
+    const existing = await db2.select({ id: extrasDiaAssignments.id }).from(extrasDiaAssignments).where(
       and2(
         eq2(extrasDiaAssignments.assignmentDate, input.assignmentDate),
         eq2(extrasDiaAssignments.shift, input.shift),
@@ -7376,27 +7628,27 @@ async function upsertAssignment(input) {
     notes: input.notes ?? null
   };
   if (input.id) {
-    await db.update(extrasDiaAssignments).set(payload).where(eq2(extrasDiaAssignments.id, input.id));
-    const [row2] = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, input.id)).limit(1);
+    await db2.update(extrasDiaAssignments).set(payload).where(eq2(extrasDiaAssignments.id, input.id));
+    const [row2] = await db2.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, input.id)).limit(1);
     if (!row2) return null;
     const tlCost2 = row2.isTeamLeader === 1 ? await getEmployeeDailyCost(row2.employeeId) : void 0;
     return rowToAssignment(row2, tlCost2);
   }
-  const [result] = await db.insert(extrasDiaAssignments).values({ ...payload, createdById: input.createdById ?? null }).$returningId();
+  const [result] = await db2.insert(extrasDiaAssignments).values({ ...payload, createdById: input.createdById ?? null }).$returningId();
   const newId = result.id;
-  const [row] = await db.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, newId)).limit(1);
+  const [row] = await db2.select().from(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, newId)).limit(1);
   if (!row) return null;
   const tlCost = row.isTeamLeader === 1 ? await getEmployeeDailyCost(row.employeeId) : void 0;
   return rowToAssignment(row, tlCost);
 }
 async function deleteAssignment(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(extrasDiaAssignments).where(eq2(extrasDiaAssignments.id, id));
 }
 async function getExtrasDiaCostForRange(startDate, endDate) {
-  const db = await getDb();
-  if (!db) return { real: 0, estimate: 0, total: 0, days: 0, daysWithReal: 0, daysWithEstimate: 0 };
+  const db2 = await getDb();
+  if (!db2) return { real: 0, estimate: 0, total: 0, days: 0, daysWithReal: 0, daysWithEstimate: 0 };
   const start = startOfDay(/* @__PURE__ */ new Date(startDate + "T00:00:00"));
   const end = startOfDay(/* @__PURE__ */ new Date(endDate + "T00:00:00"));
   const todayStart = startOfDay(/* @__PURE__ */ new Date());
@@ -7484,9 +7736,9 @@ async function enrichBookingFromApi(externalId) {
     const returnFlight = typeof b.returnFlight === "string" && b.returnFlight ? b.returnFlight : null;
     const departingFlight = typeof b.departingFlight === "string" && b.departingFlight ? b.departingFlight : null;
     const remarks = typeof b.remarks === "string" && b.remarks ? b.remarks.slice(0, 512) : null;
-    const db = await getDb();
-    if (db) {
-      await db.update(multiparkBookings).set({
+    const db2 = await getDb();
+    if (db2) {
+      await db2.update(multiparkBookings).set({
         deliveryType,
         returnFlight,
         departingFlight,
@@ -7509,9 +7761,9 @@ function suggestLevel(position, extraLevel) {
   return POSITION_TO_LEVEL[(position ?? "").toLowerCase()] ?? "junior";
 }
 async function listDriverCandidates() {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const rows = await db2.select({
     id: employees.id,
     fullName: employees.fullName,
     position: employees.position,
@@ -7544,15 +7796,15 @@ async function getExtrasDiaForecast(baseDateInput) {
     fetchBookingsInRange("checkOut", targetStart, targetEndPlus3h),
     fetchBookingsInRange("checkOut", nextStart, nextEnd)
   ]);
-  const hourly = Array.from({ length: FORECAST_HOURS }, (_, h) => ({
-    hour: h,
+  const hourly = Array.from({ length: FORECAST_HOURS }, (_, h2) => ({
+    hour: h2,
     checkins: 0,
     checkouts: 0,
     driversNeeded: 0,
     hasT2: false,
     hasOther: false,
     slots: Array.from({ length: SLOTS_PER_HOUR }, (_2, s) => ({
-      hour: h,
+      hour: h2,
       slot: s,
       checkins: 0,
       checkouts: 0,
@@ -7620,7 +7872,7 @@ async function getExtrasDiaForecast(baseDateInput) {
     }
     row.driversNeeded = Math.ceil(hourWeighted / SLOTS_PER_HOUR);
   }
-  const hourlyCars = hourly.map((h) => h.slots.reduce((acc, s) => acc + s.weightedDemand, 0));
+  const hourlyCars = hourly.map((h2) => h2.slots.reduce((acc, s) => acc + s.weightedDemand, 0));
   const cheapest = suggestShifts(hourlyCars, "junior");
   const bySingleLevel = DRIVER_LEVELS.map((l) => {
     const r = suggestShifts(hourlyCars, l.id);
@@ -7678,9 +7930,9 @@ async function getExtrasDiaForecast(baseDateInput) {
     parksFailed: [],
     hourly,
     totals: {
-      checkins: hourly.reduce((s, h) => s + h.checkins, 0),
-      checkouts: hourly.reduce((s, h) => s + h.checkouts, 0),
-      operations: hourly.reduce((s, h) => s + h.checkins + h.checkouts, 0)
+      checkins: hourly.reduce((s, h2) => s + h2.checkins, 0),
+      checkouts: hourly.reduce((s, h2) => s + h2.checkouts, 0),
+      operations: hourly.reduce((s, h2) => s + h2.checkins + h2.checkouts, 0)
     },
     spotTypeCounts,
     spotTypeByDirection,
@@ -7788,20 +8040,20 @@ async function getAliasResolver() {
   if (aliasResolverCache && Date.now() - aliasResolverCacheTime < CACHE_TTL) {
     return aliasResolverCache;
   }
-  const db = await getDb();
+  const db2 = await getDb();
   const map = /* @__PURE__ */ new Map();
-  if (!db) {
+  if (!db2) {
     aliasResolverCache = map;
     aliasResolverCacheTime = Date.now();
     return map;
   }
   const { partnerAliases: partnerAliases2, partnerships: partnerships2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const { eq: eq7 } = await import("drizzle-orm");
-  const rows = await db.select({
+  const { eq: eq8 } = await import("drizzle-orm");
+  const rows = await db2.select({
     aliasType: partnerAliases2.aliasType,
     aliasValue: partnerAliases2.aliasValue,
     partnerName: partnerships2.name
-  }).from(partnerAliases2).leftJoin(partnerships2, eq7(partnerships2.id, partnerAliases2.partnershipId));
+  }).from(partnerAliases2).leftJoin(partnerships2, eq8(partnerships2.id, partnerAliases2.partnershipId));
   for (const r of rows) {
     if (!r.partnerName) continue;
     const key = `${r.aliasType}:${(r.aliasValue ?? "").trim().toLowerCase()}`;
@@ -7829,11 +8081,14 @@ function findProjectId(parkName, city, projectMap) {
   const parkLower = parkName.toLowerCase().trim();
   const parkNorm = parkLower.replace(/\s*-\s*/g, " ");
   if (city) {
-    const cityLower = city.toLowerCase().trim();
-    const composite = `${parkNorm} ${cityLower}`;
-    if (projectMap.has(composite)) return projectMap.get(composite);
-    const composite2 = `${parkLower} ${cityLower}`;
-    if (projectMap.has(composite2)) return projectMap.get(composite2);
+    const cityRaw = city.toLowerCase().trim();
+    const cityNorm = CITY_TO_PT[cityRaw] ?? cityRaw;
+    for (const c of /* @__PURE__ */ new Set([cityNorm, cityRaw])) {
+      const composite = `${parkNorm} ${c}`;
+      if (projectMap.has(composite)) return projectMap.get(composite);
+      const composite2 = `${parkLower} ${c}`;
+      if (projectMap.has(composite2)) return projectMap.get(composite2);
+    }
   }
   if (projectMap.has(parkNorm)) return projectMap.get(parkNorm);
   if (projectMap.has(parkLower)) return projectMap.get(parkLower);
@@ -7920,6 +8175,20 @@ function bookingToRecord(booking, projectMap, aliasResolver) {
     rawJson: JSON.stringify(booking),
     bookingCreatedAt: parseMultiparkDate(booking.createdAt),
     paymentMethod: typeof pricing?.paymentMethod === "string" ? pricing.paymentMethod.slice(0, 128) : null,
+    totalPaid: pricing?.totalPaid?.toString() ?? null,
+    pro: booking.pro ? 1 : 0,
+    partnerId: booking.partnerId ? String(booking.partnerId).slice(0, 128) : null,
+    // partnerName no /report vem mascarado ("Unknown User") — filtra-o; o nome
+    // real (quando existe) vem do enrichment. partnerId é o que casa com o alias.
+    partnerName: (() => {
+      const pn = booking.partnerName;
+      return typeof pn === "string" && pn && !/unknown/i.test(pn) ? pn.slice(0, 256) : null;
+    })(),
+    // campaignId/campaignName NÃO existem no /report — só no /bookings/:id.
+    // São preenchidos no enrichment (não aqui, senão o sync sobrescrevia-os com null).
+    cashValidatedByName: typeof booking.cashValidatedByName === "string" ? booking.cashValidatedByName.slice(0, 256) : null,
+    driverValidatedByName: typeof booking.driverValidatedByName === "string" ? booking.driverValidatedByName.slice(0, 256) : null,
+    cashierClosedByName: typeof booking.cashierClosedByName === "string" ? booking.cashierClosedByName.slice(0, 256) : null,
     ...classifyAllocation(booking.allocation)
   };
 }
@@ -7927,9 +8196,9 @@ function nowMysql() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
 async function enrichBookingIfNeeded(externalId, apiKey) {
-  const db = await getDb();
-  if (!db) return false;
-  const [current] = await db.select({ enrichedAt: multiparkBookings.enrichedAt }).from(multiparkBookings).where(eq3(multiparkBookings.externalId, externalId)).limit(1);
+  const db2 = await getDb();
+  if (!db2) return false;
+  const [current] = await db2.select({ enrichedAt: multiparkBookings.enrichedAt }).from(multiparkBookings).where(eq3(multiparkBookings.externalId, externalId)).limit(1);
   if (current?.enrichedAt) return false;
   try {
     const detailed = await getBooking(externalId, apiKey);
@@ -7952,11 +8221,15 @@ async function enrichBookingIfNeeded(externalId, apiKey) {
     if (b.vehicle?.vehicleType) update.vehicleType = b.vehicle.vehicleType;
     if (typeof b.origin === "string" && b.origin) update.origin = b.origin.slice(0, 64);
     if (typeof b.originUrl === "string" && b.originUrl) update.originUrl = b.originUrl.slice(0, 512);
-    await db.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
+    if (typeof b.campaignId === "string" && b.campaignId) update.campaignId = b.campaignId.slice(0, 128);
+    if (typeof b.campaignName === "string" && b.campaignName) update.campaignName = b.campaignName.slice(0, 256);
+    if (typeof b.partnerId === "string" && b.partnerId) update.partnerId = b.partnerId.slice(0, 128);
+    if (typeof b.partnerName === "string" && b.partnerName && !/unknown/i.test(b.partnerName)) update.partnerName = b.partnerName.slice(0, 256);
+    await db2.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
     return true;
   } catch {
     try {
-      await db.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
+      await db2.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
     } catch {
     }
     return false;
@@ -7988,8 +8261,8 @@ function parseMpDate(s) {
   return `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:00`;
 }
 async function syncBookingHistory(externalId, apiKey) {
-  const db = await getDb();
-  if (!db) return false;
+  const db2 = await getDb();
+  if (!db2) return false;
   try {
     const response = await getBookingHistory(externalId, apiKey);
     const items = response?.history ?? [];
@@ -8012,7 +8285,7 @@ async function syncBookingHistory(externalId, apiKey) {
       const platform = item.platform ?? null;
       const remarks = item.remarks ?? null;
       try {
-        await db.insert(multiparkBookingHistory).values({
+        await db2.insert(multiparkBookingHistory).values({
           bookingExternalId: externalId,
           historyId: String(historyId).slice(0, 128),
           changeType: changeType ? String(changeType).slice(0, 32) : null,
@@ -8055,25 +8328,30 @@ async function syncBookingHistory(externalId, apiKey) {
     if (currentGarage) update.currentGarage = currentGarage;
     if (currentSpot) update.currentSpot = currentSpot;
     if (lastKnownMileage !== null) update.lastKnownMileage = lastKnownMileage;
-    await db.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
+    await db2.update(multiparkBookings).set(update).where(eq3(multiparkBookings.externalId, externalId));
     return true;
   } catch {
     try {
-      await db.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
+      await db2.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, externalId));
     } catch {
     }
     return false;
   }
 }
-async function enrichBookingsBatch(limit = 100) {
-  const db = await getDb();
-  if (!db) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
-  const { isNull: isNull3 } = await import("drizzle-orm");
-  const pending = await db.select({
+async function enrichBookingsBatch(arg = 100) {
+  const db2 = await getDb();
+  if (!db2) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+  const opts = typeof arg === "number" ? { limit: arg } : arg;
+  const limit = opts.limit ?? 100;
+  const targetIds = opts.externalIds;
+  if (targetIds && targetIds.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
+  const { isNull: isNull3, and: and7, inArray: inArray2 } = await import("drizzle-orm");
+  const whereCond = targetIds && targetIds.length ? and7(isNull3(multiparkBookings.enrichedAt), inArray2(multiparkBookings.externalId, targetIds)) : isNull3(multiparkBookings.enrichedAt);
+  const pending = await db2.select({
     externalId: multiparkBookings.externalId,
     parkName: multiparkBookings.parkName,
     city: multiparkBookings.city
-  }).from(multiparkBookings).where(isNull3(multiparkBookings.enrichedAt)).limit(limit);
+  }).from(multiparkBookings).where(whereCond).limit(limit);
   if (pending.length === 0) return { scanned: 0, enriched: 0, errors: 0, noKey: 0 };
   const parks = getConfiguredParks();
   const CITY_NORMALIZE = {
@@ -8109,10 +8387,10 @@ async function enrichBookingsBatch(limit = 100) {
     const apiKey = pickApiKey(p.parkName, p.city);
     if (!apiKey) {
       noKey++;
-      const db2 = await getDb();
-      if (db2) {
+      const db3 = await getDb();
+      if (db3) {
         try {
-          await db2.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
+          await db3.update(multiparkBookings).set({ enrichedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
         } catch {
         }
       }
@@ -8125,7 +8403,7 @@ async function enrichBookingsBatch(limit = 100) {
   return { scanned: pending.length, enriched, errors: errs, noKey };
 }
 async function fetchAgentHistoryByName(agentName, date) {
-  const db = await getDb();
+  const db2 = await getDb();
   const parks = getConfiguredParks();
   const byType = {};
   let totalEntries = 0;
@@ -8143,7 +8421,7 @@ async function fetchAgentHistoryByName(agentName, date) {
       const items = response?.history ?? [];
       perPark.push({ park: `${park.name} ${park.city}`, entries: items.length });
       totalEntries += items.length;
-      if (!db || items.length === 0) return;
+      if (!db2 || items.length === 0) return;
       for (const item of items) {
         const historyId = item.id ?? null;
         const bookingExternalId = item.booking?.id ?? null;
@@ -8151,7 +8429,7 @@ async function fetchAgentHistoryByName(agentName, date) {
         const changeType = item.changeType ?? null;
         if (changeType) byType[changeType] = (byType[changeType] ?? 0) + 1;
         try {
-          await db.insert(multiparkBookingHistory).values({
+          await db2.insert(multiparkBookingHistory).values({
             bookingExternalId: String(bookingExternalId).slice(0, 128),
             historyId: String(historyId).slice(0, 128),
             changeType: changeType ? String(changeType).slice(0, 32) : null,
@@ -8174,8 +8452,8 @@ async function fetchAgentHistoryByName(agentName, date) {
   return { parks: parks.length, totalEntries, byType, perPark };
 }
 async function syncBookingHistoryBatch(limit = 50) {
-  const db = await getDb();
-  if (!db) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
+  const db2 = await getDb();
+  if (!db2) return { scanned: 0, fetched: 0, errors: 0, noKey: 0 };
   const { isNull: isNull3, and: andOp, gte: gte5 } = await import("drizzle-orm");
   const now = /* @__PURE__ */ new Date();
   const cutPast = new Date(now);
@@ -8183,7 +8461,7 @@ async function syncBookingHistoryBatch(limit = 50) {
   const cutFuture = new Date(now);
   cutFuture.setDate(cutFuture.getDate() + 30);
   const fmt3 = (d) => d.toISOString().slice(0, 19).replace("T", " ");
-  const pending = await db.select({
+  const pending = await db2.select({
     externalId: multiparkBookings.externalId,
     parkName: multiparkBookings.parkName,
     city: multiparkBookings.city
@@ -8229,7 +8507,7 @@ async function syncBookingHistoryBatch(limit = 50) {
     if (!apiKey) {
       noKey++;
       try {
-        await db.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
+        await db2.update(multiparkBookings).set({ historyFetchedAt: nowMysql() }).where(eq3(multiparkBookings.externalId, p.externalId));
       } catch {
       }
       return;
@@ -8258,6 +8536,7 @@ async function syncBookings(opts) {
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
     let processed = 0, created = 0, updated = 0;
     const parkErrors = [];
+    const enrichIds = [];
     try {
       const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
       if (report?.bookings?.length) {
@@ -8265,9 +8544,13 @@ async function syncBookings(opts) {
           try {
             const record = bookingToRecord(booking, projectMap, aliasResolver);
             const result = await upsertMultiparkBooking(record);
+            await upsertBookingExtras(booking.id, booking.extraServices);
             processed++;
             if (result?.action === "created") created++;
             else updated++;
+            if (result?.action === "created" || result?.statusChanged) {
+              enrichIds.push(booking.id);
+            }
           } catch (err) {
             parkErrors.push(`Booking ${booking.id}: ${err.message}`);
           }
@@ -8276,17 +8559,19 @@ async function syncBookings(opts) {
     } catch (err) {
       parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
     }
-    return { processed, created, updated, errors: parkErrors };
+    return { processed, created, updated, errors: parkErrors, enrichIds };
   }));
   let totalProcessed = 0;
   let totalCreated = 0;
   let totalUpdated = 0;
+  const enrichTargets = /* @__PURE__ */ new Set();
   for (const r of perParkResults) {
     if (r.status === "fulfilled") {
       totalProcessed += r.value.processed;
       totalCreated += r.value.created;
       totalUpdated += r.value.updated;
       errors.push(...r.value.errors);
+      for (const id of r.value.enrichIds) enrichTargets.add(id);
     } else {
       errors.push(`Park task failed: ${r.reason?.message ?? r.reason}`);
     }
@@ -8305,7 +8590,8 @@ async function syncBookings(opts) {
     processed: totalProcessed,
     created: totalCreated,
     updated: totalUpdated - totalCreated,
-    errors
+    errors,
+    enrichTargets: Array.from(enrichTargets)
   };
 }
 function startBookingSyncScheduler() {
@@ -8354,11 +8640,18 @@ async function runRecentCronSync(windowMinutes = 30) {
     startDate: fmt3(since),
     endDate: fmt3(now)
   });
-  const [enrichResult, historyResult] = await Promise.allSettled([
-    enrichBookingsBatch(50),
+  const targeted = await enrichBookingsBatch({
+    externalIds: report.enrichTargets,
+    // Cap para caber no maxDuration do Vercel num burst; o resto fica enrichedAt
+    // NULL e é apanhado pelo backlog nos ciclos seguintes.
+    limit: Math.min(Math.max(report.enrichTargets.length, 1), 120)
+  });
+  const [backlogResult, historyResult] = await Promise.allSettled([
+    enrichBookingsBatch(20),
     syncBookingHistoryBatch(30)
   ]);
-  const enriched = enrichResult.status === "fulfilled" ? enrichResult.value.enriched : 0;
+  const backlogEnriched = backlogResult.status === "fulfilled" ? backlogResult.value.enriched : 0;
+  const enriched = targeted.enriched + backlogEnriched;
   const historyFetched = historyResult.status === "fulfilled" ? historyResult.value.fetched : 0;
   return {
     report,
@@ -8379,7 +8672,7 @@ async function runFutureCronSync(weeksAhead = 4) {
   });
   return { report, durationMs: Date.now() - t0 };
 }
-var projectMapCache, projectMapCacheTime, CACHE_TTL, aliasResolverCache, aliasResolverCacheTime, ENRICH_CONCURRENCY, SYNC_INTERVAL;
+var projectMapCache, projectMapCacheTime, CACHE_TTL, aliasResolverCache, aliasResolverCacheTime, CITY_TO_PT, ENRICH_CONCURRENCY, SYNC_INTERVAL;
 var init_multiparkBookingSync = __esm({
   "server/jobs/multiparkBookingSync.ts"() {
     "use strict";
@@ -8392,8 +8685,397 @@ var init_multiparkBookingSync = __esm({
     CACHE_TTL = 5 * 60 * 1e3;
     aliasResolverCache = null;
     aliasResolverCacheTime = 0;
+    CITY_TO_PT = {
+      lisbon: "lisboa",
+      lisboa: "lisboa",
+      oporto: "porto",
+      porto: "porto",
+      faro: "faro"
+    };
     ENRICH_CONCURRENCY = 5;
     SYNC_INTERVAL = 15 * 60 * 1e3;
+  }
+});
+
+// server/zello.ts
+import crypto3 from "crypto";
+async function getToken() {
+  const res = await fetch(`${BASE_URL}/user/gettoken`);
+  const data = await res.json();
+  if (data.status !== "OK") throw new Error(`Zello gettoken failed: ${data.status}`);
+  return { token: data.token, sid: data.sid };
+}
+async function authenticate() {
+  if (currentSid && Date.now() < sidExpiresAt) return currentSid;
+  const apiKey = ENV.zelloApiKey;
+  if (!apiKey) throw new Error("ZELLO_API_KEY not configured");
+  if (!USERNAME) throw new Error("ZELLO_USERNAME not configured");
+  if (!PASSWORD) throw new Error("ZELLO_PASSWORD not configured");
+  const { token, sid } = await getToken();
+  const md5pass = crypto3.createHash("md5").update(PASSWORD).digest("hex");
+  const combined = md5pass + token + apiKey;
+  const authHash = crypto3.createHash("md5").update(combined).digest("hex");
+  const params = new URLSearchParams({ username: USERNAME, password: authHash });
+  const res = await fetch(`${BASE_URL}/user/login?sid=${sid}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString()
+  });
+  const data = await res.json();
+  if (data.status !== "OK") throw new Error(`Zello login failed: ${data.status}`);
+  currentSid = sid;
+  sidExpiresAt = Date.now() + 8 * 60 * 1e3;
+  return sid;
+}
+async function zelloGet(path2, params) {
+  const sid = await authenticate();
+  const url = new URL(`${BASE_URL}/${path2}`);
+  url.searchParams.set("sid", sid);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, v);
+    }
+  }
+  const res = await fetch(url.toString());
+  const data = await res.json();
+  if (data.code === "301") {
+    currentSid = null;
+    sidExpiresAt = 0;
+    const newSid = await authenticate();
+    url.searchParams.set("sid", newSid);
+    const retryRes = await fetch(url.toString());
+    return retryRes.json();
+  }
+  return data;
+}
+function isZelloConfigured() {
+  return !!(ENV.zelloApiKey && USERNAME && PASSWORD);
+}
+async function getZelloUsers() {
+  if (!isZelloConfigured()) return [];
+  const data = await zelloGet("user/get");
+  if (data.status !== "OK") throw new Error(`Zello user/get failed: ${data.status}`);
+  return (data.users || []).map((u) => ({
+    name: u.name,
+    email: u.email || "",
+    phone: u.phone || u.profile_phone || "",
+    fullName: u.full_name || u.name,
+    job: u.job || "",
+    admin: !!u.admin,
+    channels: u.channels || [],
+    geotrackingOff: !!u.geotracking_off
+  }));
+}
+async function getZelloChannels() {
+  if (!isZelloConfigured()) return [];
+  const data = await zelloGet("channel/get");
+  if (data.status !== "OK") throw new Error(`Zello channel/get failed: ${data.status}`);
+  return (data.channels || []).map((c) => ({
+    name: c.name,
+    count: parseInt(c.count, 10) || 0,
+    isShared: !!c.is_shared,
+    isDispatch: !!c.is_dispatch
+  }));
+}
+async function getZelloLocations() {
+  if (!isZelloConfigured()) return [];
+  const data = await zelloGet("location/get", { filter: "none", max: "100" });
+  if (data.status !== "OK") throw new Error(`Zello location/get failed: ${data.status}`);
+  return (data.locations || []).map((l) => ({
+    username: l.username || l.name || "",
+    displayName: l.display_name || l.username || "",
+    latitude: parseFloat(l.latitude) || 0,
+    longitude: parseFloat(l.longitude) || 0,
+    speed: (parseFloat(l.speed) || 0) * 3.6,
+    // m/s to km/h
+    heading: parseFloat(l.heading) || 0,
+    altitude: parseFloat(l.altitude) || 0,
+    batteryLevel: parseInt(l.battery_level, 10) || 0,
+    chargingStatus: parseInt(l.charging_status, 10) || 0,
+    signalStrength: parseInt(l.signal_strength, 10) || 0,
+    accuracy: parseFloat(l.accuracy) || 0,
+    status: l.status || "unknown",
+    lastReport: parseInt(l.last_report, 10) || 0,
+    lastReportDelay: parseInt(l.last_report_delay, 10) || 0
+  }));
+}
+async function getZelloUserHistory(username, startTs, endTs) {
+  if (!isZelloConfigured()) return { locations: [] };
+  const data = await zelloGet(`location/getuser/${encodeURIComponent(username)}/history`, {
+    start_ts: String(startTs),
+    end_ts: String(endTs),
+    format: "geojson",
+    speedUnits: "kmh"
+  });
+  return data;
+}
+async function getZelloUserLocation(username) {
+  if (!isZelloConfigured()) return { locations: [] };
+  const data = await zelloGet(`location/getuser/${encodeURIComponent(username)}`);
+  return data;
+}
+var NETWORK, BASE_URL, USERNAME, PASSWORD, currentSid, sidExpiresAt;
+var init_zello = __esm({
+  "server/zello.ts"() {
+    "use strict";
+    init_env();
+    NETWORK = process.env.ZELLO_NETWORK ?? "airpark";
+    BASE_URL = `https://${NETWORK}.zellowork.com`;
+    USERNAME = process.env.ZELLO_USERNAME ?? "";
+    PASSWORD = process.env.ZELLO_PASSWORD ?? "";
+    currentSid = null;
+    sidExpiresAt = 0;
+  }
+});
+
+// server/jobs/dailyDriverCollection.ts
+var dailyDriverCollection_exports = {};
+__export(dailyDriverCollection_exports, {
+  collectDailyDriverData: () => collectDailyDriverData,
+  startDailyCollectionScheduler: () => startDailyCollectionScheduler
+});
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+function processGeoJsonHistory(data) {
+  const defaultResult = {
+    totalKm: 0,
+    hoursWorked: 0,
+    hoursStopped: 0,
+    totalHoursOnline: 0,
+    avgSpeed: 0,
+    maxSpeed: 0,
+    avgBattery: 0,
+    minBattery: 100,
+    gpsPointsCount: 0,
+    geojson: null
+  };
+  if (!data || !data.features || !Array.isArray(data.features)) {
+    return defaultResult;
+  }
+  let totalKm = 0;
+  let maxSpeed = 0;
+  let speedSum = 0;
+  let speedCount = 0;
+  let batterySum = 0;
+  let batteryCount = 0;
+  let minBattery = 100;
+  let gpsPointsCount = 0;
+  let firstTimestamp = null;
+  let lastTimestamp = null;
+  let movingSeconds = 0;
+  let stoppedSeconds = 0;
+  const STOPPED_SPEED_THRESHOLD = 2;
+  for (const feature of data.features) {
+    if (!feature.geometry) continue;
+    if (feature.geometry.type === "Point") {
+      gpsPointsCount++;
+      const props = feature.properties || {};
+      const rawSpeed = parseFloat(props.speed) || 0;
+      const speed = rawSpeed * 3.6;
+      const battery = parseInt(props.battery_level || props.batteryLevel) || 0;
+      const ts = parseInt(props.timestamp || props.time || props.lastReport) || 0;
+      if (speed > 0 && speed <= 150) {
+        speedSum += speed;
+        speedCount++;
+      }
+      if (speed > maxSpeed && speed <= 150) maxSpeed = speed;
+      if (battery > 0) {
+        batterySum += battery;
+        batteryCount++;
+        if (battery < minBattery) minBattery = battery;
+      }
+      if (ts > 0) {
+        if (!firstTimestamp || ts < firstTimestamp) firstTimestamp = ts;
+        if (!lastTimestamp || ts > lastTimestamp) lastTimestamp = ts;
+      }
+    }
+    if (feature.geometry.type === "LineString" && feature.geometry.coordinates) {
+      const coords = feature.geometry.coordinates;
+      for (let i = 1; i < coords.length; i++) {
+        const [lon1, lat1] = coords[i - 1];
+        const [lon2, lat2] = coords[i];
+        const segmentKm = haversineKm(lat1, lon1, lat2, lon2);
+        if (segmentKm < 50) {
+          totalKm += segmentKm;
+        }
+        gpsPointsCount++;
+      }
+    }
+  }
+  const timestamps = [];
+  for (const feature of data.features) {
+    const props = feature.properties || {};
+    const ts = parseInt(props.timestamp || props.time || props.lastReport) || 0;
+    const rawSpd = parseFloat(props.speed) || 0;
+    const speed = rawSpd * 3.6;
+    if (ts > 0) {
+      timestamps.push({ ts, speed });
+    }
+  }
+  timestamps.sort((a, b) => a.ts - b.ts);
+  for (let i = 1; i < timestamps.length; i++) {
+    const dt = timestamps[i].ts - timestamps[i - 1].ts;
+    if (dt > 0 && dt < 3600) {
+      if (timestamps[i - 1].speed > STOPPED_SPEED_THRESHOLD) {
+        movingSeconds += dt;
+      } else {
+        stoppedSeconds += dt;
+      }
+    }
+  }
+  const totalOnlineSeconds = firstTimestamp && lastTimestamp ? lastTimestamp - firstTimestamp : 0;
+  return {
+    totalKm: Math.round(totalKm * 100) / 100,
+    hoursWorked: Math.round(movingSeconds / 3600 * 100) / 100,
+    hoursStopped: Math.round(stoppedSeconds / 3600 * 100) / 100,
+    totalHoursOnline: Math.round(totalOnlineSeconds / 3600 * 100) / 100,
+    avgSpeed: speedCount > 0 ? Math.round(speedSum / speedCount * 100) / 100 : 0,
+    maxSpeed: Math.round(maxSpeed * 100) / 100,
+    avgBattery: batteryCount > 0 ? Math.round(batterySum / batteryCount) : 0,
+    minBattery: batteryCount > 0 ? minBattery : 0,
+    gpsPointsCount,
+    geojson: data
+  };
+}
+async function collectDailyDriverData(targetDate) {
+  const errors = [];
+  let driversProcessed = 0;
+  try {
+    const dateStr = targetDate.toISOString().split("T")[0];
+    const existing = await getDailyDriverHistoryByDate(dateStr);
+    if (existing.length > 0) {
+      console.log(`[DailyCollection] Data already exists for ${dateStr} (${existing.length} records). Skipping.`);
+      return { success: true, driversProcessed: existing.length, errors: [] };
+    }
+    const users2 = await getZelloUsers();
+    const nonAdminUsers = users2.filter((u) => !u.admin);
+    const startOfDay2 = new Date(targetDate);
+    startOfDay2.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    const startTs = Math.floor(startOfDay2.getTime() / 1e3);
+    const endTs = Math.floor(endOfDay.getTime() / 1e3);
+    const speedLimit = await getDefaultSpeedLimit();
+    const threshold = speedLimit ? speedLimit.maxSpeed * (1 + speedLimit.tolerancePercent / 100) : 999;
+    console.log(`[DailyCollection] Processing ${nonAdminUsers.length} users for ${dateStr}`);
+    for (const user of nonAdminUsers) {
+      try {
+        const historyData = await getZelloUserHistory(user.name, startTs, endTs);
+        const metrics = processGeoJsonHistory(historyData);
+        let violations = 0;
+        if (historyData?.features) {
+          for (const feature of historyData.features) {
+            const rawSpd = parseFloat(feature.properties?.speed) || 0;
+            const speedKmh = rawSpd * 3.6;
+            if (speedKmh > threshold && speedKmh <= 150) violations++;
+          }
+        }
+        let geoJsonUrl = null;
+        if (metrics.gpsPointsCount > 0 && metrics.geojson) {
+          try {
+            const key = `driver-history/${dateStr}/${user.name}.geojson`;
+            const result = await storagePut(
+              key,
+              JSON.stringify(metrics.geojson),
+              "application/geo+json"
+            );
+            geoJsonUrl = result.url;
+          } catch (e) {
+            console.warn(`[DailyCollection] Failed to upload GeoJSON for ${user.name}:`, e);
+          }
+        }
+        await createDailyDriverHistory({
+          zelloUsername: user.name,
+          displayName: user.fullName || user.name,
+          date: targetDate.toISOString().slice(0, 19).replace("T", " "),
+          totalKm: String(metrics.totalKm),
+          hoursWorked: String(metrics.hoursWorked),
+          hoursStopped: String(metrics.hoursStopped),
+          totalHoursOnline: String(metrics.totalHoursOnline),
+          avgSpeed: String(metrics.avgSpeed),
+          maxSpeed: String(metrics.maxSpeed),
+          speedViolations: violations,
+          avgBattery: metrics.avgBattery,
+          minBattery: metrics.minBattery,
+          gpsPointsCount: metrics.gpsPointsCount,
+          geoJsonUrl
+        });
+        driversProcessed++;
+        if (user.geotrackingOff) {
+          await createGpsAlert({
+            zelloUsername: user.name,
+            displayName: user.fullName || user.name,
+            alertType: "gps_off",
+            message: `${user.fullName || user.name} tinha o GPS desligado em ${dateStr}`,
+            notificationSent: 1,
+            occurredAt: targetDate.toISOString().slice(0, 19).replace("T", " ")
+          });
+        }
+      } catch (userError) {
+        errors.push(`${user.name}: ${userError.message}`);
+        console.error(`[DailyCollection] Error processing ${user.name}:`, userError);
+      }
+    }
+    console.log(`[DailyCollection] Completed: ${driversProcessed}/${nonAdminUsers.length} users processed for ${dateStr}`);
+    if (driversProcessed > 0) {
+      await notifyOwner({
+        title: "Relat\xF3rio Di\xE1rio de Motoristas",
+        content: `Recolha autom\xE1tica para ${dateStr}: ${driversProcessed} motoristas processados${errors.length > 0 ? `, ${errors.length} erros` : ""}`
+      });
+    }
+    return { success: true, driversProcessed, errors };
+  } catch (error) {
+    console.error("[DailyCollection] Fatal error:", error);
+    errors.push(`Fatal: ${error.message}`);
+    return { success: false, driversProcessed, errors };
+  }
+}
+function startDailyCollectionScheduler() {
+  function msUntilNext2AM() {
+    const now = /* @__PURE__ */ new Date();
+    const lisbonNow = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Lisbon" }));
+    const target = new Date(lisbonNow);
+    target.setHours(2, 0, 0, 0);
+    if (target <= lisbonNow) {
+      target.setDate(target.getDate() + 1);
+    }
+    const diff = target.getTime() - lisbonNow.getTime();
+    return diff;
+  }
+  function scheduleNext() {
+    const delay = msUntilNext2AM();
+    const nextRun = new Date(Date.now() + delay);
+    console.log(`[DailyCollection] Next run scheduled for ${nextRun.toISOString()} (in ${Math.round(delay / 6e4)} minutes)`);
+    setTimeout(async () => {
+      try {
+        const yesterday = /* @__PURE__ */ new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        console.log(`[DailyCollection] Starting collection for ${yesterday.toISOString().split("T")[0]}`);
+        const result = await collectDailyDriverData(yesterday);
+        console.log(`[DailyCollection] Result:`, result);
+      } catch (error) {
+        console.error("[DailyCollection] Scheduler error:", error);
+      }
+      scheduleNext();
+    }, delay);
+  }
+  scheduleNext();
+  console.log("[DailyCollection] Scheduler started \u2014 runs daily at 2:00 AM Lisbon time");
+}
+var init_dailyDriverCollection = __esm({
+  "server/jobs/dailyDriverCollection.ts"() {
+    "use strict";
+    init_zello();
+    init_db();
+    init_storage();
+    init_notification();
   }
 });
 
@@ -8498,6 +9180,55 @@ var init_migration_0044 = __esm({
   }
 });
 
+// server/migrations/migration_0046.ts
+var migration_0046_exports = {};
+__export(migration_0046_exports, {
+  IDEMPOTENT_ERROR_CODES_0046: () => IDEMPOTENT_ERROR_CODES_0046,
+  MIGRATION_0046_NAME: () => MIGRATION_0046_NAME,
+  MIGRATION_0046_STATEMENTS: () => MIGRATION_0046_STATEMENTS
+});
+var MIGRATION_0046_NAME, MIGRATION_0046_STATEMENTS, IDEMPOTENT_ERROR_CODES_0046;
+var init_migration_0046 = __esm({
+  "server/migrations/migration_0046.ts"() {
+    "use strict";
+    MIGRATION_0046_NAME = "0046_multipark_report_extra_fields";
+    MIGRATION_0046_STATEMENTS = [
+      // ── 1. Novas colunas em multipark_bookings ────────────────────────────────
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`totalPaid\` DECIMAL(10,2) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`pro\` TINYINT DEFAULT 0`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`partnerId\` VARCHAR(128) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`partnerName\` VARCHAR(256) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`campaignId\` VARCHAR(128) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`campaignName\` VARCHAR(256) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`cashValidatedByName\` VARCHAR(256) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`driverValidatedByName\` VARCHAR(256) NULL`,
+      `ALTER TABLE \`multipark_bookings\` ADD COLUMN \`cashierClosedByName\` VARCHAR(256) NULL`,
+      // ── 2. Tabela-filha dos extraServices itemizados ──────────────────────────
+      `CREATE TABLE IF NOT EXISTS \`multipark_booking_extras\` (
+    \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+    \`bookingExternalId\` VARCHAR(128) NOT NULL,
+    \`extraId\` VARCHAR(128) NULL,
+    \`name\` VARCHAR(256) NULL,
+    \`description\` VARCHAR(512) NULL,
+    \`price\` DECIMAL(10,2) NULL,
+    \`done\` TINYINT DEFAULT 0,
+    \`syncedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_mp_booking_extras_booking\` (\`bookingExternalId\`)
+  )`
+    ];
+    IDEMPOTENT_ERROR_CODES_0046 = /* @__PURE__ */ new Set([
+      "ER_DUP_FIELDNAME",
+      // ADD COLUMN onde já existe
+      "ER_DUP_KEYNAME",
+      // CREATE INDEX onde já existe
+      "ER_TABLE_EXISTS_ERROR",
+      // CREATE TABLE (mesmo com IF NOT EXISTS é seguro)
+      "ER_DUP_ENTRY"
+      // INSERT duplicado
+    ]);
+  }
+});
+
 // server/complaintsExtended.ts
 var complaintsExtended_exports = {};
 __export(complaintsExtended_exports, {
@@ -8517,9 +9248,9 @@ __export(complaintsExtended_exports, {
 });
 import { and as and3, desc as desc2, eq as eq4, gte as gte3, lte as lte3, sql as sql3 } from "drizzle-orm";
 async function createNotification(input) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(appNotifications).values({
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(appNotifications).values({
     userId: input.userId,
     title: input.title.slice(0, 255),
     body: input.body ?? null,
@@ -8528,31 +9259,31 @@ async function createNotification(input) {
   });
 }
 async function listNotifications(userId, unreadOnly = false, limit = 50) {
-  const db = await getDb();
-  if (!db) return [];
+  const db2 = await getDb();
+  if (!db2) return [];
   const cond = unreadOnly ? and3(eq4(appNotifications.userId, userId), eq4(appNotifications.isRead, 0)) : eq4(appNotifications.userId, userId);
-  return db.select().from(appNotifications).where(cond).orderBy(desc2(appNotifications.createdAt)).limit(limit);
+  return db2.select().from(appNotifications).where(cond).orderBy(desc2(appNotifications.createdAt)).limit(limit);
 }
 async function unreadCount(userId) {
-  const db = await getDb();
-  if (!db) return 0;
-  const [row] = await db.select({ n: sql3`COUNT(*)` }).from(appNotifications).where(and3(eq4(appNotifications.userId, userId), eq4(appNotifications.isRead, 0)));
+  const db2 = await getDb();
+  if (!db2) return 0;
+  const [row] = await db2.select({ n: sql3`COUNT(*)` }).from(appNotifications).where(and3(eq4(appNotifications.userId, userId), eq4(appNotifications.isRead, 0)));
   return Number(row?.n ?? 0);
 }
 async function markNotificationRead(userId, id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(appNotifications).set({ isRead: 1 }).where(and3(eq4(appNotifications.id, id), eq4(appNotifications.userId, userId)));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(appNotifications).set({ isRead: 1 }).where(and3(eq4(appNotifications.id, id), eq4(appNotifications.userId, userId)));
 }
 async function markAllNotificationsRead(userId) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(appNotifications).set({ isRead: 1 }).where(eq4(appNotifications.userId, userId));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.update(appNotifications).set({ isRead: 1 }).where(eq4(appNotifications.userId, userId));
 }
 async function findDriversOnDuty(complaintId) {
-  const db = await getDb();
-  if (!db) return [];
-  const [c] = await db.select({
+  const db2 = await getDb();
+  if (!db2) return [];
+  const [c] = await db2.select({
     reservationRef: complaints.reservationRef,
     reservationStart: complaints.reservationStart,
     reservationEnd: complaints.reservationEnd
@@ -8561,24 +9292,24 @@ async function findDriversOnDuty(complaintId) {
   const drivers = [];
   const seen = /* @__PURE__ */ new Set();
   if (c.reservationRef) {
-    const histRows = await db.select({
+    const histRows = await db2.select({
       agentName: multiparkBookingHistory.agentName,
       agentEmail: multiparkBookingHistory.agentEmail,
       changeType: multiparkBookingHistory.changeType
     }).from(multiparkBookingHistory).where(eq4(multiparkBookingHistory.bookingExternalId, c.reservationRef));
     const grouped = /* @__PURE__ */ new Map();
-    for (const h of histRows) {
-      if (!h.agentName) continue;
-      let g = grouped.get(h.agentName);
+    for (const h2 of histRows) {
+      if (!h2.agentName) continue;
+      let g = grouped.get(h2.agentName);
       if (!g) {
-        g = { actions: [], email: h.agentEmail ?? null };
-        grouped.set(h.agentName, g);
+        g = { actions: [], email: h2.agentEmail ?? null };
+        grouped.set(h2.agentName, g);
       }
-      if (h.changeType) g.actions.push(h.changeType);
-      if (!g.email && h.agentEmail) g.email = h.agentEmail;
+      if (h2.changeType) g.actions.push(h2.changeType);
+      if (!g.email && h2.agentEmail) g.email = h2.agentEmail;
     }
     for (const [name, info] of Array.from(grouped.entries())) {
-      const empCandidates = await db.select({ id: employees.id, fullName: employees.fullName }).from(employees).where(
+      const empCandidates = await db2.select({ id: employees.id, fullName: employees.fullName }).from(employees).where(
         info.email ? eq4(employees.email, info.email) : sql3`LOWER(${employees.fullName}) LIKE LOWER(${"%" + name + "%"})`
       ).limit(1);
       const emp = empCandidates[0];
@@ -8599,7 +9330,7 @@ async function findDriversOnDuty(complaintId) {
     const startDate = (c.reservationStart ?? c.reservationEnd ?? "").slice(0, 10);
     const endDate = (c.reservationEnd ?? c.reservationStart ?? "").slice(0, 10);
     if (startDate && endDate) {
-      const assignmentRows = await db.select({
+      const assignmentRows = await db2.select({
         employeeId: extrasDiaAssignments.employeeId,
         personName: extrasDiaAssignments.personName,
         isTeamLeader: extrasDiaAssignments.isTeamLeader,
@@ -8627,7 +9358,7 @@ async function findDriversOnDuty(complaintId) {
       }
     }
   }
-  const existing = await db.select({ employeeName: complaintDriversOnDuty.employeeName, employeeId: complaintDriversOnDuty.employeeId }).from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
+  const existing = await db2.select({ employeeName: complaintDriversOnDuty.employeeName, employeeId: complaintDriversOnDuty.employeeId }).from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
   const existingSet = new Set(existing.map((e) => `${e.employeeId ?? "?"}|${e.employeeName}`));
   for (const d of drivers) {
     if (existingSet.has(`${d.employeeId ?? "?"}|${d.employeeName}`)) d.alreadyLinked = true;
@@ -8635,9 +9366,9 @@ async function findDriversOnDuty(complaintId) {
   return drivers;
 }
 async function attachDriverToComplaint(input) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(complaintDriversOnDuty).values({
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(complaintDriversOnDuty).values({
     complaintId: input.complaintId,
     employeeId: input.employeeId ?? null,
     employeeName: input.employeeName.slice(0, 256),
@@ -8648,29 +9379,29 @@ async function attachDriverToComplaint(input) {
   });
 }
 async function listComplaintDrivers(complaintId) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.complaintId, complaintId));
 }
 async function detachComplaintDriver(id) {
-  const db = await getDb();
-  if (!db) return;
-  await db.delete(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.id, id));
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.delete(complaintDriversOnDuty).where(eq4(complaintDriversOnDuty.id, id));
 }
 async function listPenaltyConfig() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(complaintPenaltyConfig);
+  const db2 = await getDb();
+  if (!db2) return [];
+  return db2.select().from(complaintPenaltyConfig);
 }
 async function updatePenaltyConfig(complaintType, basePoints) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(complaintPenaltyConfig).values({ complaintType, basePoints }).onDuplicateKeyUpdate({ set: { basePoints } });
+  const db2 = await getDb();
+  if (!db2) return;
+  await db2.insert(complaintPenaltyConfig).values({ complaintType, basePoints }).onDuplicateKeyUpdate({ set: { basePoints } });
 }
 async function sendComplaintEmailToClient(input) {
-  const db = await getDb();
-  if (!db) return { ok: false, error: "DB indispon\xEDvel" };
-  const [c] = await db.select({
+  const db2 = await getDb();
+  if (!db2) return { ok: false, error: "DB indispon\xEDvel" };
+  const [c] = await db2.select({
     clientEmail: complaints.clientEmail,
     clientName: complaints.clientName
   }).from(complaints).where(eq4(complaints.id, input.complaintId)).limit(1);
@@ -8687,7 +9418,7 @@ async function sendComplaintEmailToClient(input) {
     html: `<p>${fullBody.replace(/\n/g, "<br>")}</p>`
   });
   if (ok) {
-    await db.update(complaints).set({
+    await db2.update(complaints).set({
       clientEmailSentAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
       clientEmailSubject: input.subject.slice(0, 255),
       clientEmailBody: input.body
@@ -8697,9 +9428,9 @@ async function sendComplaintEmailToClient(input) {
   return { ok: false, error: "Falha ao enviar email (SMTP)" };
 }
 async function notifyComplaintCreated(complaintId) {
-  const db = await getDb();
-  if (!db) return;
-  const [c] = await db.select({
+  const db2 = await getDb();
+  if (!db2) return;
+  const [c] = await db2.select({
     id: complaints.id,
     title: complaints.title,
     complaintType: complaints.complaintType,
@@ -8709,7 +9440,7 @@ async function notifyComplaintCreated(complaintId) {
   }).from(complaints).where(eq4(complaints.id, complaintId)).limit(1);
   if (!c) return;
   const { users: users2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const recipients = await db.select({ id: users2.id }).from(users2).where(sql3`${users2.role} IN ('admin','super_admin','supervisor','team_leader')`);
+  const recipients = await db2.select({ id: users2.id }).from(users2).where(sql3`${users2.role} IN ('admin','super_admin','supervisor','team_leader')`);
   const title = `Nova reclama\xE7\xE3o: ${c.title}`;
   const body = `Tipo: ${c.complaintType} \xB7 Prioridade: ${c.complaintPriority}${c.clientName ? ` \xB7 Cliente: ${c.clientName}` : ""}`;
   const link = `/reclamacoes/${complaintId}`;
@@ -8739,8 +9470,8 @@ __export(multiparkEvaluation_exports, {
 });
 import { and as and4, gte as gte4, lt, lte as lte4, sql as sql4 } from "drizzle-orm";
 async function evaluateDay(date) {
-  const db = await getDb();
-  if (!db) {
+  const db2 = await getDb();
+  if (!db2) {
     return {
       date,
       shifts: [],
@@ -8752,7 +9483,7 @@ async function evaluateDay(date) {
   const endDate = /* @__PURE__ */ new Date(date + "T00:00:00");
   endDate.setDate(endDate.getDate() + 1);
   const endStr = endDate.toISOString().slice(0, 19).replace("T", " ");
-  const historyRows = await db.select({
+  const historyRows = await db2.select({
     agentName: multiparkBookingHistory.agentName,
     changeType: multiparkBookingHistory.changeType
   }).from(multiparkBookingHistory).where(
@@ -8763,16 +9494,16 @@ async function evaluateDay(date) {
   );
   const normalize = (s) => s.toLowerCase().trim();
   const byAgent = /* @__PURE__ */ new Map();
-  for (const h of historyRows) {
-    if (!h.agentName) continue;
-    const key = normalize(h.agentName);
+  for (const h2 of historyRows) {
+    if (!h2.agentName) continue;
+    const key = normalize(h2.agentName);
     let c = byAgent.get(key);
     if (!c) {
       c = { total: 0, byType: {} };
       byAgent.set(key, c);
     }
     c.total++;
-    const ct = h.changeType ?? "?";
+    const ct = h2.changeType ?? "?";
     c.byType[ct] = (c.byType[ct] ?? 0) + 1;
   }
   const people = assignments.map((a) => {
@@ -8855,7 +9586,7 @@ function actionTimeToOffsetHours(actionTime, assignmentDate) {
   return diffMs / (60 * 60 * 1e3);
 }
 async function getDashboardRange(startDate, endDate) {
-  const db = await getDb();
+  const db2 = await getDb();
   const empty = {
     startDate,
     endDate,
@@ -8872,8 +9603,8 @@ async function getDashboardRange(startDate, endDate) {
       costPerAction: 0
     }
   };
-  if (!db) return empty;
-  const assignmentRows = await db.select().from(extrasDiaAssignments).where(
+  if (!db2) return empty;
+  const assignmentRows = await db2.select().from(extrasDiaAssignments).where(
     and4(
       gte4(extrasDiaAssignments.assignmentDate, startDate),
       lte4(extrasDiaAssignments.assignmentDate, endDate)
@@ -8882,7 +9613,7 @@ async function getDashboardRange(startDate, endDate) {
   const empIds = Array.from(new Set(assignmentRows.map((r) => r.employeeId).filter((x) => x !== null)));
   const empMap = /* @__PURE__ */ new Map();
   if (empIds.length > 0) {
-    const empRows = await db.select({
+    const empRows = await db2.select({
       id: employees.id,
       multiparkAgentName: employees.multiparkAgentName,
       monthlySalary: employees.monthlySalary
@@ -8926,7 +9657,7 @@ async function getDashboardRange(startDate, endDate) {
   const endPlus = /* @__PURE__ */ new Date(endDate + "T00:00:00");
   endPlus.setDate(endPlus.getDate() + 2);
   const endStr = endPlus.toISOString().slice(0, 19).replace("T", " ");
-  const historyRows = await db.select({
+  const historyRows = await db2.select({
     agentName: multiparkBookingHistory.agentName,
     changeType: multiparkBookingHistory.changeType,
     actionTime: multiparkBookingHistory.actionTime
@@ -8962,20 +9693,20 @@ async function getDashboardRange(startDate, endDate) {
     if (a.isTeamLeader) p.isTeamLeader = true;
   }
   const dailyMap = /* @__PURE__ */ new Map();
-  for (const h of historyRows) {
-    if (!h.agentName || !h.actionTime || !h.changeType) continue;
-    const key = normalize(h.agentName);
+  for (const h2 of historyRows) {
+    if (!h2.agentName || !h2.actionTime || !h2.changeType) continue;
+    const key = normalize(h2.agentName);
     const p = personByName.get(key);
     if (!p) continue;
     p.totalActions++;
-    p.byType[h.changeType] = (p.byType[h.changeType] ?? 0) + 1;
+    p.byType[h2.changeType] = (p.byType[h2.changeType] ?? 0) + 1;
     const personAssignments = assignmentsPlus.filter(
       (a) => normalize(a.resolvedAgentName) === key
     );
     let inShift = false;
     let bucketDate = null;
     for (const a of personAssignments) {
-      const offset = actionTimeToOffsetHours(h.actionTime, a.assignmentDate);
+      const offset = actionTimeToOffsetHours(h2.actionTime, a.assignmentDate);
       if (offset === null) continue;
       const effectiveEnd = a.sentHomeHour ?? a.endHour;
       if (offset >= a.startHour && offset <= effectiveEnd) {
@@ -8989,7 +9720,7 @@ async function getDashboardRange(startDate, endDate) {
     }
     if (inShift) p.inShiftActions++;
     else p.outOfShiftActions++;
-    const bd = bucketDate ?? (h.actionTime?.slice(0, 10) ?? null);
+    const bd = bucketDate ?? (h2.actionTime?.slice(0, 10) ?? null);
     if (bd) {
       let day = dailyMap.get(bd);
       if (!day) {
@@ -9975,8 +10706,8 @@ function parseCsvLine(line) {
   out.push(cur);
   return out.map((s) => s.trim());
 }
-function normHeader(h) {
-  return h.toLowerCase().trim().replace(/\s+/g, "_");
+function normHeader(h2) {
+  return h2.toLowerCase().trim().replace(/\s+/g, "_");
 }
 function pick(row, ...keys) {
   for (const k of keys) {
@@ -10000,8 +10731,8 @@ async function importExtrasFromCsv(csvText, createdById) {
     return report;
   }
   const headers = parseCsvLine(lines[0]).map(normHeader);
-  for (const h of headers) {
-    if (!KNOWN_COLUMNS.has(h)) report.unknownColumns.push(h);
+  for (const h2 of headers) {
+    if (!KNOWN_COLUMNS.has(h2)) report.unknownColumns.push(h2);
   }
   if (!headers.includes("nome")) {
     report.errors.push({ rowIndex: 0, reason: "Falta coluna obrigat\xF3ria 'nome'." });
@@ -10433,340 +11164,8 @@ async function generateAllPayslipsPdf(year, month) {
 // server/routers.ts
 init_multipark();
 init_multiparkBookingSync();
-
-// server/zello.ts
-init_env();
-import crypto3 from "crypto";
-var NETWORK = process.env.ZELLO_NETWORK ?? "airpark";
-var BASE_URL = `https://${NETWORK}.zellowork.com`;
-var USERNAME = process.env.ZELLO_USERNAME ?? "";
-var PASSWORD = process.env.ZELLO_PASSWORD ?? "";
-var currentSid = null;
-var sidExpiresAt = 0;
-async function getToken() {
-  const res = await fetch(`${BASE_URL}/user/gettoken`);
-  const data = await res.json();
-  if (data.status !== "OK") throw new Error(`Zello gettoken failed: ${data.status}`);
-  return { token: data.token, sid: data.sid };
-}
-async function authenticate() {
-  if (currentSid && Date.now() < sidExpiresAt) return currentSid;
-  const apiKey = ENV.zelloApiKey;
-  if (!apiKey) throw new Error("ZELLO_API_KEY not configured");
-  if (!USERNAME) throw new Error("ZELLO_USERNAME not configured");
-  if (!PASSWORD) throw new Error("ZELLO_PASSWORD not configured");
-  const { token, sid } = await getToken();
-  const md5pass = crypto3.createHash("md5").update(PASSWORD).digest("hex");
-  const combined = md5pass + token + apiKey;
-  const authHash = crypto3.createHash("md5").update(combined).digest("hex");
-  const params = new URLSearchParams({ username: USERNAME, password: authHash });
-  const res = await fetch(`${BASE_URL}/user/login?sid=${sid}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString()
-  });
-  const data = await res.json();
-  if (data.status !== "OK") throw new Error(`Zello login failed: ${data.status}`);
-  currentSid = sid;
-  sidExpiresAt = Date.now() + 8 * 60 * 1e3;
-  return sid;
-}
-async function zelloGet(path2, params) {
-  const sid = await authenticate();
-  const url = new URL(`${BASE_URL}/${path2}`);
-  url.searchParams.set("sid", sid);
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, v);
-    }
-  }
-  const res = await fetch(url.toString());
-  const data = await res.json();
-  if (data.code === "301") {
-    currentSid = null;
-    sidExpiresAt = 0;
-    const newSid = await authenticate();
-    url.searchParams.set("sid", newSid);
-    const retryRes = await fetch(url.toString());
-    return retryRes.json();
-  }
-  return data;
-}
-function isZelloConfigured() {
-  return !!(ENV.zelloApiKey && USERNAME && PASSWORD);
-}
-async function getZelloUsers() {
-  if (!isZelloConfigured()) return [];
-  const data = await zelloGet("user/get");
-  if (data.status !== "OK") throw new Error(`Zello user/get failed: ${data.status}`);
-  return (data.users || []).map((u) => ({
-    name: u.name,
-    email: u.email || "",
-    phone: u.phone || u.profile_phone || "",
-    fullName: u.full_name || u.name,
-    job: u.job || "",
-    admin: !!u.admin,
-    channels: u.channels || [],
-    geotrackingOff: !!u.geotracking_off
-  }));
-}
-async function getZelloChannels() {
-  if (!isZelloConfigured()) return [];
-  const data = await zelloGet("channel/get");
-  if (data.status !== "OK") throw new Error(`Zello channel/get failed: ${data.status}`);
-  return (data.channels || []).map((c) => ({
-    name: c.name,
-    count: parseInt(c.count, 10) || 0,
-    isShared: !!c.is_shared,
-    isDispatch: !!c.is_dispatch
-  }));
-}
-async function getZelloLocations() {
-  if (!isZelloConfigured()) return [];
-  const data = await zelloGet("location/get", { filter: "none", max: "100" });
-  if (data.status !== "OK") throw new Error(`Zello location/get failed: ${data.status}`);
-  return (data.locations || []).map((l) => ({
-    username: l.username || l.name || "",
-    displayName: l.display_name || l.username || "",
-    latitude: parseFloat(l.latitude) || 0,
-    longitude: parseFloat(l.longitude) || 0,
-    speed: (parseFloat(l.speed) || 0) * 3.6,
-    // m/s to km/h
-    heading: parseFloat(l.heading) || 0,
-    altitude: parseFloat(l.altitude) || 0,
-    batteryLevel: parseInt(l.battery_level, 10) || 0,
-    chargingStatus: parseInt(l.charging_status, 10) || 0,
-    signalStrength: parseInt(l.signal_strength, 10) || 0,
-    accuracy: parseFloat(l.accuracy) || 0,
-    status: l.status || "unknown",
-    lastReport: parseInt(l.last_report, 10) || 0,
-    lastReportDelay: parseInt(l.last_report_delay, 10) || 0
-  }));
-}
-async function getZelloUserHistory(username, startTs, endTs) {
-  if (!isZelloConfigured()) return { locations: [] };
-  const data = await zelloGet(`location/getuser/${encodeURIComponent(username)}/history`, {
-    start_ts: String(startTs),
-    end_ts: String(endTs),
-    format: "geojson",
-    speedUnits: "kmh"
-  });
-  return data;
-}
-async function getZelloUserLocation(username) {
-  if (!isZelloConfigured()) return { locations: [] };
-  const data = await zelloGet(`location/getuser/${encodeURIComponent(username)}`);
-  return data;
-}
-
-// server/jobs/dailyDriverCollection.ts
-init_db();
-init_storage();
-init_notification();
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-function processGeoJsonHistory(data) {
-  const defaultResult = {
-    totalKm: 0,
-    hoursWorked: 0,
-    hoursStopped: 0,
-    totalHoursOnline: 0,
-    avgSpeed: 0,
-    maxSpeed: 0,
-    avgBattery: 0,
-    minBattery: 100,
-    gpsPointsCount: 0,
-    geojson: null
-  };
-  if (!data || !data.features || !Array.isArray(data.features)) {
-    return defaultResult;
-  }
-  let totalKm = 0;
-  let maxSpeed = 0;
-  let speedSum = 0;
-  let speedCount = 0;
-  let batterySum = 0;
-  let batteryCount = 0;
-  let minBattery = 100;
-  let gpsPointsCount = 0;
-  let firstTimestamp = null;
-  let lastTimestamp = null;
-  let movingSeconds = 0;
-  let stoppedSeconds = 0;
-  const STOPPED_SPEED_THRESHOLD = 2;
-  for (const feature of data.features) {
-    if (!feature.geometry) continue;
-    if (feature.geometry.type === "Point") {
-      gpsPointsCount++;
-      const props = feature.properties || {};
-      const rawSpeed = parseFloat(props.speed) || 0;
-      const speed = rawSpeed * 3.6;
-      const battery = parseInt(props.battery_level || props.batteryLevel) || 0;
-      const ts = parseInt(props.timestamp || props.time || props.lastReport) || 0;
-      if (speed > 0 && speed <= 150) {
-        speedSum += speed;
-        speedCount++;
-      }
-      if (speed > maxSpeed && speed <= 150) maxSpeed = speed;
-      if (battery > 0) {
-        batterySum += battery;
-        batteryCount++;
-        if (battery < minBattery) minBattery = battery;
-      }
-      if (ts > 0) {
-        if (!firstTimestamp || ts < firstTimestamp) firstTimestamp = ts;
-        if (!lastTimestamp || ts > lastTimestamp) lastTimestamp = ts;
-      }
-    }
-    if (feature.geometry.type === "LineString" && feature.geometry.coordinates) {
-      const coords = feature.geometry.coordinates;
-      for (let i = 1; i < coords.length; i++) {
-        const [lon1, lat1] = coords[i - 1];
-        const [lon2, lat2] = coords[i];
-        const segmentKm = haversineKm(lat1, lon1, lat2, lon2);
-        if (segmentKm < 50) {
-          totalKm += segmentKm;
-        }
-        gpsPointsCount++;
-      }
-    }
-  }
-  const timestamps = [];
-  for (const feature of data.features) {
-    const props = feature.properties || {};
-    const ts = parseInt(props.timestamp || props.time || props.lastReport) || 0;
-    const rawSpd = parseFloat(props.speed) || 0;
-    const speed = rawSpd * 3.6;
-    if (ts > 0) {
-      timestamps.push({ ts, speed });
-    }
-  }
-  timestamps.sort((a, b) => a.ts - b.ts);
-  for (let i = 1; i < timestamps.length; i++) {
-    const dt = timestamps[i].ts - timestamps[i - 1].ts;
-    if (dt > 0 && dt < 3600) {
-      if (timestamps[i - 1].speed > STOPPED_SPEED_THRESHOLD) {
-        movingSeconds += dt;
-      } else {
-        stoppedSeconds += dt;
-      }
-    }
-  }
-  const totalOnlineSeconds = firstTimestamp && lastTimestamp ? lastTimestamp - firstTimestamp : 0;
-  return {
-    totalKm: Math.round(totalKm * 100) / 100,
-    hoursWorked: Math.round(movingSeconds / 3600 * 100) / 100,
-    hoursStopped: Math.round(stoppedSeconds / 3600 * 100) / 100,
-    totalHoursOnline: Math.round(totalOnlineSeconds / 3600 * 100) / 100,
-    avgSpeed: speedCount > 0 ? Math.round(speedSum / speedCount * 100) / 100 : 0,
-    maxSpeed: Math.round(maxSpeed * 100) / 100,
-    avgBattery: batteryCount > 0 ? Math.round(batterySum / batteryCount) : 0,
-    minBattery: batteryCount > 0 ? minBattery : 0,
-    gpsPointsCount,
-    geojson: data
-  };
-}
-async function collectDailyDriverData(targetDate) {
-  const errors = [];
-  let driversProcessed = 0;
-  try {
-    const dateStr = targetDate.toISOString().split("T")[0];
-    const existing = await getDailyDriverHistoryByDate(dateStr);
-    if (existing.length > 0) {
-      console.log(`[DailyCollection] Data already exists for ${dateStr} (${existing.length} records). Skipping.`);
-      return { success: true, driversProcessed: existing.length, errors: [] };
-    }
-    const users2 = await getZelloUsers();
-    const nonAdminUsers = users2.filter((u) => !u.admin);
-    const startOfDay2 = new Date(targetDate);
-    startOfDay2.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-    const startTs = Math.floor(startOfDay2.getTime() / 1e3);
-    const endTs = Math.floor(endOfDay.getTime() / 1e3);
-    const speedLimit = await getDefaultSpeedLimit();
-    const threshold = speedLimit ? speedLimit.maxSpeed * (1 + speedLimit.tolerancePercent / 100) : 999;
-    console.log(`[DailyCollection] Processing ${nonAdminUsers.length} users for ${dateStr}`);
-    for (const user of nonAdminUsers) {
-      try {
-        const historyData = await getZelloUserHistory(user.name, startTs, endTs);
-        const metrics = processGeoJsonHistory(historyData);
-        let violations = 0;
-        if (historyData?.features) {
-          for (const feature of historyData.features) {
-            const rawSpd = parseFloat(feature.properties?.speed) || 0;
-            const speedKmh = rawSpd * 3.6;
-            if (speedKmh > threshold && speedKmh <= 150) violations++;
-          }
-        }
-        let geoJsonUrl = null;
-        if (metrics.gpsPointsCount > 0 && metrics.geojson) {
-          try {
-            const key = `driver-history/${dateStr}/${user.name}.geojson`;
-            const result = await storagePut(
-              key,
-              JSON.stringify(metrics.geojson),
-              "application/geo+json"
-            );
-            geoJsonUrl = result.url;
-          } catch (e) {
-            console.warn(`[DailyCollection] Failed to upload GeoJSON for ${user.name}:`, e);
-          }
-        }
-        await createDailyDriverHistory({
-          zelloUsername: user.name,
-          displayName: user.fullName || user.name,
-          date: targetDate.toISOString().slice(0, 19).replace("T", " "),
-          totalKm: String(metrics.totalKm),
-          hoursWorked: String(metrics.hoursWorked),
-          hoursStopped: String(metrics.hoursStopped),
-          totalHoursOnline: String(metrics.totalHoursOnline),
-          avgSpeed: String(metrics.avgSpeed),
-          maxSpeed: String(metrics.maxSpeed),
-          speedViolations: violations,
-          avgBattery: metrics.avgBattery,
-          minBattery: metrics.minBattery,
-          gpsPointsCount: metrics.gpsPointsCount,
-          geoJsonUrl
-        });
-        driversProcessed++;
-        if (user.geotrackingOff) {
-          await createGpsAlert({
-            zelloUsername: user.name,
-            displayName: user.fullName || user.name,
-            alertType: "gps_off",
-            message: `${user.fullName || user.name} tinha o GPS desligado em ${dateStr}`,
-            notificationSent: 1,
-            occurredAt: targetDate.toISOString().slice(0, 19).replace("T", " ")
-          });
-        }
-      } catch (userError) {
-        errors.push(`${user.name}: ${userError.message}`);
-        console.error(`[DailyCollection] Error processing ${user.name}:`, userError);
-      }
-    }
-    console.log(`[DailyCollection] Completed: ${driversProcessed}/${nonAdminUsers.length} users processed for ${dateStr}`);
-    if (driversProcessed > 0) {
-      await notifyOwner({
-        title: "Relat\xF3rio Di\xE1rio de Motoristas",
-        content: `Recolha autom\xE1tica para ${dateStr}: ${driversProcessed} motoristas processados${errors.length > 0 ? `, ${errors.length} erros` : ""}`
-      });
-    }
-    return { success: true, driversProcessed, errors };
-  } catch (error) {
-    console.error("[DailyCollection] Fatal error:", error);
-    errors.push(`Fatal: ${error.message}`);
-    return { success: false, driversProcessed, errors };
-  }
-}
-
-// server/routers.ts
+init_zello();
+init_dailyDriverCollection();
 var ROLE_HIERARCHY = {
   super_admin: 7,
   admin: 6,
@@ -10785,19 +11184,44 @@ function requireRole(userRole, minRole) {
 async function applyMigration0044() {
   const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
   const { MIGRATION_0044_STATEMENTS: MIGRATION_0044_STATEMENTS2, IDEMPOTENT_ERROR_CODES: IDEMPOTENT_ERROR_CODES2 } = await Promise.resolve().then(() => (init_migration_0044(), migration_0044_exports));
-  const { sql: sql5 } = await import("drizzle-orm");
-  const db = await getDb3();
-  if (!db) throw new Error("DB not available");
+  const { sql: sql6 } = await import("drizzle-orm");
+  const db2 = await getDb3();
+  if (!db2) throw new Error("DB not available");
   let ok = 0;
   let skipped = 0;
   let failed = 0;
   const errors = [];
   for (const stmt of MIGRATION_0044_STATEMENTS2) {
     try {
-      await db.execute(sql5.raw(stmt));
+      await db2.execute(sql6.raw(stmt));
       ok += 1;
     } catch (err) {
       if (err?.code && IDEMPOTENT_ERROR_CODES2.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+async function applyMigration0046() {
+  const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+  const { MIGRATION_0046_STATEMENTS: MIGRATION_0046_STATEMENTS2, IDEMPOTENT_ERROR_CODES_0046: IDEMPOTENT_ERROR_CODES_00462 } = await Promise.resolve().then(() => (init_migration_0046(), migration_0046_exports));
+  const { sql: sql6 } = await import("drizzle-orm");
+  const db2 = await getDb3();
+  if (!db2) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors = [];
+  for (const stmt of MIGRATION_0046_STATEMENTS2) {
+    try {
+      await db2.execute(sql6.raw(stmt));
+      ok += 1;
+    } catch (err) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_00462.has(err.code)) {
         skipped += 1;
       } else {
         failed += 1;
@@ -10822,19 +11246,30 @@ var appRouter = router({
       });
       return report;
     }),
+    runMigration0046: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0046();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0046_multipark_report_extra_fields: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`
+      });
+      return report;
+    }),
     // Apaga um batch de duplicados em multipark_bookings. Cliente itera até
     // deleted === 0. Evita timeout do Vercel.
     fixMultiparkDuplicatesBatch: protectedProcedure.input(z2.object({ batchSize: z2.number().int().min(100).max(5e3).optional() }).optional()).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "super_admin");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { sql: sql5 } = await import("drizzle-orm");
-      const db = await getDb3();
-      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
       const batch = input?.batchSize ?? 1e3;
-      const beforeRes = await db.execute(sql5`SELECT COUNT(*) AS total FROM multipark_bookings`);
+      const beforeRes = await db2.execute(sql6`SELECT COUNT(*) AS total FROM multipark_bookings`);
       const before = Array.isArray(beforeRes[0]) ? beforeRes[0] : beforeRes;
       const totalBefore = Number(before[0]?.total ?? 0);
-      const delRes = await db.execute(sql5`
+      const delRes = await db2.execute(sql6`
           DELETE FROM multipark_bookings WHERE id IN (
             SELECT id FROM (
               SELECT b1.id FROM multipark_bookings b1
@@ -10844,13 +11279,13 @@ var appRouter = router({
                      b1.updatedAt < b2.updatedAt
                   OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id)
                )
-              LIMIT ${sql5.raw(String(batch))}
+              LIMIT ${sql6.raw(String(batch))}
             ) AS t
           )
         `);
       const meta = Array.isArray(delRes[0]) ? delRes[0] : delRes;
       const affectedRows = Number(meta?.affectedRows ?? 0);
-      const afterRes = await db.execute(sql5`SELECT COUNT(*) AS total FROM multipark_bookings`);
+      const afterRes = await db2.execute(sql6`SELECT COUNT(*) AS total FROM multipark_bookings`);
       const after = Array.isArray(afterRes[0]) ? afterRes[0] : afterRes;
       const totalAfter = Number(after[0]?.total ?? 0);
       return {
@@ -10863,17 +11298,17 @@ var appRouter = router({
     // Backfill: atribui um projeto fallback (default = "Multipark" se existir,
     // senão o primeiro grupo top-level) a todos os colaboradores activos sem
     // projectId. Devolve quantos foram afectados e qual o projeto usado.
-    backfillEmployeeProject: protectedProcedure.input(z2.object({ projectId: z2.number().optional() }).optional()).mutation(async ({ ctx, input }) => {
+    backfillEmployeeProject: protectedProcedure.input(z2.object({ projectId: z2.number().optional(), onlyExtras: z2.boolean().optional() }).optional()).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "super_admin");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { sql: sql5, isNull: isNull3, and: andOp, eq: eq7 } = await import("drizzle-orm");
+      const { sql: sql6, isNull: isNull3, and: andOp, eq: eq8 } = await import("drizzle-orm");
       const { employees: employees2, projects: projects2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const db = await getDb3();
-      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const db2 = await getDb3();
+      if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
       let fallbackId = input?.projectId;
       let fallbackName = "";
       if (!fallbackId) {
-        const allProjects = await db.select().from(projects2);
+        const allProjects = await db2.select().from(projects2);
         const mp = allProjects.find((p) => /^multipark$/i.test(p.name.trim()));
         if (mp) {
           fallbackId = mp.id;
@@ -10886,7 +11321,7 @@ var appRouter = router({
           }
         }
       } else {
-        const [p] = await db.select({ name: projects2.name }).from(projects2).where(eq7(projects2.id, fallbackId)).limit(1);
+        const [p] = await db2.select({ name: projects2.name }).from(projects2).where(eq8(projects2.id, fallbackId)).limit(1);
         fallbackName = p?.name ?? "";
       }
       if (!fallbackId) {
@@ -10895,33 +11330,61 @@ var appRouter = router({
           message: "N\xE3o h\xE1 projeto fallback. Cria um projeto top-level 'Multipark' ou indica projectId no input."
         });
       }
-      const beforeRes = await db.select({ c: sql5`COUNT(*)` }).from(employees2).where(andOp(eq7(employees2.isActive, 1), isNull3(employees2.projectId)));
+      const conds = [eq8(employees2.isActive, 1), isNull3(employees2.projectId)];
+      if (input?.onlyExtras) conds.push(eq8(employees2.position, "extra"));
+      const targetWhere = andOp(...conds);
+      const beforeRes = await db2.select({ c: sql6`COUNT(*)` }).from(employees2).where(targetWhere);
       const before = Number(beforeRes[0]?.c ?? 0);
-      await db.update(employees2).set({ projectId: fallbackId }).where(andOp(eq7(employees2.isActive, 1), isNull3(employees2.projectId)));
+      await db2.update(employees2).set({ projectId: fallbackId }).where(targetWhere);
       await logActivity({
         userId: ctx.user.id,
         action: "backfill",
         entity: "employee",
-        details: `Backfill projectId=${fallbackId} (${fallbackName}) em ${before} colaboradores`
+        details: `Backfill projectId=${fallbackId} (${fallbackName})${input?.onlyExtras ? " [s\xF3 extras]" : ""} em ${before} colaboradores`
       });
       return { affected: before, projectId: fallbackId, projectName: fallbackName };
+    }),
+    // Backfill histórico: sincroniza UM dia (todas as actionTypes) +
+    // enrich + history. Frontend itera dia-a-dia para o range pedido.
+    // Cada chamada cabe nos 60s do Vercel para um dia tipico.
+    runHistoricalDaySync: protectedProcedure.input(z2.object({ date: z2.string() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const { syncBookings: syncBookings2, enrichBookingsBatch: enrichBookingsBatch2, syncBookingHistoryBatch: syncBookingHistoryBatch2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+      const t0 = Date.now();
+      const { enrichTargets: _enrichTargets, ...report } = await syncBookings2({
+        startDate: input.date,
+        endDate: input.date,
+        triggeredById: ctx.user.id
+      });
+      const [enrichRes, historyRes] = await Promise.allSettled([
+        enrichBookingsBatch2(100),
+        syncBookingHistoryBatch2(50)
+      ]);
+      return {
+        date: input.date,
+        report,
+        enriched: enrichRes.status === "fulfilled" ? enrichRes.value.enriched : 0,
+        enrichScanned: enrichRes.status === "fulfilled" ? enrichRes.value.scanned : 0,
+        historyFetched: historyRes.status === "fulfilled" ? historyRes.value.fetched : 0,
+        durationMs: Date.now() - t0
+      };
     }),
     // Reforça o UNIQUE depois dos batches terminarem.
     enforceMultiparkUnique: protectedProcedure.mutation(async ({ ctx }) => {
       requireRole(ctx.user.role, "super_admin");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { sql: sql5 } = await import("drizzle-orm");
-      const db = await getDb3();
-      if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
       const steps = [];
       try {
-        await db.execute(sql5`ALTER TABLE multipark_bookings DROP INDEX multipark_bookings_externalId_unique`);
+        await db2.execute(sql6`ALTER TABLE multipark_bookings DROP INDEX multipark_bookings_externalId_unique`);
         steps.push({ step: "drop_index", ok: true });
       } catch (e) {
         steps.push({ step: "drop_index", ok: false, error: e?.code ?? e?.message });
       }
       try {
-        await db.execute(sql5`ALTER TABLE multipark_bookings ADD UNIQUE INDEX multipark_bookings_externalId_unique (externalId)`);
+        await db2.execute(sql6`ALTER TABLE multipark_bookings ADD UNIQUE INDEX multipark_bookings_externalId_unique (externalId)`);
         steps.push({ step: "create_unique", ok: true });
       } catch (e) {
         steps.push({ step: "create_unique", ok: false, error: e?.code ?? e?.message });
@@ -11305,10 +11768,10 @@ A tarefa "${taskTitle}" foi marcada como conclu\xEDda. Obrigado!`
         let managers = [];
         if (task.projectId) {
           const hierarchy = await getProjectHierarchyManagers(task.projectId);
-          for (const h of hierarchy) {
-            if (h.managerId) {
-              const mgr = await getUserById(h.managerId);
-              if (mgr) managers.push(`${mgr.name} (${h.level})`);
+          for (const h2 of hierarchy) {
+            if (h2.managerId) {
+              const mgr = await getUserById(h2.managerId);
+              if (mgr) managers.push(`${mgr.name} (${h2.level})`);
             }
           }
         }
@@ -11634,6 +12097,106 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         });
       }
       return { updated: overdue.length };
+    }),
+    // Resumo de despesas de um período (para comparar períodos).
+    summary: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string(), projectId: z2.number().optional() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) return { total: 0, count: 0, byCategory: [] };
+      const rows = (r) => Array.isArray(r[0]) ? r[0] : r;
+      const projCond = input.projectId ? sql6` AND projectId = ${input.projectId}` : sql6``;
+      const tot = rows(await db2.execute(sql6`SELECT COALESCE(SUM(amount),0) total, COUNT(*) cnt FROM expenses WHERE status <> 'cancelled' AND expenseDate >= ${input.from + " 00:00:00"} AND expenseDate <= ${input.to + " 23:59:59"}${projCond}`))[0];
+      const byCat = rows(await db2.execute(sql6`SELECT categoryId, COALESCE(SUM(amount),0) total, COUNT(*) cnt FROM expenses WHERE status <> 'cancelled' AND expenseDate >= ${input.from + " 00:00:00"} AND expenseDate <= ${input.to + " 23:59:59"}${projCond} GROUP BY categoryId ORDER BY total DESC`));
+      return {
+        total: Number(tot?.total ?? 0),
+        count: Number(tot?.cnt ?? 0),
+        byCategory: byCat.map((r) => ({ categoryId: r.categoryId ?? null, total: Number(r.total), count: Number(r.cnt) }))
+      };
+    }),
+    // ── Despesas recorrentes (modelos) ──
+    recurring: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { recurringExpenses: recurringExpenses2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { desc: desc3 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) return [];
+        return db2.select().from(recurringExpenses2).orderBy(desc3(recurringExpenses2.active));
+      }),
+      create: protectedProcedure.input(z2.object({ description: z2.string().optional(), supplier: z2.string().optional(), amount: z2.number(), paymentMethod: z2.enum(["cash", "card", "transfer", "check", "other"]).optional(), categoryId: z2.number().optional(), projectId: z2.number().optional(), dayOfMonth: z2.number().min(1).max(28).optional(), notes: z2.string().optional() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { recurringExpenses: recurringExpenses2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.insert(recurringExpenses2).values({ description: input.description ?? null, supplier: input.supplier ?? null, amount: String(input.amount), paymentMethod: input.paymentMethod ?? "transfer", categoryId: input.categoryId ?? null, projectId: input.projectId ?? null, dayOfMonth: input.dayOfMonth ?? 1, notes: input.notes ?? null, createdById: ctx.user.id });
+        return { success: true };
+      }),
+      update: protectedProcedure.input(z2.object({ id: z2.number(), description: z2.string().optional(), supplier: z2.string().optional(), amount: z2.number().optional(), paymentMethod: z2.enum(["cash", "card", "transfer", "check", "other"]).optional(), categoryId: z2.number().nullable().optional(), projectId: z2.number().nullable().optional(), dayOfMonth: z2.number().min(1).max(28).optional(), active: z2.boolean().optional(), notes: z2.string().optional() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { recurringExpenses: recurringExpenses2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { id, amount, active, ...rest } = input;
+        const patch = { ...rest };
+        if (amount !== void 0) patch.amount = String(amount);
+        if (active !== void 0) patch.active = active ? 1 : 0;
+        await db2.update(recurringExpenses2).set(patch).where(eq8(recurringExpenses2.id, id));
+        return { success: true };
+      }),
+      remove: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { recurringExpenses: recurringExpenses2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.delete(recurringExpenses2).where(eq8(recurringExpenses2.id, input.id));
+        return { success: true };
+      }),
+      // Idempotente: cria as despesas dos modelos ativos para o mês (se ainda não existem).
+      generateMonth: protectedProcedure.input(z2.object({ year: z2.number(), month: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getDb: getDb3, createExpense: createExpense2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { recurringExpenses: recurringExpenses2, expenses: expenses2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8, and: and7, gte: gte5, lte: lte5 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) return { created: 0 };
+        const templates = await db2.select().from(recurringExpenses2).where(eq8(recurringExpenses2.active, 1));
+        const monthStr = `${input.year}-${String(input.month).padStart(2, "0")}`;
+        const lastDay = new Date(input.year, input.month, 0).getDate();
+        let created = 0;
+        for (const t2 of templates) {
+          const existing = await db2.select({ id: expenses2.id }).from(expenses2).where(and7(
+            eq8(expenses2.recurringTemplateId, t2.id),
+            gte5(expenses2.expenseDate, `${monthStr}-01 00:00:00`),
+            lte5(expenses2.expenseDate, `${monthStr}-${String(lastDay).padStart(2, "0")} 23:59:59`)
+          )).limit(1);
+          if (existing.length) continue;
+          const day = Math.min(t2.dayOfMonth, lastDay);
+          await createExpense2({
+            supplier: t2.supplier,
+            description: t2.description,
+            amount: t2.amount,
+            currency: t2.currency,
+            paymentMethod: t2.paymentMethod,
+            expenseDate: `${monthStr}-${String(day).padStart(2, "0")} 00:00:00`,
+            status: "pending",
+            categoryId: t2.categoryId,
+            projectId: t2.projectId,
+            insertedById: ctx.user.id,
+            recurringTemplateId: t2.id,
+            notes: t2.notes
+          });
+          created++;
+        }
+        return { created };
+      })
     })
   }),
   // ── LOGSS ───────────────────────────────────────────────────────────────────────────────────
@@ -12309,6 +12872,167 @@ Link do PDF: ${url}`
         requireRole(ctx.user.role, "super_admin");
         await deleteCampaign(input.id);
         await logActivity({ userId: ctx.user.id, action: "delete", entity: "campaign", entityId: input.id, details: `Campanha eliminada` });
+        return { success: true };
+      })
+    }),
+    // ── CAMPANHAS INTERNAS (das reservas Multipark) ──
+    // Campanha lógica agrupa várias chaves (campaignId do link, nome, ou padrão
+    // de URL). Atribuição "uma vez": detecta chaves novas, utilizador atribui.
+    internalCampaigns: router({
+      // Chaves ainda NÃO atribuídas: campaignId (do originUrl) + campaignName não-parceiro.
+      detect: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { sql: sql6 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) return { ids: [], names: [] };
+        const rows = (r) => Array.isArray(r[0]) ? r[0] : r;
+        const linksRes = await db2.execute(sql6`
+          SELECT originUrl AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          FROM multipark_bookings
+          WHERE originUrl IS NOT NULL AND originUrl <> ''
+            AND NOT EXISTS (
+              SELECT 1 FROM internal_campaign_keys k
+              WHERE k.keyType = 'url_pattern' AND multipark_bookings.originUrl LIKE k.keyValue
+            )
+          GROUP BY originUrl ORDER BY bookings DESC LIMIT 250`);
+        const namesRes = await db2.execute(sql6`
+          SELECT campaignName AS value, COUNT(*) AS bookings, COALESCE(SUM(totalPrice),0) AS revenue
+          FROM multipark_bookings
+          WHERE campaignName IS NOT NULL AND campaignName <> ''
+            AND campaignName NOT IN (SELECT name FROM partnerships)
+            AND campaignName NOT IN (SELECT keyValue FROM internal_campaign_keys WHERE keyType='campaign_name')
+          GROUP BY campaignName ORDER BY bookings DESC`);
+        return { links: rows(linksRes), names: rows(namesRes) };
+      }),
+      // Campanhas lógicas + chaves + custos + métricas (reservas/receita/gasto).
+      list: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { sql: sql6 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) return [];
+        const rows = (r) => Array.isArray(r[0]) ? r[0] : r;
+        const internal = rows(await db2.execute(sql6`SELECT id, name, projectId, dailyBudget, city, brand, campaignStatus FROM internal_campaigns ORDER BY name`)).map((c) => ({ ...c, campaignType: "internal" }));
+        const ad = rows(await db2.execute(sql6`SELECT id, name, projectId, budget AS dailyBudget, platform AS brand, campaignStatus FROM campaigns ORDER BY name`)).map((c) => ({ ...c, city: null, campaignType: "ad" }));
+        const periodDays = input?.from && input?.to ? Math.max(1, Math.floor((Date.parse(input.to) - Date.parse(input.from)) / 864e5) + 1) : 0;
+        const projs = rows(await db2.execute(sql6`SELECT id, name FROM projects`));
+        const projName = new Map(projs.map((p) => [p.id, p.name]));
+        const camps = [...internal, ...ad].map((c) => ({ ...c, projectName: c.projectId ? projName.get(c.projectId) ?? null : null }));
+        const allKeys = rows(await db2.execute(sql6`SELECT * FROM internal_campaign_keys`));
+        const dateCond = input?.from && input?.to ? sql6` AND checkIn >= ${input.from + " 00:00:00"} AND checkIn <= ${input.to + " 23:59:59"}` : sql6``;
+        const out = [];
+        for (const c of camps) {
+          const keys = allKeys.filter((k) => k.campaignType === c.campaignType && k.campaignId === c.id);
+          const conds = [];
+          const names = keys.filter((k) => k.keyType === "campaign_name").map((k) => k.keyValue);
+          if (names.length) conds.push(sql6`campaignName IN (${sql6.join(names.map((v) => sql6`${v}`), sql6`, `)})`);
+          for (const k of keys.filter((k2) => k2.keyType === "campaign_id")) conds.push(sql6`originUrl LIKE ${"%campaignId=" + k.keyValue + "%"}`);
+          for (const k of keys.filter((k2) => k2.keyType === "url_pattern")) conds.push(sql6`originUrl LIKE ${k.keyValue}`);
+          let bookings = 0, revenue = 0;
+          if (conds.length) {
+            const m = rows(await db2.execute(sql6`SELECT COUNT(*) AS c, COALESCE(SUM(totalPrice),0) AS rev FROM multipark_bookings WHERE (${sql6.join(conds, sql6` OR `)})${dateCond}`))[0];
+            bookings = Number(m?.c ?? 0);
+            revenue = Number(m?.rev ?? 0);
+          }
+          const costRow = rows(await db2.execute(sql6`SELECT COALESCE(SUM(amount),0) AS spend FROM internal_campaign_costs WHERE campaignType = ${c.campaignType} AND campaignId = ${c.id}${input?.from && input?.to ? sql6` AND costDate >= ${input.from} AND costDate <= ${input.to}` : sql6``}`))[0];
+          const manualSpend = Number(costRow?.spend ?? 0);
+          let realStatsSpend = 0;
+          if (c.campaignType === "ad" && input?.from && input?.to) {
+            const r = rows(await db2.execute(sql6`SELECT COALESCE(SUM(spend),0) AS s FROM campaign_daily_stats WHERE campaignId = ${c.id} AND date >= ${input.from + " 00:00:00"} AND date <= ${input.to + " 23:59:59"}`))[0];
+            realStatsSpend = Number(r?.s ?? 0);
+          }
+          const budgetSpend = c.dailyBudget && periodDays > 0 ? Number(c.dailyBudget) * periodDays : 0;
+          const spend = realStatsSpend > 0 ? realStatsSpend : manualSpend > 0 ? manualSpend : budgetSpend;
+          const spendEstimated = realStatsSpend === 0 && manualSpend === 0 && budgetSpend > 0;
+          out.push({ ...c, dailyBudget: c.dailyBudget != null ? Number(c.dailyBudget) : null, keys, bookings, revenue, spend, spendEstimated, costPerBooking: bookings > 0 ? spend / bookings : 0, roas: spend > 0 ? revenue / spend : null });
+        }
+        out.sort((a, b) => (b.keys.length || b.bookings) - (a.keys.length || a.bookings));
+        return out;
+      }),
+      create: protectedProcedure.input(z2.object({ name: z2.string().min(1), projectId: z2.number().optional(), dailyBudget: z2.number().optional(), city: z2.string().optional(), brand: z2.string().optional() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaigns: internalCampaigns2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.insert(internalCampaigns2).values({ name: input.name, projectId: input.projectId ?? null, dailyBudget: input.dailyBudget != null ? String(input.dailyBudget) : null, city: input.city ?? null, brand: input.brand ?? null, createdById: ctx.user.id });
+        return { success: true };
+      }),
+      update: protectedProcedure.input(z2.object({ id: z2.number(), name: z2.string().optional(), projectId: z2.number().nullable().optional(), dailyBudget: z2.number().nullable().optional(), city: z2.string().optional(), brand: z2.string().optional(), campaignStatus: z2.enum(["active", "paused", "completed"]).optional() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaigns: internalCampaigns2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { id, ...rest } = input;
+        await db2.update(internalCampaigns2).set(rest).where(eq8(internalCampaigns2.id, id));
+        return { success: true };
+      }),
+      // Para ad campaigns só desliga (apaga chaves/custos desta vista); a campanha
+      // em si é gerida na tab "Campanhas". Para internas apaga tudo.
+      remove: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), id: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaigns: internalCampaigns2, internalCampaignKeys: internalCampaignKeys2, internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8, and: and7 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.delete(internalCampaignKeys2).where(and7(eq8(internalCampaignKeys2.campaignType, input.campaignType), eq8(internalCampaignKeys2.campaignId, input.id)));
+        await db2.delete(internalCampaignCosts2).where(and7(eq8(internalCampaignCosts2.campaignType, input.campaignType), eq8(internalCampaignCosts2.campaignId, input.id)));
+        if (input.campaignType === "internal") await db2.delete(internalCampaigns2).where(eq8(internalCampaigns2.id, input.id));
+        return { success: true };
+      }),
+      // Atribui uma chave detetada a uma campanha (a tal "atribuição uma vez").
+      assignKey: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), campaignId: z2.number(), keyType: z2.enum(["campaign_id", "campaign_name", "url_pattern"]), keyValue: z2.string().min(1) })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaignKeys: internalCampaignKeys2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.insert(internalCampaignKeys2).values({ campaignType: input.campaignType, campaignId: input.campaignId, keyType: input.keyType, keyValue: input.keyValue });
+        return { success: true };
+      }),
+      removeKey: protectedProcedure.input(z2.object({ keyId: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaignKeys: internalCampaignKeys2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.delete(internalCampaignKeys2).where(eq8(internalCampaignKeys2.id, input.keyId));
+        return { success: true };
+      }),
+      addCost: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), campaignId: z2.number(), costDate: z2.string(), amount: z2.number(), notes: z2.string().optional() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { sql: sql6 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.execute(sql6`
+            INSERT INTO internal_campaign_costs (campaignType, campaignId, costDate, amount, notes, createdById)
+            VALUES (${input.campaignType}, ${input.campaignId}, ${input.costDate}, ${input.amount}, ${input.notes ?? null}, ${ctx.user.id})
+            ON DUPLICATE KEY UPDATE amount = ${input.amount}, notes = ${input.notes ?? null}`);
+        return { success: true };
+      }),
+      costs: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), campaignId: z2.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8, and: and7, desc: desc3 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) return [];
+        return db2.select().from(internalCampaignCosts2).where(and7(eq8(internalCampaignCosts2.campaignType, input.campaignType), eq8(internalCampaignCosts2.campaignId, input.campaignId))).orderBy(desc3(internalCampaignCosts2.costDate));
+      }),
+      removeCost: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq8 } = await import("drizzle-orm");
+        const db2 = await getDb3();
+        if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        await db2.delete(internalCampaignCosts2).where(eq8(internalCampaignCosts2.id, input.id));
         return { success: true };
       })
     }),
@@ -13045,10 +13769,12 @@ Link do PDF: ${url}`
   }),
   // ─── RECLAMAÇÕES ────────────────────────────────────────────────────────────
   complaints: router({
-    searchBooking: protectedProcedure.input(z2.object({ search: z2.string().min(2) })).query(async ({ input }) => {
+    searchBooking: protectedProcedure.input(z2.object({ search: z2.string().min(2) })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return searchBookingByRef(input.search);
     }),
-    fetchBookingDetails: protectedProcedure.input(z2.object({ externalId: z2.string() })).query(async ({ input }) => {
+    fetchBookingDetails: protectedProcedure.input(z2.object({ externalId: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const { getBooking: getBooking2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
       try {
         return await getBooking2(input.externalId);
@@ -13062,10 +13788,12 @@ Link do PDF: ${url}`
       vehicleId: z2.number().optional(),
       assignedToId: z2.number().optional(),
       projectId: z2.number().optional()
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getComplaints(input ?? {});
     }),
-    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
+    getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const complaint = await getComplaintById(input.id);
       if (!complaint) throw new TRPCError3({ code: "NOT_FOUND" });
       const messages = await getComplaintMessages(input.id);
@@ -13240,6 +13968,7 @@ Link do PDF: ${url}`
       filename: z2.string(),
       label: z2.string().optional()
     })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       const buffer = Buffer.from(input.base64, "base64");
       const ext = input.filename.split(".").pop() || "jpg";
       const key = `complaints/${input.complaintId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -13254,20 +13983,24 @@ Link do PDF: ${url}`
       return { id, url };
     }),
     deletePhoto: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       await deleteComplaintPhoto(input.id);
       return { success: true };
     }),
-    stats: protectedProcedure.query(async () => {
-      return getComplaintStats();
+    stats: protectedProcedure.input(z2.object({ projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      return getComplaintStats(input?.projectId);
     }),
     // Get vehicle driver history for a complaint
-    vehicleHistory: protectedProcedure.input(z2.object({ vehicleId: z2.number() })).query(async ({ input }) => {
+    vehicleHistory: protectedProcedure.input(z2.object({ vehicleId: z2.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getVehicleDriverHistory(input.vehicleId);
     }),
     // Booking timeline from Multipark API
     bookingTimeline: protectedProcedure.input(z2.object({
       bookingId: z2.string()
-    })).query(async ({ input }) => {
+    })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
       return getBookingHistory(input.bookingId);
     })
   }),
@@ -14365,7 +15098,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         const s = String(val).replace(/[^\d.,]/g, "").replace(",", ".");
         return Math.round(parseFloat(s) * 100) || 0;
       };
-      const parseDate = (val) => {
+      const parseDate2 = (val) => {
         if (!val) return null;
         const s = String(val);
         const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -14403,7 +15136,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       const grouped = {};
       let parsedRows = 0;
       for (const row of rows) {
-        const createdDate = parseDate(row[colMap.createdAt]);
+        const createdDate = parseDate2(row[colMap.createdAt]);
         if (!createdDate) continue;
         const dateKey2 = createdDate.toISOString().slice(0, 10);
         const parkName = String(row[colMap.parkName] || "Desconhecido").trim();
@@ -14585,14 +15318,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "admin");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const db = await getDb3();
-      if (!db) return { success: false };
+      const db2 = await getDb3();
+      if (!db2) return { success: false };
       const { employees: employees2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: deq } = await import("drizzle-orm");
       const patch = {};
       if (input.multiparkAgentName !== void 0) patch.multiparkAgentName = input.multiparkAgentName;
       if (input.multiparkAgentUserId !== void 0) patch.multiparkAgentUserId = input.multiparkAgentUserId;
-      await db.update(employees2).set(patch).where(deq(employees2.id, input.employeeId));
+      await db2.update(employees2).set(patch).where(deq(employees2.id, input.employeeId));
       return { success: true };
     }),
     // Lista summary do que está guardado em multipark_booking_history para
@@ -14602,15 +15335,15 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       date: z2.string()
     })).query(async ({ input }) => {
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const db = await getDb3();
-      if (!db) return null;
+      const db2 = await getDb3();
+      if (!db2) return null;
       const { multiparkBookingHistory: multiparkBookingHistory2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { sql: dsql, and: dand, eq: deq, gte: dgte, lt: dlt } = await import("drizzle-orm");
       const start = `${input.date} 00:00:00`;
       const end = /* @__PURE__ */ new Date(input.date + "T00:00:00");
       end.setDate(end.getDate() + 1);
       const endStr = end.toISOString().slice(0, 19).replace("T", " ");
-      const rows = await db.select().from(multiparkBookingHistory2).where(
+      const rows = await db2.select().from(multiparkBookingHistory2).where(
         dand(
           deq(multiparkBookingHistory2.agentName, input.agentName),
           dgte(multiparkBookingHistory2.actionTime, start),
@@ -14623,6 +15356,65 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         byType[k] = (byType[k] ?? 0) + 1;
       }
       return { total: rows.length, byType, items: rows };
+    }),
+    // ── Atividade por agente (TODOS os agentes com atividade) + mapeamento ──
+    // Lista os nomes de agente Multipark do histórico no período, com contagens
+    // e o colaborador a que estão ligados (employees.multiparkAgentName).
+    agentActivity: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) return [];
+      const rows = (r) => Array.isArray(r[0]) ? r[0] : r;
+      const acts = rows(await db2.execute(sql6`
+          SELECT agentName,
+            COUNT(*) AS total,
+            SUM(changeType = 'CHECK_IN') AS checkin,
+            SUM(changeType = 'CHECK_OUT') AS checkout,
+            SUM(changeType = 'MOVEMENT') AS movement
+          FROM multipark_booking_history
+          WHERE agentName IS NOT NULL AND agentName <> ''
+            AND actionTime >= ${input.from + " 00:00:00"} AND actionTime <= ${input.to + " 23:59:59"}
+          GROUP BY agentName ORDER BY total DESC`));
+      const emps = rows(await db2.execute(sql6`SELECT id, fullName, multiparkAgentName FROM employees WHERE multiparkAgentName IS NOT NULL AND multiparkAgentName <> ''`));
+      const byAgent = new Map(emps.map((e) => [e.multiparkAgentName, e]));
+      return acts.map((a) => {
+        const e = byAgent.get(a.agentName);
+        return {
+          agentName: a.agentName,
+          total: Number(a.total),
+          checkin: Number(a.checkin),
+          checkout: Number(a.checkout),
+          movement: Number(a.movement),
+          employeeId: e?.id ?? null,
+          employeeName: e?.fullName ?? null
+        };
+      });
+    }),
+    // Liga (ou desliga) um nome de agente Multipark a um colaborador. Único:
+    // limpa o nome de qualquer outro colaborador que o tivesse.
+    mapAgentToEmployee: protectedProcedure.input(z2.object({ agentName: z2.string().min(1), employeeId: z2.number().nullable() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      await db2.execute(sql6`UPDATE employees SET multiparkAgentName = NULL WHERE multiparkAgentName = ${input.agentName}`);
+      if (input.employeeId != null) {
+        await db2.execute(sql6`UPDATE employees SET multiparkAgentName = ${input.agentName} WHERE id = ${input.employeeId}`);
+      }
+      return { success: true };
+    }),
+    // Lista leve de colaboradores ativos para o dropdown de mapeamento.
+    employeesForMapping: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql6 } = await import("drizzle-orm");
+      const db2 = await getDb3();
+      if (!db2) return [];
+      const r = await db2.execute(sql6`SELECT id, fullName, multiparkAgentName FROM employees WHERE isActive = 1 ORDER BY fullName`);
+      return Array.isArray(r[0]) ? r[0] : r;
     }),
     // List synced bookings with filters
     bookings: protectedProcedure.input(z2.object({
@@ -14805,17 +15597,17 @@ async function validateApiKey(req, res, next) {
     res.status(401).json({ error: "Missing X-API-Key header" });
     return;
   }
-  const db = await getDb2();
-  if (!db) {
+  const db2 = await getDb2();
+  if (!db2) {
     res.status(500).json({ error: "Database unavailable" });
     return;
   }
-  const result = await db.select().from(apiKeys).where(and5(eq6(apiKeys.apiKey, key), eq6(apiKeys.active, 1))).limit(1);
+  const result = await db2.select().from(apiKeys).where(and5(eq6(apiKeys.apiKey, key), eq6(apiKeys.active, 1))).limit(1);
   if (result.length === 0) {
     res.status(403).json({ error: "Invalid or inactive API key" });
     return;
   }
-  await db.update(apiKeys).set({ lastUsedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") }).where(eq6(apiKeys.id, result[0].id));
+  await db2.update(apiKeys).set({ lastUsedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") }).where(eq6(apiKeys.id, result[0].id));
   req.apiKeyInfo = result[0];
   next();
 }
@@ -14847,9 +15639,9 @@ function createExternalApiRouter() {
       }
       let resolvedVehicleId = vehicleId;
       if (!resolvedVehicleId && plate) {
-        const db = await getDb2();
-        if (db) {
-          const veh = await db.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
+        const db2 = await getDb2();
+        if (db2) {
+          const veh = await db2.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
           if (veh.length > 0) resolvedVehicleId = veh[0].id;
         }
       }
@@ -14886,9 +15678,9 @@ function createExternalApiRouter() {
       }
       let resolvedVehicleId = vehicleId;
       if (!resolvedVehicleId && plate) {
-        const db = await getDb2();
-        if (db) {
-          const veh = await db.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
+        const db2 = await getDb2();
+        if (db2) {
+          const veh = await db2.select().from(vehicles).where(eq6(vehicles.plate, plate)).limit(1);
           if (veh.length > 0) resolvedVehicleId = veh[0].id;
         }
       }
@@ -15083,6 +15875,334 @@ function createExternalApiRouter() {
   return r;
 }
 
+// server/mcpApi.ts
+init_schema();
+init_db();
+import { Router as Router2 } from "express";
+import { and as and6, eq as eq7, sql as sql5 } from "drizzle-orm";
+import { drizzle as drizzle3 } from "drizzle-orm/mysql2";
+var _db3 = null;
+async function db() {
+  if (!_db3 && process.env.DATABASE_URL) _db3 = drizzle3(process.env.DATABASE_URL);
+  return _db3;
+}
+function scopesFor(permissions) {
+  const s = /* @__PURE__ */ new Set();
+  if (!permissions) return s;
+  let parts = [];
+  try {
+    const parsed = JSON.parse(permissions);
+    parts = Array.isArray(parsed) ? parsed.map(String) : String(parsed).split(/[,\s]+/);
+  } catch {
+    parts = permissions.split(/[,\s]+/);
+  }
+  const set = new Set(parts.map((p) => p.trim().toLowerCase()).filter(Boolean));
+  if (set.has("*") || set.has("admin") || set.has("full")) {
+    s.add("read");
+    s.add("write");
+    s.add("admin");
+    return s;
+  }
+  if (set.has("write")) {
+    s.add("read");
+    s.add("write");
+  }
+  if (set.has("read")) s.add("read");
+  return s;
+}
+async function validateApiKey2(req, res, next) {
+  const key = req.headers["x-api-key"];
+  if (!key) return res.status(401).json({ error: "Missing X-API-Key header" });
+  const d = await db();
+  if (!d) return res.status(500).json({ error: "Database unavailable" });
+  const rows = await d.select().from(apiKeys).where(and6(eq7(apiKeys.apiKey, key), eq7(apiKeys.active, 1))).limit(1);
+  if (rows.length === 0) return res.status(403).json({ error: "Invalid or inactive API key" });
+  await d.update(apiKeys).set({ lastUsedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") }).where(eq7(apiKeys.id, rows[0].id));
+  req.apiKeyInfo = rows[0];
+  req.scopes = scopesFor(rows[0].permissions);
+  next();
+}
+function requireScope(scope) {
+  return (req, res, next) => {
+    const scopes = req.scopes ?? /* @__PURE__ */ new Set();
+    if (!scopes.has(scope)) {
+      return res.status(403).json({
+        error: `Esta API key n\xE3o tem o scope '${scope}'. Scopes da chave: [${Array.from(scopes).join(", ") || "nenhum"}].`
+      });
+    }
+    next();
+  };
+}
+var h = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e?.message || String(e) }));
+function parseDate(v) {
+  if (!v) return void 0;
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? void 0 : d;
+}
+function createMcpApiRouter() {
+  const r = Router2();
+  r.use(validateApiKey2);
+  r.get("/", (req, res) => {
+    res.json({
+      service: "Multipark Dashboard MCP Control API",
+      version: "1",
+      yourScopes: Array.from(req.scopes ?? []),
+      endpoints: {
+        read: [
+          "GET /parks",
+          "GET /bookings",
+          "GET /bookings/stats",
+          "GET /bookings/:externalId",
+          "GET /complaints",
+          "GET /complaints/stats",
+          "GET /complaints/:id",
+          "GET /reviews",
+          "GET /vehicles",
+          "GET /employees",
+          "GET /dashboard/summary"
+        ],
+        write: [
+          "POST /complaints",
+          "PATCH /complaints/:id",
+          "POST /complaints/:id/messages",
+          "POST /reviews",
+          "POST /sync/recent",
+          "POST /sync/future",
+          "POST /sync/day"
+        ],
+        admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates"]
+      }
+    });
+  });
+  r.get("/parks", requireScope("read"), h(async (_req, res) => {
+    const { PARK_CONFIGS: PARK_CONFIGS2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
+    const cities = Array.from(new Set(PARK_CONFIGS2.map((p) => p.city)));
+    res.json({
+      success: true,
+      cities,
+      parks: PARK_CONFIGS2.map((p) => ({ id: p.id, name: p.name, city: p.city, closed: !!p.closed }))
+    });
+  }));
+  r.get("/bookings", requireScope("read"), h(async (req, res) => {
+    const q = req.query;
+    const list = await getMultiparkBookings({
+      status: q.status ? String(q.status) : void 0,
+      parkingType: q.parkingType ? String(q.parkingType) : void 0,
+      city: q.city ? String(q.city) : void 0,
+      parkId: q.parkId ? String(q.parkId) : void 0,
+      from: parseDate(q.from),
+      to: parseDate(q.to),
+      search: q.search ? String(q.search) : void 0,
+      limit: q.limit ? Math.min(Number(q.limit), 500) : 100,
+      offset: q.offset ? Number(q.offset) : 0
+    });
+    res.json({ success: true, count: list.length, data: list });
+  }));
+  r.get("/bookings/stats", requireScope("read"), h(async (req, res) => {
+    const q = req.query;
+    const stats = await getMultiparkBookingStats({
+      from: q.from ? String(q.from) : void 0,
+      to: q.to ? String(q.to) : void 0,
+      projectId: q.projectId ? Number(q.projectId) : void 0
+    });
+    res.json({ success: true, data: stats });
+  }));
+  r.get("/bookings/:externalId", requireScope("read"), h(async (req, res) => {
+    const ext = req.params.externalId;
+    const local = await getMultiparkBookingByExternalId(ext);
+    let live = null;
+    let park = null;
+    try {
+      const { getBookingTryAllParks: getBookingTryAllParks2 } = await Promise.resolve().then(() => (init_multipark(), multipark_exports));
+      const found = await getBookingTryAllParks2(ext);
+      if (found) {
+        live = found.booking;
+        park = { id: found.parkConfig.id, name: found.parkConfig.name, city: found.parkConfig.city };
+      }
+    } catch {
+    }
+    if (!local && !live) return res.status(404).json({ error: "Reserva n\xE3o encontrada (local nem API)" });
+    res.json({ success: true, local: local ?? null, live, park });
+  }));
+  r.get("/complaints", requireScope("read"), h(async (req, res) => {
+    const q = req.query;
+    const list = await getComplaints({
+      status: q.status ? String(q.status) : void 0,
+      type: q.type ? String(q.type) : void 0,
+      projectId: q.projectId ? Number(q.projectId) : void 0,
+      assignedToId: q.assignedToId ? Number(q.assignedToId) : void 0
+    });
+    res.json({ success: true, count: list.length, data: list });
+  }));
+  r.get("/complaints/stats", requireScope("read"), h(async (req, res) => {
+    const projectId = req.query.projectId ? Number(req.query.projectId) : void 0;
+    res.json({ success: true, data: await getComplaintStats(projectId) });
+  }));
+  r.get("/complaints/:id", requireScope("read"), h(async (req, res) => {
+    const id = Number(req.params.id);
+    const complaint = await getComplaintById(id);
+    if (!complaint) return res.status(404).json({ error: "Reclama\xE7\xE3o n\xE3o encontrada" });
+    res.json({
+      success: true,
+      data: { complaint, messages: await getComplaintMessages(id), photos: await getComplaintPhotos(id) }
+    });
+  }));
+  r.post("/complaints", requireScope("write"), h(async (req, res) => {
+    const b = req.body ?? {};
+    if (!b.title) return res.status(400).json({ error: "title \xE9 obrigat\xF3rio" });
+    if (!b.type) return res.status(400).json({ error: "type \xE9 obrigat\xF3rio (damage|dirt|delay|overcharge|staff|other)" });
+    const slaHours = b.slaHours ? Number(b.slaHours) : null;
+    const slaDeadline = slaHours ? new Date(Date.now() + slaHours * 36e5).toISOString().slice(0, 19).replace("T", " ") : null;
+    const id = await createComplaint({
+      title: String(b.title),
+      description: b.description ?? null,
+      complaintType: b.type,
+      complaintPriority: b.priority ?? "medium",
+      complaintStatus: "new",
+      clientName: b.clientName ?? null,
+      clientEmail: b.clientEmail ?? null,
+      clientPhone: b.clientPhone ?? null,
+      reservationRef: b.reservationRef ?? null,
+      vehiclePlate: b.vehiclePlate ?? null,
+      slaDeadline,
+      projectId: b.projectId ? Number(b.projectId) : null,
+      assignedToId: b.assignedToId ? Number(b.assignedToId) : null,
+      createdById: req.apiKeyInfo?.createdById ?? null
+    });
+    await logActivity({ userId: 0, action: "create", entity: "complaint", entityId: id, details: `[MCP] ${b.title}` });
+    res.json({ success: true, id });
+  }));
+  r.patch("/complaints/:id", requireScope("write"), h(async (req, res) => {
+    const id = Number(req.params.id);
+    const b = req.body ?? {};
+    const data = {};
+    if (b.title !== void 0) data.title = b.title;
+    if (b.description !== void 0) data.description = b.description;
+    if (b.type !== void 0) data.complaintType = b.type;
+    if (b.status !== void 0) data.complaintStatus = b.status;
+    if (b.priority !== void 0) data.complaintPriority = b.priority;
+    if (b.assignedToId !== void 0) data.assignedToId = b.assignedToId === null ? null : Number(b.assignedToId);
+    if (b.penaltyPoints !== void 0) data.penaltyPoints = Number(b.penaltyPoints);
+    if (b.slaHours !== void 0) data.slaDeadline = Number(b.slaHours) > 0 ? new Date(Date.now() + Number(b.slaHours) * 36e5) : null;
+    if (b.status === "resolved") data.resolvedAt = /* @__PURE__ */ new Date();
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nada para atualizar" });
+    await updateComplaint(id, data);
+    await logActivity({ userId: 0, action: "update", entity: "complaint", entityId: id, details: `[MCP] update` });
+    res.json({ success: true });
+  }));
+  r.post("/complaints/:id/messages", requireScope("write"), h(async (req, res) => {
+    const complaintId = Number(req.params.id);
+    const b = req.body ?? {};
+    if (!b.message) return res.status(400).json({ error: "message \xE9 obrigat\xF3rio" });
+    const msgId = await addComplaintMessage({
+      complaintId,
+      message: String(b.message),
+      isInternal: b.isInternal ? 1 : 0,
+      authorId: req.apiKeyInfo?.createdById ?? null,
+      authorName: b.authorName ?? "MCP"
+    });
+    res.json({ success: true, id: msgId });
+  }));
+  r.delete("/complaints/:id", requireScope("admin"), h(async (req, res) => {
+    const id = Number(req.params.id);
+    await deleteComplaint(id);
+    await logActivity({ userId: 0, action: "delete", entity: "complaint", entityId: id, details: `[MCP] delete` });
+    res.json({ success: true });
+  }));
+  r.get("/reviews", requireScope("read"), h(async (req, res) => {
+    const q = req.query;
+    const list = await getGoogleReviews({
+      rating: q.rating ? Number(q.rating) : void 0,
+      status: q.status ? String(q.status) : void 0,
+      projectId: q.projectId ? Number(q.projectId) : void 0
+    });
+    res.json({ success: true, count: list.length, data: list });
+  }));
+  r.post("/reviews", requireScope("write"), h(async (req, res) => {
+    const b = req.body ?? {};
+    if (!b.reviewerName || !b.rating) return res.status(400).json({ error: "reviewerName e rating s\xE3o obrigat\xF3rios" });
+    const reviewDate = (b.reviewDate ? new Date(b.reviewDate) : /* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+    const id = await createGoogleReview({
+      reviewerName: String(b.reviewerName),
+      reviewerEmail: b.reviewerEmail ?? null,
+      rating: Number(b.rating),
+      reviewText: b.reviewText ?? null,
+      reviewDate,
+      projectId: b.projectId ? Number(b.projectId) : null,
+      vehiclePlate: b.vehiclePlate ?? null,
+      createdById: req.apiKeyInfo?.createdById ?? null
+    });
+    res.json({ success: true, id });
+  }));
+  r.get("/vehicles", requireScope("read"), h(async (_req, res) => {
+    const list = await getVehicles();
+    res.json({ success: true, count: list.length, data: list.map((v) => ({ id: v.id, plate: v.plate, brand: v.brand, model: v.model, status: v.status, projectId: v.projectId })) });
+  }));
+  r.get("/employees", requireScope("read"), h(async (_req, res) => {
+    const list = await getAllEmployees();
+    res.json({ success: true, count: list.length, data: list.map((e) => ({ id: e.employee.id, fullName: e.employee.fullName, position: e.employee.position, projectId: e.employee.projectId })) });
+  }));
+  r.post("/sync/recent", requireScope("write"), h(async (req, res) => {
+    const { runRecentCronSync: runRecentCronSync2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+    const windowMinutes = req.body?.windowMinutes ? Number(req.body.windowMinutes) : 30;
+    res.json({ success: true, ...await runRecentCronSync2(windowMinutes) });
+  }));
+  r.post("/sync/future", requireScope("write"), h(async (req, res) => {
+    const { runFutureCronSync: runFutureCronSync2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+    const weeks = req.body?.weeksAhead ? Number(req.body.weeksAhead) : 4;
+    res.json({ success: true, ...await runFutureCronSync2(weeks) });
+  }));
+  r.post("/sync/day", requireScope("write"), h(async (req, res) => {
+    const date = String(req.body?.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "date (YYYY-MM-DD) \xE9 obrigat\xF3rio" });
+    const { syncBookings: syncBookings2, enrichBookingsBatch: enrichBookingsBatch2, syncBookingHistoryBatch: syncBookingHistoryBatch2 } = await Promise.resolve().then(() => (init_multiparkBookingSync(), multiparkBookingSync_exports));
+    const report = await syncBookings2({ startDate: date, endDate: date });
+    const [enrichRes, historyRes] = await Promise.allSettled([enrichBookingsBatch2(100), syncBookingHistoryBatch2(50)]);
+    res.json({
+      success: true,
+      date,
+      report,
+      enriched: enrichRes.status === "fulfilled" ? enrichRes.value.enriched : 0,
+      historyFetched: historyRes.status === "fulfilled" ? historyRes.value.fetched : 0
+    });
+  }));
+  r.post("/admin/cleanup-duplicates", requireScope("admin"), h(async (_req, res) => {
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const result = await d.execute(sql5`
+      DELETE FROM multipark_bookings WHERE id IN (
+        SELECT id FROM (
+          SELECT b1.id FROM multipark_bookings b1
+          INNER JOIN multipark_bookings b2
+            ON b1.externalId = b2.externalId
+           AND (b1.updatedAt < b2.updatedAt OR (b1.updatedAt = b2.updatedAt AND b1.id < b2.id))
+          LIMIT 5000
+        ) AS t
+      )`);
+    const meta = Array.isArray(result[0]) ? result[0] : result;
+    res.json({ success: true, deleted: Number(meta?.affectedRows ?? 0) });
+  }));
+  r.get("/dashboard/summary", requireScope("read"), h(async (req, res) => {
+    const d = await db();
+    const q = req.query;
+    const from = q.from ? String(q.from) : void 0;
+    const to = q.to ? String(q.to) : void 0;
+    const [bookingStats, complaintStats] = await Promise.all([
+      getMultiparkBookingStats({ from, to }),
+      getComplaintStats()
+    ]);
+    let byCity = [];
+    if (d) {
+      const conds = [];
+      if (from) conds.push(sql5`${multiparkBookings.checkIn} >= ${from}`);
+      if (to) conds.push(sql5`${multiparkBookings.checkIn} <= ${to}`);
+      byCity = await d.select({ city: multiparkBookings.city, count: sql5`COUNT(*)`, revenue: sql5`COALESCE(SUM(${multiparkBookings.totalPrice}),0)` }).from(multiparkBookings).where(conds.length ? and6(...conds) : void 0).groupBy(multiparkBookings.city);
+    }
+    res.json({ success: true, bookings: bookingStats, complaints: complaintStats, byCity });
+  }));
+  return r;
+}
+
 // server/_core/api-entry.ts
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 init_multipark();
@@ -15094,6 +16214,7 @@ var initError = null;
 try {
   registerOAuthRoutes(app);
   app.use("/api/external", createExternalApiRouter());
+  app.use("/api/v1", createMcpApiRouter());
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -15218,14 +16339,25 @@ app.get("/api/cron/multipark-future", async (req, res) => {
     res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 });
+app.get("/api/cron/daily-ops", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { collectDailyDriverData: collectDailyDriverData2 } = await Promise.resolve().then(() => (init_dailyDriverCollection(), dailyDriverCollection_exports));
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const result = await collectDailyDriverData2(yesterday);
+    res.json({ ok: true, ranAt: (/* @__PURE__ */ new Date()).toISOString(), date: yesterday.toISOString().slice(0, 10), ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
 app.get("/api/cron/multipark-cleanup", async (req, res) => {
   if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
   try {
     const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const { sql: sql5 } = await import("drizzle-orm");
-    const db = await getDb3();
-    if (!db) return res.status(500).json({ ok: false, error: "DB not available" });
-    const result = await db.execute(sql5`
+    const { sql: sql6 } = await import("drizzle-orm");
+    const db2 = await getDb3();
+    if (!db2) return res.status(500).json({ ok: false, error: "DB not available" });
+    const result = await db2.execute(sql6`
       DELETE FROM multipark_bookings WHERE id IN (
         SELECT id FROM (
           SELECT b1.id FROM multipark_bookings b1
