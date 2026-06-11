@@ -16318,8 +16318,10 @@ function createMcpApiRouter() {
         await d.execute(sql5.raw(stmt));
         ok++;
       } catch (e) {
-        if (e?.code && IDEMPOTENT_ERROR_CODES_00482.has(e.code)) skipped++;
-        else errors.push(`${e?.code ?? "ERR"}: ${String(e?.message ?? e).slice(0, 200)}`);
+        const code = e?.code ?? e?.cause?.code;
+        const msg = String(e?.cause?.message ?? e?.message ?? e);
+        if (code && IDEMPOTENT_ERROR_CODES_00482.has(code) || /duplicate column/i.test(msg)) skipped++;
+        else errors.push(`${code ?? "ERR"}: ${msg.slice(0, 200)}`);
       }
     }
     res.json({ success: errors.length === 0, ok, skipped, errors });
