@@ -114,14 +114,14 @@ export function createMcpApiRouter(): Router {
           "GET /parks", "GET /bookings", "GET /bookings/stats", "GET /bookings/:externalId",
           "GET /complaints", "GET /complaints/stats", "GET /complaints/:id",
           "GET /reviews", "GET /vehicles", "GET /employees", "GET /dashboard/summary",
-          "GET /campaigns", "GET /campaigns/:type/:id/daily",
+          "GET /campaigns", "GET /campaigns/:type/:id/daily", "GET /projects",
         ],
         write: [
           "POST /complaints", "PATCH /complaints/:id", "POST /complaints/:id/messages",
           "POST /reviews", "POST /sync/recent", "POST /sync/future", "POST /sync/day",
           "POST /campaigns/daily",
         ],
-        admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates"],
+        admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates", "POST /projects"],
       },
     });
   });
@@ -135,6 +135,35 @@ export function createMcpApiRouter(): Router {
       cities,
       parks: PARK_CONFIGS.map((p: any) => ({ id: p.id, name: p.name, city: p.city, closed: !!p.closed })),
     });
+  }));
+
+  // ── PROJETOS (centros de custos: grupo → cidade → marca → projeto) ──────────
+  r.get("/projects", requireScope("read"), h(async (_req, res) => {
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2: any) => (Array.isArray(r2[0]) ? r2[0] : r2) as any[];
+    const projects = rows(await d.execute(sql`SELECT id, name, parentId, level, isActive FROM projects ORDER BY parentId, name`));
+    res.json({ success: true, count: projects.length, projects });
+  }));
+
+  // Cria um nó da árvore de projetos. Idempotente por (name, parentId):
+  // se já existir devolve o existente em vez de duplicar.
+  r.post("/projects", requireScope("admin"), h(async (req, res) => {
+    const b = req.body ?? {};
+    const name = String(b.name ?? "").trim();
+    const level = String(b.level ?? "project");
+    const parentId = b.parentId != null ? Number(b.parentId) : null;
+    if (!name) return res.status(400).json({ error: "name é obrigatório" });
+    if (!["group", "brand", "city", "project"].includes(level)) return res.status(400).json({ error: "level deve ser group|brand|city|project" });
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2: any) => (Array.isArray(r2[0]) ? r2[0] : r2) as any[];
+    const existing = rows(await d.execute(sql`SELECT id, name, parentId, level FROM projects WHERE name = ${name} AND ${parentId === null ? sql`parentId IS NULL` : sql`parentId = ${parentId}`} LIMIT 1`))[0];
+    if (existing) return res.json({ success: true, created: false, project: existing });
+    await d.execute(sql`INSERT INTO projects (name, parentId, level, color, isActive) VALUES (${name}, ${parentId}, ${level}, ${b.color ?? "#0055d2"}, 1)`);
+    const created = rows(await d.execute(sql`SELECT id, name, parentId, level FROM projects WHERE name = ${name} AND ${parentId === null ? sql`parentId IS NULL` : sql`parentId = ${parentId}`} ORDER BY id DESC LIMIT 1`))[0];
+    await logActivity({ userId: 0, action: "create", entity: "project", entityId: created?.id ?? 0, details: `[MCP] ${level}: ${name}` });
+    res.json({ success: true, created: true, project: created });
   }));
 
   // ── CAMPANHAS (marketing) ─────────────────────────────────────────────────────

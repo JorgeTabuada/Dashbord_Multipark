@@ -16322,7 +16322,8 @@ function createMcpApiRouter() {
           "GET /employees",
           "GET /dashboard/summary",
           "GET /campaigns",
-          "GET /campaigns/:type/:id/daily"
+          "GET /campaigns/:type/:id/daily",
+          "GET /projects"
         ],
         write: [
           "POST /complaints",
@@ -16334,7 +16335,7 @@ function createMcpApiRouter() {
           "POST /sync/day",
           "POST /campaigns/daily"
         ],
-        admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates"]
+        admin: ["DELETE /complaints/:id", "POST /admin/cleanup-duplicates", "POST /projects"]
       }
     });
   });
@@ -16346,6 +16347,30 @@ function createMcpApiRouter() {
       cities,
       parks: PARK_CONFIGS2.map((p) => ({ id: p.id, name: p.name, city: p.city, closed: !!p.closed }))
     });
+  }));
+  r.get("/projects", requireScope("read"), h(async (_req, res) => {
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    const projects2 = rows(await d.execute(sql5`SELECT id, name, parentId, level, isActive FROM projects ORDER BY parentId, name`));
+    res.json({ success: true, count: projects2.length, projects: projects2 });
+  }));
+  r.post("/projects", requireScope("admin"), h(async (req, res) => {
+    const b = req.body ?? {};
+    const name = String(b.name ?? "").trim();
+    const level = String(b.level ?? "project");
+    const parentId = b.parentId != null ? Number(b.parentId) : null;
+    if (!name) return res.status(400).json({ error: "name \xE9 obrigat\xF3rio" });
+    if (!["group", "brand", "city", "project"].includes(level)) return res.status(400).json({ error: "level deve ser group|brand|city|project" });
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    const existing = rows(await d.execute(sql5`SELECT id, name, parentId, level FROM projects WHERE name = ${name} AND ${parentId === null ? sql5`parentId IS NULL` : sql5`parentId = ${parentId}`} LIMIT 1`))[0];
+    if (existing) return res.json({ success: true, created: false, project: existing });
+    await d.execute(sql5`INSERT INTO projects (name, parentId, level, color, isActive) VALUES (${name}, ${parentId}, ${level}, ${b.color ?? "#0055d2"}, 1)`);
+    const created = rows(await d.execute(sql5`SELECT id, name, parentId, level FROM projects WHERE name = ${name} AND ${parentId === null ? sql5`parentId IS NULL` : sql5`parentId = ${parentId}`} ORDER BY id DESC LIMIT 1`))[0];
+    await logActivity({ userId: 0, action: "create", entity: "project", entityId: created?.id ?? 0, details: `[MCP] ${level}: ${name}` });
+    res.json({ success: true, created: true, project: created });
   }));
   r.get("/campaigns", requireScope("read"), h(async (_req, res) => {
     const d = await db();
