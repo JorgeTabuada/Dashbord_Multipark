@@ -16641,6 +16641,49 @@ function createMcpApiRouter() {
     }
     res.json({ success: errors.length === 0, ok, skipped, errors });
   }));
+  r.post("/admin/backfill-projects", requireScope("admin"), h(async (_req, res) => {
+    const d = await db();
+    if (!d) return res.status(500).json({ error: "DB unavailable" });
+    const rows = (r2) => Array.isArray(r2[0]) ? r2[0] : r2;
+    const CITY_PT = { lisbon: "lisboa", lisboa: "lisboa", oporto: "porto", porto: "porto", faro: "faro" };
+    const projs = rows(await d.execute(sql5`SELECT id, name FROM projects WHERE level = 'project' AND isActive = 1`));
+    const projMap = new Map(projs.map((p) => [String(p.name).toLowerCase().trim(), Number(p.id)]));
+    const pending = rows(await d.execute(sql5`SELECT id, parkName, city FROM multipark_bookings WHERE projectId IS NULL AND parkName IS NOT NULL AND parkName <> ''`));
+    const byProject = /* @__PURE__ */ new Map();
+    let unmatched = 0;
+    const unmatchedNames = /* @__PURE__ */ new Map();
+    for (const b of pending) {
+      const parkNorm = String(b.parkName).toLowerCase().replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim();
+      const cityRaw = String(b.city ?? "").toLowerCase().trim();
+      const cityPt = CITY_PT[cityRaw] ?? cityRaw;
+      const pid = projMap.get(parkNorm) ?? (cityPt ? projMap.get(`${parkNorm} ${cityPt}`) : void 0);
+      if (pid) {
+        if (!byProject.has(pid)) byProject.set(pid, []);
+        byProject.get(pid).push(Number(b.id));
+      } else {
+        unmatched++;
+        unmatchedNames.set(parkNorm, (unmatchedNames.get(parkNorm) ?? 0) + 1);
+      }
+    }
+    const updated = [];
+    for (const [pid, ids] of byProject) {
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500);
+        await d.execute(sql5`UPDATE multipark_bookings SET projectId = ${pid} WHERE id IN (${sql5.join(chunk.map((v) => sql5`${v}`), sql5`, `)})`);
+      }
+      const pname = projs.find((p) => Number(p.id) === pid)?.name ?? String(pid);
+      updated.push({ projectId: pid, project: pname, bookings: ids.length });
+    }
+    updated.sort((a, b) => b.bookings - a.bookings);
+    res.json({
+      success: true,
+      pending: pending.length,
+      matched: pending.length - unmatched,
+      unmatched,
+      unmatchedTop: Array.from(unmatchedNames.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, n]) => ({ name, bookings: n })),
+      updated
+    });
+  }));
   r.post("/admin/cleanup-duplicates", requireScope("admin"), h(async (_req, res) => {
     const d = await db();
     if (!d) return res.status(500).json({ error: "DB unavailable" });
