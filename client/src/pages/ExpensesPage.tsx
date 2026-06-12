@@ -571,7 +571,7 @@ export default function ExpensesPage() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{insertedBy?.name ?? "—"}</TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                             {expense.invoiceImageUrl && (
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(expense.invoiceImageUrl!, "_blank")}>
                                 <Eye className="h-3.5 w-3.5" />

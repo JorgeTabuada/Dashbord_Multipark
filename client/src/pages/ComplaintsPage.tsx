@@ -560,7 +560,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                         {p.label && <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">{p.label}</span>}
                         <Button
                           variant="destructive" size="icon"
-                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-1 right-1 h-6 w-6 opacity-60 group-hover:opacity-100 transition-opacity"
                           onClick={async () => {
                             await deletePhotoMut.mutateAsync({ id: p.id });
                             utils.complaints.getById.invalidate({ id });

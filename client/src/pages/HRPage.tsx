@@ -596,7 +596,7 @@ function DocumentsTab({ employeeId }: { employeeId: number }) {
                             <p className="text-[10px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString("pt-PT")}</p>
                           </div>
                           {/* Actions overlay */}
-                          <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute top-1 right-1 flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                             <Button size="icon" variant="secondary" className="w-6 h-6" onClick={() => isImage(doc.mimeType) ? setPreviewUrl(doc.fileUrl) : window.open(doc.fileUrl, "_blank")}>
                               <Eye className="w-3 h-3" />
                             </Button>

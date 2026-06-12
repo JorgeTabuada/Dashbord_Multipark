@@ -215,7 +215,8 @@ export default function ProjectsPage() {
           </Badge>
           {!node.isActive && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
           {isAdmin && (
-            <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+            // Sempre visíveis (eram hover-only e ficavam "escondidos" no tema novo)
+            <div className="opacity-60 group-hover:opacity-100 flex gap-1 transition-opacity">
               {childLevel && (
                 <Button variant="ghost" size="icon" className="h-7 w-7" title={`Criar ${LEVEL_LABELS[childLevel]}`} onClick={(e) => { e.stopPropagation(); openCreate(node.id, childLevel); }}>
                   <Plus className="h-3.5 w-3.5" />
