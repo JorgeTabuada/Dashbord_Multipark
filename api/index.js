@@ -11750,7 +11750,7 @@ var appRouter = router({
       return { success: true };
     }),
     costs: protectedProcedure.input(z2.object({ year: z2.number().optional(), month: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getProjectCosts(input?.year, input?.month);
     })
   }),
@@ -12970,23 +12970,23 @@ Link do PDF: ${url}`
   // ─── MARKETING ────────────────────────────────────────────────────────────
   marketing: router({
     dashboard: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const from = input?.from ? new Date(input.from) : void 0;
       const to = input?.to ? new Date(input.to) : void 0;
       return getMarketingDashboardStats({ from, to, projectId: input?.projectId });
     }),
     bookingRevenue: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getBookingRevenueByProject({ from: input?.from, to: input?.to, projectId: input?.projectId });
     }),
     // ── CAMPAIGNS ──
     campaigns: router({
       list: protectedProcedure.input(z2.object({ platform: z2.string().optional(), projectId: z2.number().optional(), status: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         return getCampaigns({ platform: input?.platform, projectId: input?.projectId, status: input?.status });
       }),
       get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         return getCampaignById(input.id);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13047,7 +13047,7 @@ Link do PDF: ${url}`
     internalCampaigns: router({
       // Chaves ainda NÃO atribuídas: campaignId (do originUrl) + campaignName não-parceiro.
       detect: protectedProcedure.query(async ({ ctx }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { sql: sql6 } = await import("drizzle-orm");
         const db2 = await getDb3();
@@ -13073,7 +13073,7 @@ Link do PDF: ${url}`
       }),
       // Campanhas lógicas + chaves + custos + métricas (reservas/receita/gasto).
       list: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { sql: sql6 } = await import("drizzle-orm");
         const db2 = await getDb3();
@@ -13212,7 +13212,7 @@ Link do PDF: ${url}`
       }),
       // Custos/métricas de TODAS as campanhas num dia — para o diálogo "Atualizar campanhas".
       costsByDate: protectedProcedure.input(z2.object({ costDate: z2.string() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq8 } = await import("drizzle-orm");
@@ -13221,7 +13221,7 @@ Link do PDF: ${url}`
         return db2.select().from(internalCampaignCosts2).where(eq8(internalCampaignCosts2.costDate, input.costDate));
       }),
       costs: protectedProcedure.input(z2.object({ campaignType: z2.enum(["internal", "ad"]), campaignId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { internalCampaignCosts: internalCampaignCosts2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq8, and: and7, desc: desc3 } = await import("drizzle-orm");
@@ -13243,11 +13243,11 @@ Link do PDF: ${url}`
     // ── DAILY STATS ──
     stats: router({
       byCampaign: protectedProcedure.input(z2.object({ campaignId: z2.number() })).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         return getCampaignStats(input.campaignId);
       }),
       all: protectedProcedure.input(z2.object({ from: z2.string().optional(), to: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         const from = input?.from ? new Date(input.from) : void 0;
         const to = input?.to ? new Date(input.to) : void 0;
         return getAllDailyStats({ from, to, projectId: input?.projectId });
@@ -13405,7 +13405,7 @@ Link do PDF: ${url}`
     // ── MARKETING EXPENSES ──
     expenses: router({
       list: protectedProcedure.input(z2.object({ category: z2.string().optional(), projectId: z2.number().optional(), from: z2.string().optional(), to: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-        requireRole(ctx.user.role, "frontoffice");
+        requireRole(ctx.user.role, "backoffice");
         return getMarketingExpenses({
           category: input?.category,
           projectId: input?.projectId,
@@ -13446,14 +13446,18 @@ Link do PDF: ${url}`
   }),
   // ─── OPERACIONAL ──────────────────────────────────────────────────────────
   operational: router({
-    dashboard: protectedProcedure.query(async () => {
+    dashboard: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "backoffice");
       return getOperationalStats();
     }),
     vehicles: router({
-      list: protectedProcedure.input(z2.object({ status: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ input }) => {
+      // frontoffice: usado nas Reclamações (associar viatura)
+      list: protectedProcedure.input(z2.object({ status: z2.string().optional(), projectId: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
         return getVehicles(input ?? void 0);
       }),
-      get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
+      get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getVehicleById(input.id);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13505,12 +13509,14 @@ Link do PDF: ${url}`
         await logActivity({ userId: ctx.user.id, action: "delete", entity: "vehicle", entityId: input.id, details: "Viatura eliminada" });
         return { success: true };
       }),
-      driverHistory: protectedProcedure.input(z2.object({ vehicleId: z2.number() })).query(async ({ input }) => {
+      driverHistory: protectedProcedure.input(z2.object({ vehicleId: z2.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getVehicleDriverHistory(input.vehicleId);
       })
     }),
     movements: router({
-      list: protectedProcedure.input(z2.object({ vehicleId: z2.number().optional(), employeeId: z2.number().optional(), limit: z2.number().optional() }).optional()).query(async ({ input }) => {
+      list: protectedProcedure.input(z2.object({ vehicleId: z2.number().optional(), employeeId: z2.number().optional(), limit: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getVehicleMovements(input ?? void 0);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13522,6 +13528,7 @@ Link do PDF: ${url}`
         longitude: z2.string().optional(),
         notes: z2.string().optional()
       })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         const id = await createVehicleMovement({
           vehicleId: input.vehicleId,
           employeeId: input.employeeId,
@@ -13536,7 +13543,8 @@ Link do PDF: ${url}`
       })
     }),
     speedAlerts: router({
-      list: protectedProcedure.input(z2.object({ vehicleId: z2.number().optional(), acknowledged: z2.boolean().optional(), limit: z2.number().optional() }).optional()).query(async ({ input }) => {
+      list: protectedProcedure.input(z2.object({ vehicleId: z2.number().optional(), acknowledged: z2.boolean().optional(), limit: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getSpeedAlerts(input ?? void 0);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13548,6 +13556,7 @@ Link do PDF: ${url}`
         longitude: z2.string().optional(),
         roadName: z2.string().optional()
       })).mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         const id = await createSpeedAlert({
           vehicleId: input.vehicleId,
           employeeId: input.employeeId ?? null,
@@ -13571,7 +13580,8 @@ Link do PDF: ${url}`
       })
     }),
     radio: router({
-      list: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), vehicleId: z2.number().optional(), limit: z2.number().optional() }).optional()).query(async ({ input }) => {
+      list: protectedProcedure.input(z2.object({ employeeId: z2.number().optional(), vehicleId: z2.number().optional(), limit: z2.number().optional() }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getRadioTranscriptions(input ?? void 0);
       }),
       transcribe: protectedProcedure.input(z2.object({
@@ -13609,30 +13619,36 @@ Link do PDF: ${url}`
     }),
     // ─── ZELLO INTEGRATION ──────────────────────────────────────────────
     zello: router({
-      users: protectedProcedure.query(async () => {
+      users: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getZelloUsers();
       }),
-      channels: protectedProcedure.query(async () => {
+      channels: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getZelloChannels();
       }),
-      locations: protectedProcedure.query(async () => {
+      locations: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getZelloLocations();
       }),
-      userLocation: protectedProcedure.input(z2.object({ username: z2.string() })).query(async ({ input }) => {
+      userLocation: protectedProcedure.input(z2.object({ username: z2.string() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getZelloUserLocation(input.username);
       }),
       userHistory: protectedProcedure.input(z2.object({
         username: z2.string(),
         startTs: z2.number(),
         endTs: z2.number()
-      })).query(async ({ input }) => {
+      })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getZelloUserHistory(input.username, input.startTs, input.endTs);
       })
     }),
     // ─── SPEED MONITORING ──────────────────────────────────────────────
     speedMonitoring: router({
       limits: router({
-        list: protectedProcedure.query(async () => {
+        list: protectedProcedure.query(async ({ ctx }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getSpeedLimits();
         }),
         create: protectedProcedure.input(z2.object({
@@ -13681,7 +13697,8 @@ Link do PDF: ${url}`
           endDate: z2.string().optional(),
           username: z2.string().optional(),
           acknowledged: z2.boolean().optional()
-        }).optional()).query(async ({ input }) => {
+        }).optional()).query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getSpeedViolations({
             startDate: input?.startDate ? new Date(input.startDate) : void 0,
             endDate: input?.endDate ? new Date(input.endDate) : void 0,
@@ -13701,7 +13718,8 @@ Link do PDF: ${url}`
         stats: protectedProcedure.input(z2.object({
           startDate: z2.string().optional(),
           endDate: z2.string().optional()
-        }).optional()).query(async ({ input }) => {
+        }).optional()).query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getSpeedViolationStats(
             input?.startDate ? new Date(input.startDate) : void 0,
             input?.endDate ? new Date(input.endDate) : void 0
@@ -13743,16 +13761,20 @@ Link do PDF: ${url}`
     }),
     // ─── DAILY DRIVER HISTORY ──────────────────────────────────────────
     driverHistory: router({
-      byDate: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+      byDate: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getDailyDriverHistoryByDate(input.date);
       }),
-      byUser: protectedProcedure.input(z2.object({ username: z2.string(), limit: z2.number().optional() })).query(async ({ input }) => {
+      byUser: protectedProcedure.input(z2.object({ username: z2.string(), limit: z2.number().optional() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getDailyDriverHistoryByUser(input.username, input.limit);
       }),
-      range: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ input }) => {
+      range: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getDailyDriverHistoryRange(input.startDate, input.endDate);
       }),
-      stats: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+      stats: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getDailyDriverStats(input.date);
       }),
       /** Manually trigger data collection for a specific date */
@@ -13767,10 +13789,12 @@ Link do PDF: ${url}`
     }),
     // ─── PDAs (DISPOSITIVOS) ──────────────────────────────────────────
     pdas: router({
-      list: protectedProcedure.query(async () => {
+      list: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "backoffice");
         return listPdas();
       }),
-      get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
+      get: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getPdaById(input.id);
       }),
       create: protectedProcedure.input(z2.object({
@@ -13823,13 +13847,16 @@ Link do PDF: ${url}`
       }),
       // Check-ins
       checkins: router({
-        active: protectedProcedure.query(async () => {
+        active: protectedProcedure.query(async ({ ctx }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getActiveCheckins();
         }),
-        byDate: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ input }) => {
+        byDate: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getCheckinsByDate(input.date);
         }),
-        byPda: protectedProcedure.input(z2.object({ pdaId: z2.number(), limit: z2.number().optional() })).query(async ({ input }) => {
+        byPda: protectedProcedure.input(z2.object({ pdaId: z2.number(), limit: z2.number().optional() })).query(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           return getCheckinsByPda(input.pdaId, input.limit);
         }),
         checkin: protectedProcedure.input(z2.object({
@@ -13840,6 +13867,7 @@ Link do PDF: ${url}`
           mobileDataMbStart: z2.number().optional(),
           notes: z2.string().optional()
         })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           const id = await createPdaCheckin({
             pdaId: input.pdaId,
             employeeId: input.employeeId ?? null,
@@ -13858,6 +13886,7 @@ Link do PDF: ${url}`
           mobileDataMbEnd: z2.number().optional(),
           notes: z2.string().optional()
         })).mutation(async ({ ctx, input }) => {
+          requireRole(ctx.user.role, "backoffice");
           await checkoutPda(input.id, {
             photoExitUrl: input.photoExitUrl,
             mobileDataMbEnd: input.mobileDataMbEnd,
@@ -13873,10 +13902,12 @@ Link do PDF: ${url}`
       list: protectedProcedure.input(z2.object({
         limit: z2.number().optional(),
         unacknowledgedOnly: z2.boolean().optional()
-      }).optional()).query(async ({ input }) => {
+      }).optional()).query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getGpsAlerts(input ?? {});
       }),
-      stats: protectedProcedure.query(async () => {
+      stats: protectedProcedure.query(async ({ ctx }) => {
+        requireRole(ctx.user.role, "backoffice");
         return getGpsAlertStats();
       }),
       acknowledge: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
@@ -14964,11 +14995,11 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       month: z2.number().optional(),
       year: z2.number().optional()
     }).optional()).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getInvoices(input);
     }),
     getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getInvoiceById(input.id);
     }),
     create: protectedProcedure.input(z2.object({
@@ -15020,7 +15051,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       month: z2.number().optional(),
       year: z2.number().optional()
     }).optional()).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getInvoiceStats(input?.month, input?.year);
     }),
     // Diagnóstico cru: várias somas e breakdowns para isolar discrepâncias
@@ -15035,7 +15066,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       to: z2.string(),
       projectId: z2.number().optional()
     })).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getBillingData(input);
     })
   }),
@@ -15262,14 +15293,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       year: z2.number().optional(),
       projectId: z2.number().optional()
     }).optional()).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getAnnualReports(input);
     }),
     breakdown: protectedProcedure.input(z2.object({
       year: z2.number(),
       projectId: z2.number().optional()
     })).query(({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getAnnualBreakdown(input.year, input.projectId);
     }),
     generate: protectedProcedure.input(z2.object({
@@ -15364,7 +15395,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     }),
     // Get sync logs
     syncLogs: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getSyncLogs(50);
     }),
     // ── KPIs AGREGADOS ──
@@ -15373,7 +15404,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       to: z2.string().optional(),
       city: z2.string().optional()
     }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getSnapshotKPIs({
         from: input?.from ? new Date(input.from) : void 0,
         to: input?.to ? new Date(input.to) : void 0,
@@ -15388,7 +15419,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       city: z2.string().optional(),
       limit: z2.number().optional()
     }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getDailySnapshots({
         from: input?.from ? new Date(input.from) : void 0,
         to: input?.to ? new Date(input.to) : void 0,
@@ -15617,14 +15648,14 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     // Avaliação operacional do dia: por extra (com métricas) + agregado
     // por turno + agregado total. TL recebe também score da equipa.
     dayEvaluation: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const { evaluateDay: evaluateDay2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
       return evaluateDay2(input.date);
     }),
     // Dashboard por intervalo: daily series + per-person summary com
     // in-shift vs out-of-shift actions
     dashboardRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const { getDashboardRange: getDashboardRange2 } = await Promise.resolve().then(() => (init_multiparkEvaluation(), multiparkEvaluation_exports));
       return getDashboardRange2(input.startDate, input.endDate);
     }),
@@ -15652,7 +15683,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       agentName: z2.string().min(1).max(256),
       date: z2.string()
     })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db2 = await getDb3();
       if (!db2) return null;
@@ -15680,7 +15711,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     // Lista os nomes de agente Multipark do histórico no período, com contagens
     // e o colaborador a que estão ligados (employees.multiparkAgentName).
     agentActivity: protectedProcedure.input(z2.object({ from: z2.string(), to: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const { sql: sql6 } = await import("drizzle-orm");
       const db2 = await getDb3();
@@ -15727,7 +15758,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
     }),
     // Lista leve de colaboradores ativos para o dropdown de mapeamento.
     employeesForMapping: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const { getDb: getDb3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const { sql: sql6 } = await import("drizzle-orm");
       const db2 = await getDb3();
@@ -15747,7 +15778,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       search: z2.string().optional(),
       limit: z2.number().optional()
     }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getMultiparkBookings({
         status: input?.status,
         parkingType: input?.parkingType,
@@ -15763,7 +15794,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       to: z2.string().optional(),
       projectId: z2.number().optional()
     }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getMultiparkBookingStats(input ?? void 0);
     }),
     // Query LOCAL DB by actionType + date range
@@ -15773,7 +15804,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       actionType: z2.enum(["creation", "checkin", "checkout", "cancelation"]),
       projectId: z2.number().optional()
     })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       const bookings = await getLocalBookingsByAction(input);
       return {
         total: bookings.length,
@@ -15816,15 +15847,15 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
   // ── EXTRAS DIA — Daily forecast & driver allocation (Lisboa) ────────────────
   extrasDia: router({
     forecast: protectedProcedure.input(z2.object({ baseDate: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getExtrasDiaForecast(input?.baseDate);
     }),
     candidates: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return listDriverCandidates();
     }),
     assignments: protectedProcedure.input(z2.object({ date: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return listAssignments(input.date);
     }),
     upsertAssignment: protectedProcedure.input(
@@ -15842,7 +15873,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         notes: z2.string().max(255).nullable().optional()
       })
     ).mutation(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       if (input.endHour <= input.startHour) {
         throw new TRPCError3({ code: "BAD_REQUEST", message: "Fim tem de ser depois do in\xEDcio" });
       }
@@ -15870,12 +15901,12 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
       }
     }),
     deleteAssignment: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       await deleteAssignment(input.id);
       return { success: true };
     }),
     costForRange: protectedProcedure.input(z2.object({ startDate: z2.string(), endDate: z2.string() })).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getExtrasDiaCostForRange(input.startDate, input.endDate);
     }),
     bookingsInSlot: protectedProcedure.input(
@@ -15886,7 +15917,7 @@ Cliente: ${input.reviewerName}${input.reviewerEmail ? "\nEmail: " + input.review
         type: z2.enum(["checkin", "checkout"])
       })
     ).query(async ({ ctx, input }) => {
-      requireRole(ctx.user.role, "frontoffice");
+      requireRole(ctx.user.role, "backoffice");
       return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
     })
   })

@@ -123,7 +123,8 @@ function getFilteredMenuGroups(userRole: string): MenuGroup[] {
 const menuGroups: MenuGroup[] = [
   {
     label: "Geral",
-    minRole: "frontoffice",
+    // dashboards iniciais não aparecem ao frontoffice
+    minRole: "backoffice",
     items: [
       { icon: BarChart3, label: "Dashboards", path: "/dashboards" },
     ],
@@ -133,10 +134,11 @@ const menuGroups: MenuGroup[] = [
     minRole: "frontoffice",
     items: [
       { icon: Receipt, label: "Despesas", path: "/despesas" },
-      { icon: FolderTree, label: "Projetos", path: "/projetos" },
-      { icon: FileText, label: "Faturação", path: "/faturacao" },
+      // Projetos / Faturação / Marketing escondidos do frontoffice
+      { icon: FolderTree, label: "Projetos", path: "/projetos", minRole: "backoffice" },
+      { icon: FileText, label: "Faturação", path: "/faturacao", minRole: "backoffice" },
       { icon: Handshake, label: "Parcerias", path: "/parcerias" },
-      { icon: Megaphone, label: "Marketing", path: "/marketing" },
+      { icon: Megaphone, label: "Marketing", path: "/marketing", minRole: "backoffice" },
     ],
   },
   {
@@ -151,14 +153,14 @@ const menuGroups: MenuGroup[] = [
   },
   {
     label: "Operações",
-    // minRole por item: extra tem acesso a Tarefas (só as suas) e à
-    // Avaliação Operacional (só a própria, última semana)
+    // Operações escondidas do frontoffice (backoffice+); Tarefas é a exceção
+    // — extra+ vê (extra só as suas)
     items: [
-      { icon: Truck, label: "Actividade", path: "/operacional", minRole: "frontoffice" },
-      { icon: LayoutDashboard, label: "Operações", path: "/operacoes", minRole: "frontoffice" },
+      { icon: Truck, label: "Actividade", path: "/operacional", minRole: "backoffice" },
+      { icon: LayoutDashboard, label: "Operações", path: "/operacoes", minRole: "backoffice" },
       { icon: ListTodo, label: "Tarefas", path: "/tarefas", minRole: "extra" },
-      { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia", minRole: "frontoffice" },
-      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "frontoffice" },
+      { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia", minRole: "backoffice" },
+      { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "backoffice" },
     ],
   },
   {
@@ -290,17 +292,17 @@ function DashboardLayoutContent({
   const activeMenuItem = allMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
 
-  // Redirect extra/user to allowed page if on restricted route
+  // Redirect para página permitida quando a rota é restrita ao role
   useEffect(() => {
     if (!user) return;
     const allowedPaths = new Set(filteredItems.map(i => i.path));
-    const isLowRole = (ROLE_HIERARCHY[userRole] ?? 0) < ROLE_HIERARCHY["frontoffice"];
+    const isLowRole = (ROLE_HIERARCHY[userRole] ?? 0) < ROLE_HIERARCHY["backoffice"];
     if (isLowRole) {
-      // user/extra: whitelist estrita — qualquer rota fora do menu permitido
-      // (incl. /dashboard e /dashboards) cai no RH (perfil próprio)
+      // user/extra/frontoffice: whitelist estrita — qualquer rota fora do
+      // menu permitido (incl. /dashboard e /dashboards) cai na 1ª permitida
       const base = "/" + (location.split("/")[1] ?? "");
       if (!allowedPaths.has(location) && !allowedPaths.has(base)) {
-        setLocation("/rh");
+        setLocation(filteredItems[0]?.path ?? "/rh");
       }
     } else if (allMenuPaths.has(location) && !allowedPaths.has(location)) {
       setLocation(filteredItems[0]?.path ?? "/formacao");
