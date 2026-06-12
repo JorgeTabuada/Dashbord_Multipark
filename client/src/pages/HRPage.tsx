@@ -997,10 +997,18 @@ function MyMonthSummaryCard({ employeeId }: { employeeId: number }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const { data, isLoading } = trpc.rh.myMonthSummary.useQuery({ employeeId, year, month });
+  // Salários: admin+ vê de todos; os restantes só o próprio resumo
+  const { user } = useAuth();
+  const isAdmin = ["admin", "super_admin"].includes(user?.role ?? "");
+  const { data: meEmp } = trpc.rh.me.useQuery(undefined, { enabled: !isAdmin });
+  const isOwn = meEmp?.employee?.id === employeeId;
+  const canSee = isAdmin || isOwn;
+  const { data, isLoading } = trpc.rh.myMonthSummary.useQuery({ employeeId, year, month }, { enabled: canSee });
 
   const fmt = (v: number | null | undefined) =>
     new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(Number(v ?? 0));
+
+  if (!canSee) return null;
 
   return (
     <Card className="border-primary/30 bg-primary/5">

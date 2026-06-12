@@ -1681,8 +1681,9 @@ export const appRouter = router({
           if (!me) throw new TRPCError({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
           employeeId = me.employee.id;
         }
-        // Restringe: abaixo de frontoffice, só te vês a ti próprio
-        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+        // Restringe: salários de outros são só para admin+; abaixo disso
+        // cada um só vê o seu próprio resumo
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
           const me = await getEmployeeByUserId(ctx.user.id);
           if (!me || me.employee.id !== employeeId) {
             throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
@@ -1742,7 +1743,12 @@ export const appRouter = router({
       .input(z.object({ isActive: z.boolean().optional(), position: z.string().optional() }).optional())
       .query(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "frontoffice");
-        return getAllEmployees({ isActive: input?.isActive, position: input?.position });
+        const rows = await getAllEmployees({ isActive: input?.isActive, position: input?.position });
+        // frontoffice vê as fichas mas não os salários (só admin+)
+        if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          return rows.map((r: any) => ({ ...r, employee: { ...r.employee, monthlySalary: null, mealAllowancePerDay: null } }));
+        }
+        return rows;
       }),
 
     byId: protectedProcedure
@@ -1755,7 +1761,16 @@ export const appRouter = router({
             throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão" });
           }
         }
-        return getEmployeeById(input.id);
+        const result = await getEmployeeById(input.id);
+        // frontoffice não vê salários de outros (o próprio perfil mantém-nos)
+        if (result && ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+          const me = await getEmployeeByUserId(ctx.user.id);
+          const isOwn = me && me.employee.id === input.id;
+          if (!isOwn) {
+            return { ...result, employee: { ...result.employee, monthlySalary: null, mealAllowancePerDay: null } };
+          }
+        }
+        return result;
       }),
 
     create: protectedProcedure

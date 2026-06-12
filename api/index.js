@@ -12383,7 +12383,7 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
         if (!me) throw new TRPCError3({ code: "NOT_FOUND", message: "Sem ficha de colaborador" });
         employeeId = me.employee.id;
       }
-      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
         const me = await getEmployeeByUserId(ctx.user.id);
         if (!me || me.employee.id !== employeeId) {
           throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
@@ -12436,7 +12436,11 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
     // ── EMPLOYEES ─────────────────────────────────────────────────────────────────────────────────
     list: protectedProcedure.input(z2.object({ isActive: z2.boolean().optional(), position: z2.string().optional() }).optional()).query(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      return getAllEmployees({ isActive: input?.isActive, position: input?.position });
+      const rows = await getAllEmployees({ isActive: input?.isActive, position: input?.position });
+      if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        return rows.map((r) => ({ ...r, employee: { ...r.employee, monthlySalary: null, mealAllowancePerDay: null } }));
+      }
+      return rows;
     }),
     byId: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
       if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["frontoffice"]) {
@@ -12445,7 +12449,15 @@ Conclu\xEDda em: ${task.completedAt ? new Date(task.completedAt).toLocaleDateStr
           throw new TRPCError3({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
         }
       }
-      return getEmployeeById(input.id);
+      const result = await getEmployeeById(input.id);
+      if (result && ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        const isOwn = me && me.employee.id === input.id;
+        if (!isOwn) {
+          return { ...result, employee: { ...result.employee, monthlySalary: null, mealAllowancePerDay: null } };
+        }
+      }
+      return result;
     }),
     create: protectedProcedure.input(z2.object({
       fullName: z2.string().min(1),
