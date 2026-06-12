@@ -478,7 +478,12 @@ export function createMcpApiRouter(): Router {
     const projs = rows(await d.execute(sql`SELECT id, name FROM projects WHERE level = 'project' AND isActive = 1`));
     const projMap = new Map<string, number>(projs.map((p: any) => [String(p.name).toLowerCase().trim(), Number(p.id)]));
 
-    const pending = rows(await d.execute(sql`SELECT id, parkName, city FROM multipark_bookings WHERE projectId IS NULL AND parkName IS NOT NULL AND parkName <> ''`));
+    // Sem projeto OU arquivadas num nó intermédio (cidade/marca/grupo) — o
+    // fallback do sync usava o nó da cidade quando o projeto folha não existia.
+    const pending = rows(await d.execute(sql`
+      SELECT id, parkName, city FROM multipark_bookings
+      WHERE parkName IS NOT NULL AND parkName <> ''
+        AND (projectId IS NULL OR projectId IN (SELECT id FROM projects WHERE level <> 'project'))`));
     const byProject = new Map<number, number[]>();
     let unmatched = 0;
     const unmatchedNames = new Map<string, number>();

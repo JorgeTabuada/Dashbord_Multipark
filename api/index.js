@@ -16648,7 +16648,10 @@ function createMcpApiRouter() {
     const CITY_PT = { lisbon: "lisboa", lisboa: "lisboa", oporto: "porto", porto: "porto", faro: "faro" };
     const projs = rows(await d.execute(sql5`SELECT id, name FROM projects WHERE level = 'project' AND isActive = 1`));
     const projMap = new Map(projs.map((p) => [String(p.name).toLowerCase().trim(), Number(p.id)]));
-    const pending = rows(await d.execute(sql5`SELECT id, parkName, city FROM multipark_bookings WHERE projectId IS NULL AND parkName IS NOT NULL AND parkName <> ''`));
+    const pending = rows(await d.execute(sql5`
+      SELECT id, parkName, city FROM multipark_bookings
+      WHERE parkName IS NOT NULL AND parkName <> ''
+        AND (projectId IS NULL OR projectId IN (SELECT id FROM projects WHERE level <> 'project'))`));
     const byProject = /* @__PURE__ */ new Map();
     let unmatched = 0;
     const unmatchedNames = /* @__PURE__ */ new Map();
