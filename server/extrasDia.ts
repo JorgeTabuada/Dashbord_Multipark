@@ -61,22 +61,38 @@ export const SHIFT_BOUNDS: Record<ShiftId, { startHour: number; endHour: number 
   night: { startHour: 15, endHour: 27 }, // 27 = 03h do dia seguinte
 };
 
-// A API Multipark devolve datas/horas em UTC; a operação é em Lisboa. Convertemos
-// UTC → Europe/Lisbon ao ler as reservas (via fuso, com DST), para que o forecast
-// e o drill-down trabalhem já na hora real de Lisboa. NÃO é um offset fixo.
-const _LISBON_PARTS = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Lisbon",
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-});
+// A API Multipark devolve datas/horas em UTC; convertemos UTC → fuso da operação
+// ao ler as reservas (via Intl, com DST). NÃO é offset fixo. O fuso é
+// configurável (default Europe/Lisbon); quando houver Extras-Dia noutras cidades/
+// países, passa-se o fuso respetivo a fetchBookingsInRange/getExtrasDiaForecast.
+const OPERATION_TZ = process.env.OPERATION_TZ || "Europe/Lisbon";
+const _tzFmtCache = new Map<string, Intl.DateTimeFormat>();
+function tzFmt(tz: string): Intl.DateTimeFormat {
+  let f = _tzFmtCache.get(tz);
+  if (!f) {
+    try {
+      f = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      });
+    } catch {
+      f = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/Lisbon", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      });
+    }
+    _tzFmtCache.set(tz, f);
+  }
+  return f;
+}
 
-function utcToLisbon(s: string | null): string | null {
+function utcToLocal(s: string | null, tz: string = OPERATION_TZ): string | null {
   if (!s) return s;
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return s;
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0));
   const p: Record<string, string> = {};
-  for (const part of _LISBON_PARTS.formatToParts(d)) p[part.type] = part.value;
+  for (const part of tzFmt(tz).formatToParts(d)) p[part.type] = part.value;
   const hh = p.hour === "24" ? "00" : p.hour; // Intl pode dar "24"
   return `${p.year}-${p.month}-${p.day} ${hh}:${p.minute}:${p.second}`;
 }
@@ -402,8 +418,8 @@ async function fetchBookingsInRange(
   // para o bucketing usar o check-in/out já convertido.
   return rows.map(r => ({
     ...r,
-    checkIn: utcToLisbon(r.checkIn),
-    checkOut: utcToLisbon(r.checkOut),
+    checkIn: utcToLocal(r.checkIn),
+    checkOut: utcToLocal(r.checkOut),
     checkInTime: null,
     checkOutTime: null,
   }));
