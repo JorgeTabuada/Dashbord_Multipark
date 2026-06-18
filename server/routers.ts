@@ -5923,6 +5923,8 @@ export const appRouter = router({
           origin: z.string().url(),
           projectId: z.number().nullable().optional(),
           note: z.string().max(500).nullable().optional(),
+          employeeIds: z.array(z.number()).nullable().optional(),
+          testEmail: z.string().email().nullable().optional(),
         }),
       )
       .mutation(async ({ ctx, input }) => {
@@ -5932,12 +5934,16 @@ export const appRouter = router({
           origin: input.origin,
           projectId: input.projectId ?? null,
           note: input.note ?? null,
+          employeeIds: input.employeeIds ?? null,
+          testEmail: input.testEmail ?? null,
         });
         await logActivity({
           userId: ctx.user.id,
           action: "email_sync",
           entity: "extras_availability",
-          details: `Pedido disponibilidade semana ${input.weekStart}: ${result.sent} enviados, ${result.failed} falhas, ${result.noEmail} sem email`,
+          details: input.testEmail
+            ? `Pedido disponibilidade TESTE → ${input.testEmail} (semana ${input.weekStart})`
+            : `Pedido disponibilidade semana ${input.weekStart}: ${result.sent} enviados, ${result.failed} falhas, ${result.noEmail} sem email`,
         });
         return result;
       }),

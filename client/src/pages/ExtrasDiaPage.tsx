@@ -1191,6 +1191,8 @@ function AvailabilitySection() {
   const hints = trpc.extrasAvailability.weekHints.useQuery();
   const [weekStart, setWeekStart] = useState<string>("");
   const [note, setNote] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // assim que chegam as sugestões, default = próxima segunda
   const effectiveWeek = weekStart || hints.data?.next || "";
@@ -1250,19 +1252,49 @@ function AvailabilitySection() {
           />
         </div>
 
+        {/* Teste: enviar só para um endereço (não toca nos extras) */}
+        <div className="rounded-md border border-dashed p-3 space-y-2">
+          <Label className="text-xs font-medium">Testar primeiro (envia só para 1 email)</Label>
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              type="email"
+              placeholder="o-teu-email@multipark.pt"
+              className="w-64"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={!effectiveWeek || !testEmail.includes("@") || send.isPending}
+              onClick={() => send.mutate({
+                weekStart: effectiveWeek,
+                origin: window.location.origin,
+                note: note.trim() || null,
+                testEmail: testEmail.trim(),
+              })}
+            >
+              <Send className="h-4 w-4 mr-2" /> Enviar teste
+            </Button>
+          </div>
+        </div>
+
+        {/* Envio real: a todos OU só aos selecionados na tabela abaixo */}
         <Button
           disabled={!effectiveWeek || send.isPending}
           onClick={() => {
-            if (!confirm(`Enviar pedido de disponibilidade a todos os extras ativos para a semana de ${effectiveWeek}?`)) return;
+            const ids = Array.from(selectedIds);
+            const alvo = ids.length > 0 ? `aos ${ids.length} extras selecionados` : "a TODOS os extras ativos";
+            if (!confirm(`Enviar pedido de disponibilidade ${alvo} para a semana de ${effectiveWeek}?`)) return;
             send.mutate({
               weekStart: effectiveWeek,
               origin: window.location.origin,
               note: note.trim() || null,
+              employeeIds: ids.length > 0 ? ids : null,
             });
           }}
         >
           {send.isPending ? <Clock className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-          Enviar pedido por email
+          {selectedIds.size > 0 ? `Enviar aos ${selectedIds.size} selecionados` : "Enviar a todos"}
         </Button>
 
         {o && (
@@ -1276,6 +1308,16 @@ function AvailabilitySection() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-1 pr-1 w-6">
+                      <input
+                        type="checkbox"
+                        title="Selecionar todos"
+                        checked={selectedIds.size > 0 && selectedIds.size === o.extras.length}
+                        onChange={(e) => {
+                          setSelectedIds(e.target.checked ? new Set(o.extras.map(x => x.employeeId)) : new Set());
+                        }}
+                      />
+                    </th>
                     <th className="py-1 pr-2">Extra</th>
                     {o.dayHeaders.map((h) => (
                       <th key={h.day} className="px-1 text-center whitespace-nowrap">{h.label}</th>
@@ -1285,6 +1327,20 @@ function AvailabilitySection() {
                 <tbody>
                   {o.extras.map((ex) => (
                     <tr key={ex.employeeId} className="border-b last:border-0">
+                      <td className="py-1 pr-1">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(ex.employeeId)}
+                          onChange={(e) => {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(ex.employeeId);
+                              else next.delete(ex.employeeId);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
                       <td className="py-1 pr-2 whitespace-nowrap">
                         <span className="flex items-center gap-1">
                           {ex.responded
@@ -1308,10 +1364,11 @@ function AvailabilitySection() {
                     </tr>
                   ))}
                   {o.extras.length === 0 && (
-                    <tr><td colSpan={o.dayHeaders.length + 1} className="py-3 text-center text-muted-foreground">Sem extras ativos.</td></tr>
+                    <tr><td colSpan={o.dayHeaders.length + 2} className="py-3 text-center text-muted-foreground">Sem extras ativos.</td></tr>
                   )}
                   {/* Totais por dia */}
                   <tr className="font-medium border-t-2">
+                    <td className="py-1 pr-1" />
                     <td className="py-1 pr-2">Disponíveis</td>
                     {o.perDay.map((p) => (
                       <td key={p.day} className="px-1 text-center text-xs">

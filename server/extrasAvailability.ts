@@ -351,18 +351,44 @@ export async function sendWeeklyAvailabilityRequest(opts: {
   origin: string;
   projectId?: number | null;
   note?: string | null;
+  employeeIds?: number[] | null; // se vier, envia SÓ a estes extras
+  testEmail?: string | null;     // se vier, envia SÓ a este endereço (teste)
 }): Promise<SendResult> {
   if (!parseIsoDate(opts.weekStart)) {
     throw new Error("weekStart inválido (esperado YYYY-MM-DD)");
   }
   const { sendEmail } = await import("./_core/notification");
-  const extras = await listActiveExtras(opts.projectId);
   const headers = weekDays(opts.weekStart);
   const weekLabel = headers.length
     ? `${headers[0].label} a ${headers[headers.length - 1].label}`
     : opts.weekStart;
-
   const origin = opts.origin.replace(/\/+$/, "");
+  const link = `${origin}/disponibilidade?week=${encodeURIComponent(opts.weekStart)}`;
+
+  // Modo TESTE: envia uma única mensagem para o endereço indicado.
+  if (opts.testEmail) {
+    const html = emailHtml("Teste", weekLabel, link, opts.note);
+    const ok = await sendEmail({
+      to: opts.testEmail,
+      subject: `[TESTE] Disponibilidade — semana de ${weekLabel}`,
+      html,
+      from: "recursos-humanos@multipark.pt",
+      fromName: "Multipark Operações",
+    });
+    return {
+      total: 1,
+      sent: ok ? 1 : 0,
+      failed: ok ? 0 : 1,
+      noEmail: 0,
+      recipients: [{ name: "Teste", email: opts.testEmail, ok }],
+    };
+  }
+
+  let extras = await listActiveExtras(opts.projectId);
+  if (opts.employeeIds && opts.employeeIds.length) {
+    const set = new Set(opts.employeeIds);
+    extras = extras.filter(e => set.has(e.id));
+  }
   const result: SendResult = { total: extras.length, sent: 0, failed: 0, noEmail: 0, recipients: [] };
 
   for (const e of extras) {
@@ -371,7 +397,6 @@ export async function sendWeeklyAvailabilityRequest(opts: {
       result.recipients.push({ name: e.fullName, email: null, ok: false });
       continue;
     }
-    const link = `${origin}/disponibilidade?week=${encodeURIComponent(opts.weekStart)}`;
     const html = emailHtml(e.fullName, weekLabel, link, opts.note);
     const ok = await sendEmail({
       to: e.email,
