@@ -2242,9 +2242,13 @@ function RecruitmentTab() {
   const [replyTo, setReplyTo] = useState("");
   const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
+  const [includeLink, setIncludeLink] = useState(true);
 
   const reply = trpc.rh.replyRecruitment.useMutation({
-    onSuccess: () => { toast.success("Resposta enviada"); setSelected(null); setReplyBody(""); },
+    onSuccess: (r: any) => {
+      toast.success(r?.inviteLink ? "Resposta enviada com link de registo" : "Resposta enviada");
+      setSelected(null); setReplyBody("");
+    },
     onError: (e) => toast.error(e.message || "Falha ao enviar"),
   });
 
@@ -2262,6 +2266,7 @@ function RecruitmentTab() {
     setReplyTo(e.clientEmail || e.fromEmail || "");
     setReplySubject(`Re: ${e.subject || "Candidatura"}`);
     setReplyBody("");
+    setIncludeLink(true);
   };
 
   if (isLoading) return <div className="text-center py-12 text-muted-foreground">A carregar emails de recrutamento...</div>;
@@ -2322,10 +2327,22 @@ function RecruitmentTab() {
               <textarea className="w-full min-h-[160px] rounded-md border p-2 text-sm" value={replyBody}
                 onChange={(ev) => setReplyBody(ev.target.value)} placeholder="Escreve a resposta…" />
             </div>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={includeLink} onChange={(ev) => setIncludeLink(ev.target.checked)} />
+              <span>
+                Incluir <strong>link de registo</strong> — cria a conta do candidato e adiciona o link à mensagem
+                (ele entra com o Google e fica utilizador).
+              </span>
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
-            <Button onClick={() => reply.mutate({ to: replyTo, subject: replySubject, body: replyBody, fromAlias: selected?.alias })}
+            <Button onClick={() => reply.mutate({
+                to: replyTo, subject: replySubject, body: replyBody, fromAlias: selected?.alias,
+                includeRegisterLink: includeLink,
+                candidateName: selected?.clientName || selected?.fromName || undefined,
+                origin: window.location.origin,
+              })}
               disabled={reply.isPending || !replyTo || !replyBody}>
               <Mail className="w-4 h-4 mr-2" />{reply.isPending ? "A enviar…" : "Enviar"}
             </Button>

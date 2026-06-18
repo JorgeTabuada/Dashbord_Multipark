@@ -1835,21 +1835,43 @@ export const appRouter = router({
         subject: z.string().min(1),
         body: z.string().min(1),
         fromAlias: z.enum(["criticas", "reclamacoes", "perdidos", "recursos-humanos"]).optional(),
+        // Inclui link de registo: cria conta para o candidato e gera /convite/:token.
+        includeRegisterLink: z.boolean().optional(),
+        candidateName: z.string().optional(),
+        origin: z.string().url().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "backoffice");
         const { sendEmail } = await import("./_core/notification");
         const from = input.fromAlias ? `${input.fromAlias}@multipark.pt` : undefined;
         const fromName = input.fromAlias === "recursos-humanos" ? "Multipark Recrutamento" : "Multipark";
-        const ok = await sendEmail({ to: input.to, subject: input.subject, text: input.body, from, fromName });
+
+        let body = input.body;
+        let inviteLink: string | null = null;
+        if (input.includeRegisterLink) {
+          if (!input.origin) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Falta o origin para gerar o link de registo." });
+          }
+          // Cria (ou reutiliza) a conta do candidato e gera o token de convite.
+          let user = await getUserByEmail(input.to);
+          if (!user) {
+            user = await createManualUser({ name: input.candidateName || input.to, email: input.to, role: "extra" });
+          }
+          if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar a conta do candidato." });
+          const invite = await createInviteToken({ email: input.to, userId: user.id, invitedById: ctx.user.id });
+          inviteLink = `${input.origin.replace(/\/+$/, "")}/convite/${invite.token}`;
+          body = `${input.body}\n\n— — —\nPara te registares na plataforma Multipark, abre este link e entra com a tua conta Google:\n${inviteLink}`;
+        }
+
+        const ok = await sendEmail({ to: input.to, subject: input.subject, text: body, from, fromName });
         await logActivity({
           userId: ctx.user.id,
           action: "email_reply",
           entity: "recruitment",
-          details: `Resposta a ${input.to}: ${input.subject.slice(0, 80)}`,
+          details: `Resposta a ${input.to}: ${input.subject.slice(0, 80)}${inviteLink ? " (+link registo)" : ""}`,
         });
         if (!ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "SMTP não configurado ou falhou o envio" });
-        return { ok };
+        return { ok, inviteLink };
       }),
 
     // Resumo do mês actual para o próprio colaborador: horas + valor a receber.
