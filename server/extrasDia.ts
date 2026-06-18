@@ -371,14 +371,12 @@ async function fetchBookingsInRange(
     )
     .limit(20000);
 
-  // Corrige hora europeia → Lisboa (-1h) nas horas das reservas.
-  return rows.map(r => ({
-    ...r,
-    checkIn: shiftIso(r.checkIn),
-    checkOut: shiftIso(r.checkOut),
-    checkInTime: shiftHHmm(r.checkInTime),
-    checkOutTime: shiftHHmm(r.checkOutTime),
-  }));
+  // NOTA: NÃO aplicamos aqui a correção -1h (hora europeia→Lisboa). Fazê-lo
+  // empurrava as recolhas das 03:xx para 02:xx, abaixo do início do dia
+  // operacional (03:00), e essas reservas desapareciam do Extras-Dia, deixando
+  // de bater com a folha operacional (que conta pelo dia de calendário com a
+  // hora bruta). A correção de fuso, se necessária, é só de EXIBIÇÃO.
+  return rows;
 }
 
 // ─── Assignments (gestor escala pessoas a turnos) ────────────────────────────
