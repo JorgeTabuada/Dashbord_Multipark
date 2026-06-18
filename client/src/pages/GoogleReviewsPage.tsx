@@ -20,6 +20,7 @@ import {
   Car, Users, Calendar, Download,
 } from "lucide-react";
 import BookingSearchField from "@/components/BookingSearchField";
+import ClientHistoryCard from "@/components/ClientHistoryCard";
 
 const RATING_COLORS: Record<number, string> = {
   1: "text-red-500",
@@ -518,6 +519,12 @@ function ReviewDetailDialog({ id, onClose }: { id: number; onClose: () => void }
               </CardContent>
             </Card>
           )}
+
+          <ClientHistoryCard
+            email={review.reviewerEmail}
+            plate={review.vehiclePlate}
+            name={review.reviewerName}
+          />
 
           {/* AI Response */}
           <Card>

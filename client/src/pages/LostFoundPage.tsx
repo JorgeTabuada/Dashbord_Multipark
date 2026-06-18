@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import BookingSearchField from "@/components/BookingSearchField";
+import ClientHistoryCard from "@/components/ClientHistoryCard";
 import {
   Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
@@ -542,6 +543,13 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                   </div>
                 </CardContent>
               </Card>
+
+              <ClientHistoryCard
+                email={item.clientEmail}
+                phone={item.clientPhone}
+                plate={item.vehiclePlate}
+                name={item.clientName}
+              />
 
               {item.vehiclePlate && (
                 <Card>

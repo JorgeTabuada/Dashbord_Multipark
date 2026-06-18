@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import ClientHistoryCard from "@/components/ClientHistoryCard";
 import { useState, useMemo } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
@@ -677,6 +678,13 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               />
             </CardContent>
           </Card>
+
+          <ClientHistoryCard
+            email={c.clientEmail}
+            phone={c.clientPhone}
+            plate={c.vehiclePlate}
+            name={c.clientName}
+          />
 
           {/* Edit Dialog */}
           <Dialog open={isEditing} onOpenChange={setIsEditing}>

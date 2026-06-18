@@ -7569,6 +7569,87 @@ export async function findOpenComplaintByClient(clientEmail?: string | null, veh
   return rows[0] || null;
 }
 
+// ── Histórico completo de um cliente (cruza reservas + reclamações + perdidos +
+//    críticas) por email / telefone / matrícula / nome. Usado nos detalhes de
+//    Reclamações, Perdidos&Achados e Críticas para ver tudo o que se passou. ──
+export interface ClientHistoryQuery {
+  email?: string | null;
+  phone?: string | null;
+  plate?: string | null;
+  name?: string | null;
+}
+
+export async function getClientHistory(q: ClientHistoryQuery) {
+  const db = await getDb();
+  const empty = { bookings: [] as any[], complaints: [] as any[], lostFound: [] as any[], reviews: [] as any[] };
+  if (!db) return empty;
+
+  const email = q.email?.trim() || null;
+  const phone = q.phone?.trim() || null;
+  const plate = q.plate?.trim() || null;
+  const name = q.name?.trim() || null;
+  if (!email && !phone && !plate && !name) return empty;
+
+  const namePat = name ? `%${name}%` : null;
+
+  // Reservas (multipark_bookings)
+  const bookingConds: any[] = [];
+  if (email) bookingConds.push(eq(multiparkBookings.clientEmail, email));
+  if (phone) bookingConds.push(eq(multiparkBookings.clientPhone, phone));
+  if (plate) bookingConds.push(eq(multiparkBookings.licensePlate, plate));
+  if (namePat) bookingConds.push(sql`CONCAT_WS(' ', ${multiparkBookings.clientFirstName}, ${multiparkBookings.clientLastName}) LIKE ${namePat}`);
+
+  const complaintConds: any[] = [];
+  if (email) complaintConds.push(eq(complaints.clientEmail, email));
+  if (phone) complaintConds.push(eq(complaints.clientPhone, phone));
+  if (plate) complaintConds.push(eq(complaints.vehiclePlate, plate));
+  if (namePat) complaintConds.push(like(complaints.clientName, namePat));
+
+  const lfConds: any[] = [];
+  if (email) lfConds.push(eq(lostFoundItems.clientEmail, email));
+  if (phone) lfConds.push(eq(lostFoundItems.clientPhone, phone));
+  if (plate) lfConds.push(eq(lostFoundItems.vehiclePlate, plate));
+  if (namePat) lfConds.push(like(lostFoundItems.clientName, namePat));
+
+  const reviewConds: any[] = [];
+  if (email) reviewConds.push(eq(googleReviews.reviewerEmail, email));
+  if (plate) reviewConds.push(eq(googleReviews.vehiclePlate, plate));
+  if (namePat) reviewConds.push(like(googleReviews.reviewerName, namePat));
+
+  const [bookings, complaintRows, lostFound, reviews] = await Promise.all([
+    bookingConds.length
+      ? db.select({
+          id: multiparkBookings.id, externalId: multiparkBookings.externalId,
+          bookingNumber: multiparkBookings.bookingNumber, status: multiparkBookings.status,
+          parkName: multiparkBookings.parkName, city: multiparkBookings.city,
+          checkIn: multiparkBookings.checkIn, checkOut: multiparkBookings.checkOut,
+          licensePlate: multiparkBookings.licensePlate, totalPrice: multiparkBookings.totalPrice,
+          clientFirstName: multiparkBookings.clientFirstName, clientLastName: multiparkBookings.clientLastName,
+        }).from(multiparkBookings).where(or(...bookingConds)).orderBy(desc(multiparkBookings.checkIn)).limit(30)
+      : Promise.resolve([]),
+    complaintConds.length
+      ? db.select({
+          id: complaints.id, title: complaints.title, status: complaints.complaintStatus,
+          vehiclePlate: complaints.vehiclePlate, createdAt: complaints.createdAt,
+        }).from(complaints).where(or(...complaintConds)).orderBy(desc(complaints.createdAt)).limit(30)
+      : Promise.resolve([]),
+    lfConds.length
+      ? db.select({
+          id: lostFoundItems.id, itemType: lostFoundItems.itemType, description: lostFoundItems.description,
+          status: lostFoundItems.status, vehiclePlate: lostFoundItems.vehiclePlate, createdAt: lostFoundItems.createdAt,
+        }).from(lostFoundItems).where(or(...lfConds)).orderBy(desc(lostFoundItems.createdAt)).limit(30)
+      : Promise.resolve([]),
+    reviewConds.length
+      ? db.select({
+          id: googleReviews.id, rating: googleReviews.rating, reviewText: googleReviews.reviewText,
+          status: googleReviews.status, vehiclePlate: googleReviews.vehiclePlate, createdAt: googleReviews.createdAt,
+        }).from(googleReviews).where(or(...reviewConds)).orderBy(desc(googleReviews.createdAt)).limit(30)
+      : Promise.resolve([]),
+  ]);
+
+  return { bookings, complaints: complaintRows, lostFound, reviews };
+}
+
 // ── Threading: agrupar RESPOSTAS na mesma reclamação/perdido ──────────────────
 // Normaliza um assunto removendo prefixos Re:/Fwd:/Enc: e espaços, p/ comparar
 // "Re: Fwd: Reclamação X" com o título original "Reclamação X".

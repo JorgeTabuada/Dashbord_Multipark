@@ -5984,5 +5984,21 @@ export const appRouter = router({
         return result;
       }),
   }),
+
+  // ── HISTÓRICO DE CLIENTE (reservas + reclamações + perdidos + críticas) ─────
+  clients: router({
+    history: protectedProcedure
+      .input(z.object({
+        email: z.string().nullable().optional(),
+        phone: z.string().nullable().optional(),
+        plate: z.string().nullable().optional(),
+        name: z.string().nullable().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getClientHistory } = await import("./db");
+        return getClientHistory(input);
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;
