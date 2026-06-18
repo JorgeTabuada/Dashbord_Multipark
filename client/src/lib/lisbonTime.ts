@@ -1,47 +1,58 @@
-// Correção de fuso das horas vindas da API Multipark.
+// Conversão das horas das reservas para hora de Lisboa.
 //
-// A API devolve as horas em "hora europeia" (CET/CEST, UTC+1), mas a operação é
-// em Lisboa (WET/WEST). Como a diferença CET↔Lisboa é SEMPRE 1h (ambas mudam de
-// hora no mesmo dia), basta subtrair 1h — sem depender de verão/inverno nem do
-// fuso do browser. Toda a aritmética é feita em UTC para ser determinística.
+// A API Multipark devolve as datas/horas em UTC (ex.: check-in que o cliente vê
+// como 07:00 em Lisboa vem da API como "06:00"). Guardamos o valor da API (UTC).
+// Para mostrar a hora real de Lisboa convertemos UTC → Europe/Lisbon usando o
+// fuso (Intl), por isso fica correto tanto no verão (UTC+1) como no inverno
+// (UTC+0) — sem números fixos.
 //
-// ⚠️ Aplicar APENAS a horas de RESERVAS (check-in/out, deliveryType, etc.) —
-// NUNCA a timestamps gravados pelo nosso sistema (movimentações reais, GPS,
-// ocorrências, createdAt), que já estão na hora certa.
+// ⚠️ Só para horas de RESERVAS (check-in/out). Timestamps do nosso sistema
+// (movimentações, ocorrências, etc.) já estão na hora certa.
 
-export const MULTIPARK_HOUR_OFFSET = -1;
-
-function parseNaiveToUtcMs(s: string): number | null {
+function parseUtc(s: string): Date | null {
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0));
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
+const DATETIME_FMT = new Intl.DateTimeFormat("pt-PT", {
+  timeZone: "Europe/Lisbon",
+  day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", hour12: false,
+});
+const DATE_FMT = new Intl.DateTimeFormat("pt-PT", {
+  timeZone: "Europe/Lisbon",
+  day: "2-digit", month: "2-digit", year: "numeric",
+});
 
-/** Data+hora de uma reserva, corrigida para hora de Lisboa: "dd/mm/aaaa hh:mm". */
+/** Data+hora da reserva em hora de Lisboa: "dd/mm/aaaa, hh:mm". */
 export function fmtBookingDateTime(s: string | null | undefined): string {
   if (!s) return "—";
-  const ms = parseNaiveToUtcMs(s);
-  if (ms == null) return new Date(s).toLocaleString("pt-PT");
-  const d = new Date(ms + MULTIPARK_HOUR_OFFSET * 3600_000);
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const d = parseUtc(s);
+  if (!d) return new Date(s).toLocaleString("pt-PT");
+  return DATETIME_FMT.format(d);
 }
 
-/** Só a data (a correção de -1h pode mudar o dia à meia-noite). */
+/** Só a data, em hora de Lisboa. */
 export function fmtBookingDate(s: string | null | undefined): string {
   if (!s) return "—";
-  const ms = parseNaiveToUtcMs(s);
-  if (ms == null) return new Date(s).toLocaleDateString("pt-PT");
-  const d = new Date(ms + MULTIPARK_HOUR_OFFSET * 3600_000);
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  const d = parseUtc(s);
+  if (!d) return new Date(s).toLocaleDateString("pt-PT");
+  return DATE_FMT.format(d);
 }
 
-/** Hora "HH:mm" (string solta da API) corrigida -1h. */
+const TIME_FMT = new Intl.DateTimeFormat("pt-PT", {
+  timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hour12: false,
+});
+
+/** Hora "HH:mm" solta da API (UTC) → Lisboa. Sem data própria usa-se a de hoje
+ *  para o DST (as reservas mostradas são de datas próximas). Na prática este
+ *  campo (checkInTime) vem quase sempre vazio e a hora vem do check-in completo. */
 export function fmtBookingHHmm(hhmm: string | null | undefined): string {
   if (!hhmm) return "";
   const m = hhmm.match(/^(\d{1,2}):(\d{2})/);
   if (!m) return hhmm;
-  const h = (((+m[1] + MULTIPARK_HOUR_OFFSET) % 24) + 24) % 24;
-  return `${pad(h)}:${m[2]}`;
+  const t = new Date();
+  const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), +m[1], +m[2]));
+  return TIME_FMT.format(d);
 }

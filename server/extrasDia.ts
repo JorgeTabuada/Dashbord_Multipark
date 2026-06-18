@@ -61,27 +61,24 @@ export const SHIFT_BOUNDS: Record<ShiftId, { startHour: number; endHour: number 
   night: { startHour: 15, endHour: 27 }, // 27 = 03h do dia seguinte
 };
 
-// A API Multipark devolve horas em hora europeia (CET/CEST); a operação é em
-// Lisboa = sempre -1h. Corrigimos as horas das RESERVAS ao lê-las da BD, para
-// que todo o forecast e drill-down trabalhem já em hora de Lisboa.
-const MULTIPARK_HOUR_OFFSET = -1;
+// A API Multipark devolve datas/horas em UTC; a operação é em Lisboa. Convertemos
+// UTC → Europe/Lisbon ao ler as reservas (via fuso, com DST), para que o forecast
+// e o drill-down trabalhem já na hora real de Lisboa. NÃO é um offset fixo.
+const _LISBON_PARTS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Lisbon",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
 
-function shiftIso(s: string | null): string | null {
+function utcToLisbon(s: string | null): string | null {
   if (!s) return s;
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return s;
-  const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0) + MULTIPARK_HOUR_OFFSET * 3600_000;
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
-}
-
-function shiftHHmm(s: string | null): string | null {
-  if (!s) return s;
-  const m = s.match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return s;
-  const h = (((+m[1] + MULTIPARK_HOUR_OFFSET) % 24) + 24) % 24;
-  return `${String(h).padStart(2, "0")}:${m[2]}`;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0));
+  const p: Record<string, string> = {};
+  for (const part of _LISBON_PARTS.formatToParts(d)) p[part.type] = part.value;
+  const hh = p.hour === "24" ? "00" : p.hour; // Intl pode dar "24"
+  return `${p.year}-${p.month}-${p.day} ${hh}:${p.minute}:${p.second}`;
 }
 
 const CITY_PATTERN = "%lisb%"; // fallback se a árvore de projeto não resolver
@@ -400,12 +397,16 @@ async function fetchBookingsInRange(
     )
     .limit(20000);
 
-  // NOTA: NÃO aplicamos aqui a correção -1h (hora europeia→Lisboa). Fazê-lo
-  // empurrava as recolhas das 03:xx para 02:xx, abaixo do início do dia
-  // operacional (03:00), e essas reservas desapareciam do Extras-Dia, deixando
-  // de bater com a folha operacional (que conta pelo dia de calendário com a
-  // hora bruta). A correção de fuso, se necessária, é só de EXIBIÇÃO.
-  return rows;
+  // Converte UTC → Lisboa nas horas das reservas (a API dá UTC). As horas-string
+  // soltas (checkInTime/checkOutTime, normalmente vazias e em UTC) são anuladas
+  // para o bucketing usar o check-in/out já convertido.
+  return rows.map(r => ({
+    ...r,
+    checkIn: utcToLisbon(r.checkIn),
+    checkOut: utcToLisbon(r.checkOut),
+    checkInTime: null,
+    checkOutTime: null,
+  }));
 }
 
 // ─── Assignments (gestor escala pessoas a turnos) ────────────────────────────
