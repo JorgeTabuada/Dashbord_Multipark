@@ -210,7 +210,9 @@ const normalizeToolChoice = (
 };
 
 const resolveApiUrl = () => {
-  const url = process.env.LLM_API_URL || process.env.OPENAI_API_URL;
+  // .trim() defensivo: vars de ambiente coladas no Vercel trazem por vezes
+  // espaços/newline no fim, que partem o URL ou os headers HTTP.
+  const url = (process.env.LLM_API_URL || process.env.OPENAI_API_URL || "").trim();
   if (!url) throw new Error("LLM_API_URL or OPENAI_API_URL is not configured");
   const base = url.replace(/\/$/, "");
   // Gemini OpenAI-compatible endpoint already includes /v1beta/openai
@@ -221,10 +223,13 @@ const resolveApiUrl = () => {
 };
 
 const resolveApiKey = () => {
-  const key = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  const key = (process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "").trim();
   if (!key) throw new Error("LLM_API_KEY or OPENAI_API_KEY is not configured");
   return key;
 };
+
+// Modelo das env vars, sem espaços/newline; fallback por provider.
+const resolveModel = (fallback: string) => (process.env.LLM_MODEL || "").trim() || fallback;
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -272,14 +277,14 @@ const normalizeResponseFormat = ({
 };
 
 function isAnthropic(): boolean {
-  const url = process.env.LLM_API_URL || "";
+  const url = (process.env.LLM_API_URL || "").trim();
   return url.includes("anthropic");
 }
 
 async function invokeClaude(params: InvokeParams): Promise<InvokeResult> {
   const apiKey = resolveApiKey();
-  // Always use a known valid Anthropic model ID regardless of env var
-  const model = "claude-sonnet-4-20250514";
+  // Usa o LLM_MODEL (limpo) se definido; senão um Sonnet 4 válido por defeito.
+  const model = resolveModel("claude-sonnet-4-20250514");
 
   // Separate system message from user/assistant messages
   const normalized = params.messages.map(normalizeMessage);
@@ -374,7 +379,7 @@ async function invokeOpenAI(params: InvokeParams): Promise<InvokeResult> {
     response_format,
   } = params;
 
-  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+  const model = resolveModel("gpt-4o-mini");
 
   const payload: Record<string, unknown> = {
     model,
