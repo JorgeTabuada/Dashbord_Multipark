@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -512,7 +513,11 @@ function TeamSection({
             <div>
               <div className="text-xs uppercase tracking-wide text-amber-900">Team Leader (obrigatório)</div>
               {tl ? (
-                <div className="font-semibold">
+                <div className="font-semibold flex items-center gap-2">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={(tl as any).photoUrl ?? undefined} className="object-cover" />
+                    <AvatarFallback className="text-[10px]">{tl.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
                   {tl.personName}{" "}
                   <span className="font-normal text-sm text-muted-foreground">
                     · {fmtHour(tl.startHour)}–{fmtHour(tl.sentHomeHour ?? tl.endHour)} · {fmtEur(tl.cost)}/dia
@@ -644,6 +649,7 @@ function AssignmentForm({
     id: number;
     fullName: string;
     suggestedLevel: LevelId;
+    photoUrl?: string | null;
     availability?: { status: "available" | "unavailable" | "no_response"; morning: boolean; night: boolean } | null;
   }[];
   asTeamLeader?: boolean;
@@ -696,6 +702,10 @@ function AssignmentForm({
               {candidates.map(c => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   <span className="flex items-center gap-1.5">
+                    <Avatar className="h-5 w-5">
+                      <AvatarImage src={c.photoUrl ?? undefined} className="object-cover" />
+                      <AvatarFallback className="text-[9px]">{c.fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
                     {c.availability?.status === "available" && (
                       <span className="inline-flex gap-0.5">
                         {c.availability.morning && <Sun className="h-3 w-3 text-amber-500" />}
@@ -855,7 +865,15 @@ function AssignmentRow({
   if (!editing) {
     return (
       <tr className="border-b hover:bg-muted/30">
-        <td className="py-2 px-2">{a.personName}</td>
+        <td className="py-2 px-2">
+          <span className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={(a as any).photoUrl ?? undefined} className="object-cover" />
+              <AvatarFallback className="text-[10px]">{a.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            {a.personName}
+          </span>
+        </td>
         <td className="py-2 px-2">
           <Badge variant="secondary">{levels.find(l => l.id === a.level)?.label}</Badge>
         </td>

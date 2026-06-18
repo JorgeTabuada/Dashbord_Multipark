@@ -400,6 +400,7 @@ export interface Assignment {
   // Mapeamento Multipark (preenchido se employeeId está associado a empregado RH)
   multiparkAgentName: string | null;
   multiparkAgentUserId: string | null;
+  photoUrl: string | null;
 }
 
 /**
@@ -435,6 +436,7 @@ function rowToAssignment(
   tlDailyCost?: number,
   multiparkAgentName?: string | null,
   multiparkAgentUserId?: string | null,
+  photoUrl?: string | null,
 ): Assignment {
   const isTL = r.isTeamLeader === 1;
   const level = (r.level as DriverLevelId | null) ?? null;
@@ -460,6 +462,7 @@ function rowToAssignment(
     notes: r.notes,
     multiparkAgentName: multiparkAgentName ?? null,
     multiparkAgentUserId: multiparkAgentUserId ?? null,
+    photoUrl: photoUrl ?? null,
     ...computed,
   };
 }
@@ -490,13 +493,14 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
 
   // Pre-fetch dos empregados associados (mapeamento Multipark)
   const empIds = Array.from(new Set(rows.map(r => r.employeeId).filter((x): x is number => x !== null)));
-  const empMap = new Map<number, { multiparkAgentName: string | null; multiparkAgentUserId: string | null }>();
+  const empMap = new Map<number, { multiparkAgentName: string | null; multiparkAgentUserId: string | null; photoUrl: string | null }>();
   if (empIds.length > 0) {
     const empRows = await db
       .select({
         id: employees.id,
         multiparkAgentName: employees.multiparkAgentName,
         multiparkAgentUserId: employees.multiparkAgentUserId,
+        photoUrl: employees.photoUrl,
       })
       .from(employees)
       .where(sql`${employees.id} IN (${sql.raw(empIds.join(","))})`);
@@ -504,6 +508,7 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
       empMap.set(e.id, {
         multiparkAgentName: e.multiparkAgentName,
         multiparkAgentUserId: e.multiparkAgentUserId,
+        photoUrl: e.photoUrl,
       });
     }
   }
@@ -516,7 +521,7 @@ export async function listAssignments(date: string): Promise<Assignment[]> {
       tlCost = await getEmployeeDailyCost(r.employeeId);
     }
     const map = r.employeeId ? empMap.get(r.employeeId) : undefined;
-    result.push(rowToAssignment(r, tlCost, map?.multiparkAgentName, map?.multiparkAgentUserId));
+    result.push(rowToAssignment(r, tlCost, map?.multiparkAgentName, map?.multiparkAgentUserId, map?.photoUrl));
   }
   return result;
 }
@@ -783,6 +788,7 @@ export interface DriverCandidate {
   position: string;
   extraLevel: number | null;
   suggestedLevel: DriverLevelId;
+  photoUrl: string | null;
   // Preenchido quando se passa uma data: disponibilidade declarada pelo extra
   // para esse dia (alimenta a escala do Extras-Dia). null = não aplicável.
   availability?: import("./extrasAvailability").DayAvailability | null;
@@ -816,6 +822,7 @@ export async function listDriverCandidates(date?: string): Promise<DriverCandida
       position: employees.position,
       extraLevel: employees.extraLevel,
       isActive: employees.isActive,
+      photoUrl: employees.photoUrl,
     })
     .from(employees)
     .where(eq(employees.isActive, 1))
@@ -834,6 +841,7 @@ export async function listDriverCandidates(date?: string): Promise<DriverCandida
     position: r.position,
     extraLevel: r.extraLevel,
     suggestedLevel: suggestLevel(r.position, r.extraLevel),
+    photoUrl: r.photoUrl ?? null,
     availability: availMap ? (availMap.get(r.id) ?? { status: "no_response", morning: false, night: false, fromHour: null, toHour: null, note: null }) : null,
   }));
 }
