@@ -12,9 +12,9 @@
  * Driver levels are flat — all do everything — so the cheapest tier wins.
  */
 
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lte, inArray, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { multiparkBookings, extrasDiaAssignments, employees } from "../drizzle/schema";
+import { multiparkBookings, extrasDiaAssignments, employees, projects } from "../drizzle/schema";
 import { getBookingTryAllParks } from "./multipark";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -84,8 +84,30 @@ function shiftHHmm(s: string | null): string | null {
   return `${String(h).padStart(2, "0")}:${m[2]}`;
 }
 
-const CITY_PATTERN = "%lisb%"; // matches Lisboa, Lisbon, LISBON, lisbôa, ...
+const CITY_PATTERN = "%lisb%"; // fallback se a árvore de projeto não resolver
 const PARK_ID_PREFIX = "LISBON_%"; // backup: when city was not set on the row
+
+// Resolve os projectIds da árvore de Lisboa (nó cidade "Lisboa" + descendentes),
+// EXATAMENTE como a folha operacional (getLocalBookingsByAction → addChildren).
+// Assim o Extras-Dia conta a mesma coisa que a folha; a única diferença passa a
+// ser a janela do dia (03:00→03:00 vs dia de calendário). Cacheado por processo.
+let _lisbonProjectIds: number[] | null = null;
+async function getLisbonProjectIds(): Promise<number[]> {
+  if (_lisbonProjectIds) return _lisbonProjectIds;
+  const db = await getDb();
+  if (!db) return [];
+  const all = await db
+    .select({ id: projects.id, parentId: projects.parentId, name: projects.name, level: projects.level })
+    .from(projects);
+  const ids = new Set<number>();
+  const addChildren = (parentId: number) => {
+    ids.add(parentId);
+    for (const p of all) if (p.parentId === parentId) addChildren(p.id);
+  };
+  for (const p of all) if (p.level === "city" && /lisb/i.test(p.name)) addChildren(p.id);
+  _lisbonProjectIds = Array.from(ids);
+  return _lisbonProjectIds;
+}
 const LAVAGEM_RE = /lavag|wash/i;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -340,6 +362,13 @@ async function fetchBookingsInRange(
   const startStr = toMysqlDateTime(startInclusive);
   const endStr = toMysqlDateTime(endExclusive);
 
+  // Mesmo critério de "Lisboa" que a folha operacional: árvore de projeto.
+  // Fallback ao texto da cidade só se a árvore não resolver (defensivo).
+  const lisbonIds = await getLisbonProjectIds();
+  const lisbonCond = lisbonIds.length
+    ? inArray(multiparkBookings.projectId, lisbonIds)
+    : sql`(LOWER(${multiparkBookings.city}) LIKE ${CITY_PATTERN} OR ${multiparkBookings.parkId} LIKE ${PARK_ID_PREFIX})`;
+
   const rows = await db
     .select({
       id: multiparkBookings.id,
@@ -366,7 +395,7 @@ async function fetchBookingsInRange(
         gte(col, startStr),
         lte(col, endStr),
         sql`${multiparkBookings.status} != 'CANCELLED'`,
-        sql`(LOWER(${multiparkBookings.city}) LIKE ${CITY_PATTERN} OR ${multiparkBookings.parkId} LIKE ${PARK_ID_PREFIX})`,
+        lisbonCond,
       ),
     )
     .limit(20000);
