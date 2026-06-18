@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { filterBookingHistory } from "@/lib/bookingHistory";
+import { REPLY_TEMPLATES } from "@/lib/replyTemplates";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -1364,6 +1365,15 @@ function SendClientEmailButton({
             <div>
               <Label className="text-xs">Assunto</Label>
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Modelo</Label>
+              <Select onValueChange={(k) => { const t = REPLY_TEMPLATES.find(x => x.key === k); if (t) setBody(t.body); }}>
+                <SelectTrigger><SelectValue placeholder="Escolher modelo de resposta…" /></SelectTrigger>
+                <SelectContent>
+                  {REPLY_TEMPLATES.map(t => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-xs">Mensagem</Label>

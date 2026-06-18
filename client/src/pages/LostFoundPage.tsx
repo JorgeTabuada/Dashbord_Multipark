@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { filterBookingHistory } from "@/lib/bookingHistory";
+import { REPLY_TEMPLATES } from "@/lib/replyTemplates";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -1451,6 +1452,14 @@ function ReturnEmailDialog({ item, onClose }: { item: any; onClose: () => void }
         <DialogHeader><DialogTitle>Avisar cliente — {item.clientEmail}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Assunto</Label><Input value={subject} onChange={e => setSubject(e.target.value)} /></div>
+          <div><Label>Modelo</Label>
+            <Select onValueChange={(k) => { const t = REPLY_TEMPLATES.find(x => x.key === k); if (t) setBody(t.body); }}>
+              <SelectTrigger><SelectValue placeholder="Escolher modelo…" /></SelectTrigger>
+              <SelectContent>
+                {REPLY_TEMPLATES.map(t => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <div><Label>Mensagem</Label><Textarea rows={6} value={body} onChange={e => setBody(e.target.value)} /></div>
           <p className="text-xs text-muted-foreground">Sai de perdidos@multipark.pt. A saudação ("Olá {"{nome}"}") é adicionada automaticamente.</p>
         </div>
