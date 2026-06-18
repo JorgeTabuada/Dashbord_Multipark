@@ -1730,11 +1730,18 @@ export const appRouter = router({
     }),
 
     replyRecruitment: protectedProcedure
-      .input(z.object({ to: z.string().email(), subject: z.string().min(1), body: z.string().min(1) }))
+      .input(z.object({
+        to: z.string().email(),
+        subject: z.string().min(1),
+        body: z.string().min(1),
+        fromAlias: z.enum(["criticas", "reclamacoes", "perdidos", "recursos-humanos"]).optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "backoffice");
         const { sendEmail } = await import("./_core/notification");
-        const ok = await sendEmail({ to: input.to, subject: input.subject, text: input.body });
+        const from = input.fromAlias ? `${input.fromAlias}@multipark.pt` : undefined;
+        const fromName = input.fromAlias === "recursos-humanos" ? "Multipark Recrutamento" : "Multipark";
+        const ok = await sendEmail({ to: input.to, subject: input.subject, text: input.body, from, fromName });
         await logActivity({
           userId: ctx.user.id,
           action: "email_reply",

@@ -112,20 +112,27 @@ export async function sendEmail(options: {
   subject: string;
   text?: string;
   html?: string;
+  from?: string;     // endereço de envio (ex: recursos-humanos@multipark.pt); default SMTP_FROM
+  fromName?: string; // nome do remetente apresentado
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
 }): Promise<boolean> {
   const transporter = getTransporter();
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  // Só permite enviar de aliases do próprio domínio (send-as configurados no Gmail).
+  const allowedDomain = (process.env.SMTP_USER || "").split("@")[1] || "multipark.pt";
+  const requested = options.from && options.from.endsWith(`@${allowedDomain}`) ? options.from : undefined;
+  const fromEmail = requested || process.env.SMTP_FROM || process.env.SMTP_USER;
+  const fromName = options.fromName || "Multipark";
 
   if (!transporter) {
     console.warn("[Email] SMTP not configured, cannot send email");
     return false;
   }
 
+  const { from: _from, fromName: _fromName, ...rest } = options;
   try {
     await transporter.sendMail({
-      from: `"Dashboard Multipark" <${fromEmail}>`,
-      ...options,
+      from: `"${fromName}" <${fromEmail}>`,
+      ...rest,
     });
     return true;
   } catch (error) {

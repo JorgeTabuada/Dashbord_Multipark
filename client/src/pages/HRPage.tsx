@@ -2253,7 +2253,7 @@ function RecruitmentTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
-            <Button onClick={() => reply.mutate({ to: replyTo, subject: replySubject, body: replyBody })}
+            <Button onClick={() => reply.mutate({ to: replyTo, subject: replySubject, body: replyBody, fromAlias: selected?.alias })}
               disabled={reply.isPending || !replyTo || !replyBody}>
               <Mail className="w-4 h-4 mr-2" />{reply.isPending ? "A enviar…" : "Enviar"}
             </Button>
