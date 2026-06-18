@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getLoginUrl } from "@/const";
+import ProfilePhotoPrompt from "@/components/ProfilePhotoPrompt";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   BarChart3,
@@ -257,6 +258,9 @@ export default function DashboardLayout({
     );
   }
 
+  // Colaborador sem foto de perfil → convida a tirar uma (obrigatória p/ ponto).
+  const needsPhoto = !!employee && !employee.photoUrl;
+
   return (
     <SidebarProvider
       style={
@@ -265,6 +269,7 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
+      {needsPhoto && <ProfilePhotoPrompt />}
       <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
         {children}
       </DashboardLayoutContent>

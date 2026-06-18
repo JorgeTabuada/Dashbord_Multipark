@@ -825,6 +825,7 @@ export const appRouter = router({
             id: emp.employee.id,
             fullName: emp.employee.fullName,
             position: emp.employee.position,
+            photoUrl: emp.employee.photoUrl,
             loginBlocked: Boolean(emp.employee.loginBlocked),
             loginBlockedReason: emp.employee.loginBlockedReason,
           },
@@ -1979,25 +1980,11 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "admin");
 
-        // Se não foi indicado userId, cria um utilizador com o email do colaborador.
-        // Role por defeito: extra para position=extra, user para os restantes.
-        // Permissões superiores só podem ser dadas por super_admin via página Utilizadores.
-        let userId = input.userId ?? null;
-        if (!userId) {
-          // Procura primeiro se já existe um user com este email
-          const existing = await getUserByEmail(input.email);
-          if (existing) {
-            userId = existing.id;
-          } else {
-            const role = input.position === "extra" ? "extra" : "user";
-            const created = await createManualUser({
-              name: input.fullName,
-              email: input.email,
-              role,
-            });
-            userId = created?.id ?? null;
-          }
-        }
+        // NÃO cria utilizador automaticamente. Um colaborador pode existir sem
+        // utilizador; nesse caso não consegue dar entrada no ponto até que lhe
+        // seja associado um utilizador (na edição do colaborador). Só liga a um
+        // utilizador se o userId for explicitamente indicado.
+        const userId = input.userId ?? null;
 
         await createEmployee({
           fullName: input.fullName,
@@ -2116,6 +2103,21 @@ export const appRouter = router({
         const key = `employees/${input.employeeId}/photo-${Date.now()}.${ext}`;
         const { url } = await storagePut(key, buffer, input.mimeType);
         await updateEmployee(input.employeeId, { photoUrl: url, photoKey: key });
+        return { url, key };
+      }),
+
+    // O PRÓPRIO utilizador define/troca a sua foto de perfil (obrigatória p/ ponto).
+    uploadMyPhoto: protectedProcedure
+      .input(z.object({ fileBase64: z.string(), mimeType: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const me = await getEmployeeByUserId(ctx.user.id);
+        if (!me) throw new TRPCError({ code: "FORBIDDEN", message: "A tua conta não está associada a um colaborador." });
+        const { storagePut } = await import("./storage");
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const ext = input.mimeType.split("/")[1] ?? "jpg";
+        const key = `employees/${me.employee.id}/photo-${Date.now()}.${ext}`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        await updateEmployee(me.employee.id, { photoUrl: url, photoKey: key });
         return { url, key };
       }),
 
@@ -2280,6 +2282,15 @@ export const appRouter = router({
             if (!me || me.employee.id !== input.employeeId) {
               throw new TRPCError({ code: "FORBIDDEN", message: "Só podes picar o teu próprio ponto" });
             }
+          }
+          // Pré-requisitos para dar entrada: utilizador associado + foto de perfil.
+          const empForPonto = await getEmployeeById(input.employeeId);
+          if (!empForPonto) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado" });
+          if (!empForPonto.employee.userId) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Este colaborador ainda não tem utilizador associado. Associa um utilizador na ficha do colaborador antes de picar o ponto." });
+          }
+          if (!empForPonto.employee.photoUrl) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "É preciso uma foto de perfil para picar o ponto. Adiciona a foto na ficha do colaborador." });
           }
           // Bloqueia dois check-ins seguidos sem check-out
           const recent = await getTimeRecords(input.employeeId);
