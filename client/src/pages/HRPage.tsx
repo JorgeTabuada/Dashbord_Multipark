@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDateTime } from "@/lib/lisbonTime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -825,7 +826,7 @@ function TimeRecordsTab({ employeeId }: { employeeId: number }) {
                   )}
                   <div>
                     <p className="text-sm font-medium">{r.type === "check_in" ? "Entrada" : "Saída"}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(r.recordedAt).toLocaleString("pt-PT")}</p>
+                    <p className="text-xs text-muted-foreground">{fmtPTDateTime(r.recordedAt)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

@@ -15,6 +15,19 @@ function parseUtc(s: string): Date | null {
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0));
 }
 
+// Converte qualquer timestamp guardado (string UTC "YYYY-MM-DD HH:MM:SS", epoch
+// em ms, ou Date) para um instante. As strings sem fuso são tratadas como UTC,
+// porque é assim que TUDO é guardado (new Date().toISOString() e a API Multipark).
+function toInstant(input: string | number | Date | null | undefined): Date | null {
+  if (input == null || input === "") return null;
+  if (typeof input === "number") return new Date(input);
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
+  const u = parseUtc(String(input));
+  if (u) return u;
+  const d = new Date(String(input));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 const DATETIME_FMT = new Intl.DateTimeFormat("pt-PT", {
   timeZone: "Europe/Lisbon",
   day: "2-digit", month: "2-digit", year: "numeric",
@@ -44,6 +57,22 @@ export function fmtBookingDate(s: string | null | undefined): string {
 const TIME_FMT = new Intl.DateTimeFormat("pt-PT", {
   timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hour12: false,
 });
+
+// ── Helpers GENÉRICOS para QUALQUER timestamp guardado (UTC) → hora de Lisboa.
+// Usar em movimentações, ponto, ocorrências, agentes, etc. — tudo o que vem da
+// API ou é gravado por nós com toISOString (UTC). Aceita string/epoch/Date.
+export function fmtPTDateTime(input: string | number | Date | null | undefined): string {
+  const d = toInstant(input);
+  return d ? DATETIME_FMT.format(d) : "—";
+}
+export function fmtPTDate(input: string | number | Date | null | undefined): string {
+  const d = toInstant(input);
+  return d ? DATE_FMT.format(d) : "—";
+}
+export function fmtPTTime(input: string | number | Date | null | undefined): string {
+  const d = toInstant(input);
+  return d ? TIME_FMT.format(d) : "—";
+}
 
 /** Hora "HH:mm" solta da API (UTC) → Lisboa. Sem data própria usa-se a de hoje
  *  para o DST (as reservas mostradas são de datas próximas). Na prática este

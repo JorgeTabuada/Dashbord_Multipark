@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtPTTime } from "@/lib/lisbonTime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -509,7 +510,7 @@ function AgentCard({ assignment, date, metrics }: { assignment: any; date: strin
                         {summaryQ.data.items.map((it: any) => (
                           <tr key={it.id} className="border-b hover:bg-muted/40">
                             <td className="py-1 px-2 font-mono">
-                              {it.actionTime ? new Date(it.actionTime).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                              {fmtPTTime(it.actionTime)}
                             </td>
                             <td className="py-1 px-2">
                               <Badge variant="outline" className="text-[10px]">{it.changeType ?? "?"}</Badge>

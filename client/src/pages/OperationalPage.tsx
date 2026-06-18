@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -457,7 +458,7 @@ function ZelloGPSTab() {
                 <tbody>
                   {onlineUsers.map((loc: any) => {
                     const isSpeeding = loc.speed > speedThreshold;
-                    const lastUpdate = loc.lastReport ? new Date(loc.lastReport * 1000).toLocaleString("pt-PT") : "-";
+                    const lastUpdate = loc.lastReport ? fmtPTDateTime(loc.lastReport * 1000) : "-";
                     return (
                       <tr key={loc.username} className={`border-b ${isSpeeding ? "bg-red-50 dark:bg-red-950/20" : ""}`}>
                         <td className="p-2 font-medium">{loc.displayName || loc.username}</td>
@@ -692,7 +693,7 @@ function SpeedMonitoringTab() {
                   <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Sem infrações de velocidade registadas.</td></tr>
                 ) : violations.map((v: any) => (
                   <tr key={v.id} className={`border-b ${!v.acknowledged ? "bg-red-50 dark:bg-red-950/20" : ""}`}>
-                    <td className="p-2 text-xs">{new Date(v.occurredAt).toLocaleString("pt-PT")}</td>
+                    <td className="p-2 text-xs">{fmtPTDateTime(v.occurredAt)}</td>
                     <td className="p-2 font-medium">{v.displayName || v.zelloUsername}</td>
                     <td className="p-2 font-bold text-red-600">{parseFloat(v.speed).toFixed(1)} km/h</td>
                     <td className="p-2">{v.speedLimit} km/h</td>
@@ -1163,7 +1164,7 @@ function PdasTab() {
                       </p>
                       {checkin.zelloUsername && <p className="text-xs">Zello: {checkin.zelloUsername}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Desde {new Date(checkin.checkinAt).toLocaleString("pt-PT")}
+                        Desde {fmtPTDateTime(checkin.checkinAt)}
                       </p>
                     </div>
                   )}
@@ -1444,8 +1445,8 @@ function PdaHistoryDialog({ pdaId, onClose }: { pdaId: number; onClose: () => vo
                 {checkins.map((c: any) => (
                   <tr key={c.id} className="border-b">
                     <td className="p-2 font-medium">{c.zelloUsername || `Emp #${c.employeeId}`}</td>
-                    <td className="p-2 text-muted-foreground">{new Date(c.checkinAt).toLocaleString("pt-PT")}</td>
-                    <td className="p-2 text-muted-foreground">{c.checkoutAt ? new Date(c.checkoutAt).toLocaleString("pt-PT") : "-"}</td>
+                    <td className="p-2 text-muted-foreground">{fmtPTDateTime(c.checkinAt)}</td>
+                    <td className="p-2 text-muted-foreground">{c.checkoutAt ? fmtPTDateTime(c.checkoutAt) : "-"}</td>
                     <td className="p-2 text-xs">
                       {c.mobileDataMbStart != null && c.mobileDataMbEnd != null
                         ? `${c.mobileDataMbEnd - c.mobileDataMbStart} MB`
@@ -1599,7 +1600,7 @@ function GpsAlertsTab() {
                       <p className="font-medium text-sm">{alert.displayName || alert.zelloUsername}</p>
                       <p className="text-xs text-muted-foreground">{alert.message}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(alert.occurredAt).toLocaleString("pt-PT")}
+                        {fmtPTDateTime(alert.occurredAt)}
                       </p>
                     </div>
                   </div>
@@ -1666,7 +1667,7 @@ function RadioTab() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Radio className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-muted-foreground">{new Date(t.createdAt).toLocaleString("pt-PT")}</span>
+                  <span className="text-sm text-muted-foreground">{fmtPTDateTime(t.createdAt)}</span>
                   {t.employeeId && <Badge variant="outline">{empMap.get(t.employeeId) || `#${t.employeeId}`}</Badge>}
                   {t.vehicleId && <Badge variant="secondary">{vehMap.get(t.vehicleId) || `#${t.vehicleId}`}</Badge>}
                   {t.duration && <span className="text-xs text-muted-foreground">{Math.floor(t.duration / 60)}:{String(t.duration % 60).padStart(2, "0")}</span>}
