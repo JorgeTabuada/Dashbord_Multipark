@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +61,7 @@ import {
   Key,
   ScrollText,
   LogOut,
+  Camera,
   PanelLeft,
   ChevronDown,
   ArrowDownToLine,
@@ -258,9 +259,6 @@ export default function DashboardLayout({
     );
   }
 
-  // Colaborador sem foto de perfil → convida a tirar uma (obrigatória p/ ponto).
-  const needsPhoto = !!employee && !employee.photoUrl;
-
   return (
     <SidebarProvider
       style={
@@ -269,7 +267,6 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      {needsPhoto && <ProfilePhotoPrompt />}
       <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
         {children}
       </DashboardLayoutContent>
@@ -293,6 +290,15 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const userRole = user?.role ?? "user";
+
+  // Foto de perfil (colaborador). Auto-abre o prompt se faltar; "Trocar foto"
+  // reabre-o a pedido.
+  const employee = (user as any)?.employee;
+  const photoUrl: string | null = employee?.photoUrl ?? null;
+  const [photoOpen, setPhotoOpen] = useState(false);
+  useEffect(() => {
+    if (employee && !photoUrl) setPhotoOpen(true);
+  }, [employee, photoUrl]);
   const filteredGroups = getFilteredMenuGroups(userRole);
   const filteredItems = filteredGroups.flatMap(g => g.items);
   const activeMenuItem = allMenuItems.find(item => item.path === location);
@@ -558,6 +564,7 @@ function DashboardLayoutContent({
               <DropdownMenuTrigger asChild>
                 <button className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full">
                   <Avatar className="h-9 w-9 border cursor-pointer">
+                    {photoUrl && <AvatarImage src={photoUrl} alt={user?.name ?? ""} className="object-cover" />}
                     <AvatarFallback className="text-xs font-medium bg-primary text-primary-foreground">
                       {user?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>
@@ -570,6 +577,12 @@ function DashboardLayoutContent({
                   <p className="text-xs text-muted-foreground">{user?.email || "-"}</p>
                 </div>
                 <DropdownMenuSeparator />
+                {employee && (
+                  <DropdownMenuItem onClick={() => setPhotoOpen(true)} className="cursor-pointer">
+                    <Camera className="mr-2 h-4 w-4" />
+                    <span>{photoUrl ? "Trocar foto" : "Adicionar foto"}</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={logout}
                   className="cursor-pointer text-destructive focus:text-destructive"
@@ -579,6 +592,7 @@ function DashboardLayoutContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {employee && <ProfilePhotoPrompt open={photoOpen} onOpenChange={setPhotoOpen} />}
           </div>
         </div>
 

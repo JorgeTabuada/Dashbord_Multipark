@@ -11,9 +11,9 @@ import { toast } from "sonner";
  * o ponto. Pode adiar ("Mais tarde") — a obrigatoriedade é garantida no servidor
  * ao tentar dar entrada no ponto.
  */
-export default function ProfilePhotoPrompt() {
+export default function ProfilePhotoPrompt({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const utils = trpc.useUtils();
-  const [open, setOpen] = useState(true);
+  const setOpen = onOpenChange;
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,6 +24,7 @@ export default function ProfilePhotoPrompt() {
       toast.success("Foto de perfil guardada!");
       utils.auth.me.invalidate();
       stopCamera();
+      setPreview(null);
       setOpen(false);
     },
     onError: (e) => toast.error(e.message),
@@ -67,7 +68,7 @@ export default function ProfilePhotoPrompt() {
   const retake = () => { setPreview(null); };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { stopCamera(); setOpen(false); } }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { stopCamera(); setPreview(null); setOpen(false); } }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Camera className="w-5 h-5 text-primary" /> Foto de perfil</DialogTitle>
@@ -106,7 +107,7 @@ export default function ProfilePhotoPrompt() {
           </div>
           <button
             className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { stopCamera(); setOpen(false); }}
+            onClick={() => { stopCamera(); setPreview(null); setOpen(false); }}
           >
             Mais tarde
           </button>
