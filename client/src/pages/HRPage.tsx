@@ -1659,6 +1659,54 @@ function RunMigration0049Button() {
   );
 }
 
+// ─── MIGRATION 0050 ONE-SHOT BUTTON (super_admin only) ────────────────────────
+function RunMigration0050Button() {
+  const run = trpc.admin.runMigration0050.useMutation({
+    onSuccess: (r) => {
+      if (r.failed > 0) toast.error(`Migration falhou em ${r.failed} statements: ${r.errors[0] ?? ""}`);
+      else toast.success(`Migration aplicada: ${r.ok} ok, ${r.skipped} já existiam`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Aplicar a migration 0050 (tabela extras_availability — disponibilidade dos extras)?")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A aplicar..." : "DB: 0050"}
+    </Button>
+  );
+}
+
+// ─── MIGRATION 0051 ONE-SHOT BUTTON (super_admin only) ────────────────────────
+function RunMigration0051Button() {
+  const run = trpc.admin.runMigration0051.useMutation({
+    onSuccess: (r) => {
+      if (r.failed > 0) toast.error(`Migration falhou em ${r.failed} statements: ${r.errors[0] ?? ""}`);
+      else toast.success(`Migration aplicada: ${r.ok} ok, ${r.skipped} já existiam`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Aplicar a migration 0051 (threading de emails: gmThreadId + headerRefs)?")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A aplicar..." : "DB: 0051"}
+    </Button>
+  );
+}
+
 function BackfillEmployeeProjectButton() {
   const utils = trpc.useUtils();
   const { data: projectsList = [] } = trpc.projects.list.useQuery();
@@ -2422,6 +2470,8 @@ export default function HRPage() {
           {userRole === "super_admin" && <BackfillEmployeeProjectButton />}
           {userRole === "super_admin" && <RunMigration0046Button />}
           {userRole === "super_admin" && <RunMigration0049Button />}
+          {userRole === "super_admin" && <RunMigration0050Button />}
+          {userRole === "super_admin" && <RunMigration0051Button />}
           {userRole === "super_admin" && (
             <Button variant="outline" size="sm" onClick={() => setShowDashboard(true)}>
               <BarChart3 className="w-4 h-4 mr-2" /> Dashboard

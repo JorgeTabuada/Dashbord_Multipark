@@ -93,6 +93,36 @@ import type { LostFoundItem, LostFoundPhoto, LostFoundMessage } from "../drizzle
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _schemaEnsure: Promise<void> | null = null;
+
+/**
+ * Aplica (idempotente, uma vez por processo) as migrations cujo SCHEMA drizzle
+ * já referencia colunas/tabelas novas — senão `select()` parte com "Unknown
+ * column" antes de alguém carregar no botão DB:NNNN. Limitado às migrations que
+ * introduzem schema lido no arranque (0050 extras_availability, 0051 threading).
+ * Os botões manuais continuam a existir; isto é só uma rede de segurança.
+ */
+async function ensureRecentSchema(db: NonNullable<typeof _db>): Promise<void> {
+  try {
+    const mods = await Promise.all([
+      import("./migrations/migration_0050").then(m => ({ s: m.MIGRATION_0050_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0050 })),
+      import("./migrations/migration_0051").then(m => ({ s: m.MIGRATION_0051_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0051 })),
+    ]);
+    for (const { s, ok } of mods) {
+      for (const stmt of s) {
+        try {
+          await db.execute(sql.raw(stmt));
+        } catch (err: any) {
+          if (!(err?.code && ok.has(err.code))) {
+            console.warn("[Schema ensure]", err?.code ?? "ERR", String(err?.message ?? err).slice(0, 160));
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn("[Schema ensure] falhou:", String(err?.message ?? err).slice(0, 160));
+  }
+}
 
 // MySQL timestamp(mode:string) helper — converte Date para "YYYY-MM-DD HH:MM:SS"
 function toMysqlDateTime(d: Date | string | null | undefined): string {
@@ -110,6 +140,8 @@ export async function getDb() {
       _db = null;
     }
   }
+  if (_db && !_schemaEnsure) _schemaEnsure = ensureRecentSchema(_db);
+  if (_schemaEnsure) await _schemaEnsure;
   return _db;
 }
 
