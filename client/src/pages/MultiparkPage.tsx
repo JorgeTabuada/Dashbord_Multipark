@@ -12,6 +12,7 @@ import { QuickRangeBar, thisMonthRange } from "@/components/QuickRangeBar";
 import { toast } from "sonner";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useParams } from "wouter";
+import { fmtBookingDateTime, fmtBookingDate, fmtBookingHHmm } from "@/lib/lisbonTime";
 import {
   ParkingCircle, Wifi, WifiOff, RefreshCw, Calendar, Car, Truck, Bike,
   MapPin, Clock, CheckCircle2, XCircle, AlertCircle, BarChart3, History, Building2,
@@ -447,8 +448,8 @@ function ActionTypeTab({ actionType }: { actionType: "creation" | "checkin" | "c
                           <span className="font-medium">{parkName}</span>
                           {parkCity && !parkName.includes(parkCity) && <span className="text-xs text-muted-foreground ml-1">{parkCity}</span>}
                         </td>
-                        <td className="p-2 text-xs">{fmtDateTime(b.checkIn)}</td>
-                        <td className="p-2 text-xs">{fmtDateTime(b.checkOut)}</td>
+                        <td className="p-2 text-xs">{fmtBookingDateTime(b.checkIn)}</td>
+                        <td className="p-2 text-xs">{fmtBookingDateTime(b.checkOut)}</td>
                         <td className="p-2 text-xs">
                           {b.deliveryType ? (
                             <Badge variant="outline" className="text-[10px]">{b.deliveryType}</Badge>
@@ -1014,12 +1015,12 @@ function BookingsTab({ statusFilter: statusFilterProp }: { statusFilter?: string
                           {b.city && <p className="text-muted-foreground">{b.city}</p>}
                         </td>
                         <td className="p-2 text-xs">
-                          {fmtDate(b.checkIn)}
-                          {b.checkInTime && <span className="text-muted-foreground ml-1">{b.checkInTime}</span>}
+                          {fmtBookingDate(b.checkIn)}
+                          {b.checkInTime && <span className="text-muted-foreground ml-1">{fmtBookingHHmm(b.checkInTime)}</span>}
                         </td>
                         <td className="p-2 text-xs">
-                          {fmtDate(b.checkOut)}
-                          {b.checkOutTime && <span className="text-muted-foreground ml-1">{b.checkOutTime}</span>}
+                          {fmtBookingDate(b.checkOut)}
+                          {b.checkOutTime && <span className="text-muted-foreground ml-1">{fmtBookingHHmm(b.checkOutTime)}</span>}
                         </td>
                         <td className="p-2 text-right font-medium text-green-700">
                           {fmtEur(b.totalPrice)}
