@@ -912,8 +912,10 @@ function ExpenseFormModal({
       if (data.paymentDueDate) set("paymentDueDate", data.paymentDueDate);
       set("extractedByAi", true);
       toast.success("Dados extraídos com IA!", { description: "Verifica e corrige se necessário." });
-    } catch {
-      toast.error("Não foi possível extrair dados da fatura");
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : "erro desconhecido";
+      toast.error("Não foi possível extrair dados da fatura", { description: msg.slice(0, 200) });
+      console.error("[extractFromImage]", e);
     } finally {
       setScanning(false);
     }
