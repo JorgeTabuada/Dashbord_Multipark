@@ -1,4 +1,4 @@
-import { put, head } from "@vercel/blob";
+import { put, head, del } from "@vercel/blob";
 import fs from "fs";
 import path from "path";
 
@@ -58,5 +58,25 @@ export async function storageGet(
     return { key, url: blob.url };
   } catch {
     return { key, url: "" };
+  }
+}
+
+/**
+ * Apaga um ficheiro do storage. Aceita a URL do blob (Vercel) ou a key/path.
+ * Best-effort: nunca lança (um ficheiro órfão não deve partir a operação).
+ */
+export async function storageDelete(keyOrUrl: string | null | undefined): Promise<void> {
+  if (!keyOrUrl) return;
+  try {
+    if (!isBlobConfigured()) {
+      const key = keyOrUrl.replace(/^\/?uploads\//, "").replace(/^\/+/, "");
+      const filePath = path.join(UPLOADS_DIR, key.replace(/\//g, path.sep));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return;
+    }
+    // O Vercel Blob aceita a URL pública ou a pathname.
+    await del(keyOrUrl);
+  } catch (err: any) {
+    console.warn("[storage] delete falhou:", String(err?.message ?? err).slice(0, 160));
   }
 }

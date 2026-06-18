@@ -943,8 +943,12 @@ function ExpenseFormModal({
         paymentDueDate: sanitize(form.paymentDueDate),
         categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
         projectId: parseInt(form.projectId),
+        buyerId: (form.buyerId && form.buyerId !== "none") ? parseInt(form.buyerId) : null,
         status: form.status as any,
         notes: form.notes || undefined,
+        // Se trocou a fatura, envia a nova (o servidor apaga a antiga).
+        invoiceImageUrl: form.invoiceImageUrl || null,
+        invoiceImageKey: form.invoiceImageKey || null,
       });
     } else {
       createMutation.mutate({

@@ -1456,8 +1456,11 @@ export const appRouter = router({
           paymentDueDate: z.string().optional(),
           categoryId: z.number().optional(),
           projectId: z.number().optional(),
+          buyerId: z.number().nullable().optional(),
           status: z.enum(["pending", "paid", "overdue", "cancelled"]).optional(),
           notes: z.string().optional(),
+          invoiceImageUrl: z.string().nullable().optional(),
+          invoiceImageKey: z.string().nullable().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -1466,6 +1469,18 @@ export const appRouter = router({
         if (expenseDate) updateData.expenseDate = new Date(expenseDate);
         if (paymentDueDate) updateData.paymentDueDate = new Date(paymentDueDate);
         if (rest.status === "paid") updateData.paidAt = new Date();
+
+        // Se foi enviada uma fatura nova, apaga o ficheiro antigo (senão fica órfão).
+        if (input.invoiceImageKey !== undefined || input.invoiceImageUrl !== undefined) {
+          const current = await getExpenseById(id);
+          const oldKey = current?.expense?.invoiceImageKey;
+          const oldUrl = current?.expense?.invoiceImageUrl;
+          const newKey = input.invoiceImageKey ?? null;
+          if (oldKey && oldKey !== newKey) {
+            const { storageDelete } = await import("./storage");
+            await storageDelete(oldKey || oldUrl);
+          }
+        }
 
         await updateExpense(id, updateData);
         await logActivity({
