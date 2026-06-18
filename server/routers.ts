@@ -528,6 +528,24 @@ async function applyMigration0051(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0052(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0052_STATEMENTS, IDEMPOTENT_ERROR_CODES_0052 } = await import("./migrations/migration_0052");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0, skipped = 0, failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0052_STATEMENTS) {
+    try { await db.execute(sql.raw(stmt)); ok += 1; }
+    catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0052.has(err.code)) skipped += 1;
+      else { failed += 1; errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`); }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -601,6 +619,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0051_inbound_email_threading: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0052: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0052();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0052_lostfound_return_fields: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),
@@ -4488,12 +4518,59 @@ export const appRouter = router({
       itemType: z.string().optional(),
       description: z.string().optional(),
       estimatedValue: z.number().optional(),
+      // Devolução estruturada
+      foundLocation: z.string().nullable().optional(),
+      foundByName: z.string().nullable().optional(),
+      returnMethod: z.string().nullable().optional(),
+      returnedAt: z.string().nullable().optional(),
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
       const { id, ...data } = input;
       await updateLostFoundItem(id, data as any);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "lost_found", entityId: id, details: `Atualizado: ${JSON.stringify(data)}` });
       return { success: true };
+    }),
+
+    // Foto/assinatura da entrega ao cliente.
+    uploadReturnPhoto: protectedProcedure.input(z.object({
+      itemId: z.number(),
+      base64: z.string(),
+      filename: z.string(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const buffer = Buffer.from(input.base64, "base64");
+      const ext = input.filename.split(".").pop() || "jpg";
+      const key = `lost-found/${input.itemId}/return-${Date.now()}.${ext}`;
+      const { url } = await storagePut(key, buffer, `image/${ext}`);
+      await updateLostFoundItem(input.itemId, { returnPhotoUrl: url, returnPhotoKey: key } as any);
+      return { url };
+    }),
+
+    // Email ao cliente (ex.: objeto encontrado / pronto a devolver). Sai de perdidos@.
+    sendEmailToClient: protectedProcedure.input(z.object({
+      itemId: z.number(),
+      subject: z.string().min(1).max(255),
+      body: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const item = await getLostFoundItemById(input.itemId);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Item não encontrado" });
+      if (!item.clientEmail) throw new TRPCError({ code: "BAD_REQUEST", message: "Item sem email de cliente" });
+      const { sendEmail } = await import("./_core/notification");
+      const greeting = item.clientName ? `Olá ${item.clientName},\n\n` : "Olá,\n\n";
+      const full = greeting + input.body;
+      const ok = await sendEmail({
+        to: item.clientEmail,
+        subject: input.subject,
+        text: full,
+        html: `<p>${full.replace(/\n/g, "<br>")}</p>`,
+        from: "perdidos@multipark.pt",
+        fromName: "Multipark",
+      });
+      if (!ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Falha ao enviar email (SMTP)" });
+      await updateLostFoundItem(input.itemId, { clientEmailSentAt: new Date().toISOString().slice(0, 19).replace("T", " ") } as any);
+      await logActivity({ userId: ctx.user.id, action: "email_sent", entity: "lost_found", entityId: input.itemId, details: `Email para cliente: ${input.subject}` });
+      return { ok: true };
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {

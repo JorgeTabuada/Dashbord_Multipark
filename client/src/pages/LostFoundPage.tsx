@@ -291,8 +291,13 @@ function ItemCard({ item, onSelect, onMove, currentStatus }: any) {
   const canMoveRight = colIdx < KANBAN_COLUMNS.length - 1;
   const TypeIcon = TYPE_CONFIG[item.itemType]?.icon || Package;
 
+  const ageDays = (item.status !== "returned" && item.status !== "closed")
+    ? Math.floor((Date.now() - new Date(String(item.createdAt).replace(" ", "T") + "Z").getTime()) / 86400000)
+    : 0;
+  const stale = ageDays >= 7;
+
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+    <Card className={`cursor-pointer hover:shadow-md transition-shadow ${stale ? "border-red-400 border-2" : ""}`}>
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-1.5" onClick={onSelect}>
@@ -303,6 +308,11 @@ function ItemCard({ item, onSelect, onMove, currentStatus }: any) {
             {PRIORITY_CONFIG[item.priority]?.label}
           </Badge>
         </div>
+        {ageDays >= 3 && (
+          <div className={`flex items-center gap-1 text-xs font-medium ${stale ? "text-red-600" : "text-amber-600"}`}>
+            <Clock className="w-3 h-3" /> Parado há {ageDays} dias
+          </div>
+        )}
 
         {item.vehiclePlate && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -471,6 +481,13 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
             <h1 className="text-xl font-bold">{item.description}</h1>
             <Badge className={STATUS_CONFIG[item.status]?.color}>{STATUS_CONFIG[item.status]?.label}</Badge>
             <Badge className={PRIORITY_CONFIG[item.priority]?.color}>{PRIORITY_CONFIG[item.priority]?.label}</Badge>
+            {(() => {
+              if (item.status === "returned" || item.status === "closed") return null;
+              const days = Math.floor((Date.now() - new Date(String(item.createdAt).replace(" ", "T") + "Z").getTime()) / 86400000);
+              if (days < 1) return null;
+              const cls = days >= 7 ? "bg-red-100 text-red-700 border-red-200" : days >= 3 ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-600";
+              return <Badge variant="outline" className={cls}>Parado há {days} {days === 1 ? "dia" : "dias"}</Badge>;
+            })()}
           </div>
           <p className="text-sm text-muted-foreground">Caso #{item.id} — Criado em {fmtPTDate(item.createdAt)}</p>
         </div>
@@ -572,6 +589,8 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                   </CardContent>
                 </Card>
               )}
+
+              <ReturnPanel item={item} />
             </TabsContent>
 
             <TabsContent value="messages" className="space-y-4">
@@ -1324,5 +1343,120 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
         </Card>
       )}
     </div>
+  );
+}
+
+// ─── Devolução estruturada + email ao cliente ────────────────────────────────
+function ReturnPanel({ item }: { item: any }) {
+  const utils = trpc.useUtils();
+  const [form, setForm] = useState({
+    foundLocation: item.foundLocation || "",
+    foundByName: item.foundByName || "",
+    returnMethod: item.returnMethod || "",
+    returnedAt: item.returnedAt ? String(item.returnedAt).slice(0, 10) : "",
+  });
+  const [emailOpen, setEmailOpen] = useState(false);
+  const save = trpc.lostFound.update.useMutation({
+    onSuccess: () => { utils.lostFound.getById.invalidate({ id: item.id }); toast.success("Devolução guardada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const uploadReturn = trpc.lostFound.uploadReturnPhoto.useMutation({
+    onSuccess: () => { utils.lostFound.getById.invalidate({ id: item.id }); toast.success("Foto da entrega guardada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => uploadReturn.mutate({ itemId: item.id, base64: String(r.result).split(",")[1], filename: f.name });
+    r.readAsDataURL(f);
+    e.target.value = "";
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center justify-between gap-2">
+          <span>Devolução ao cliente</span>
+          {item.clientEmail && (
+            <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
+              <Mail className="w-4 h-4 mr-1" /> Avisar cliente
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><Label className="text-xs">Onde foi encontrado</Label>
+            <Input value={form.foundLocation} onChange={e => setForm(f => ({ ...f, foundLocation: e.target.value }))} placeholder="Ex: porta-luvas, lugar A12" /></div>
+          <div><Label className="text-xs">Quem encontrou</Label>
+            <Input value={form.foundByName} onChange={e => setForm(f => ({ ...f, foundByName: e.target.value }))} placeholder="Condutor / agente" /></div>
+          <div><Label className="text-xs">Como foi devolvido</Label>
+            <Select value={form.returnMethod || "none"} onValueChange={v => setForm(f => ({ ...f, returnMethod: v === "none" ? "" : v }))}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                <SelectItem value="em_maos">Em mãos (no parque)</SelectItem>
+                <SelectItem value="correio">Correio / transportadora</SelectItem>
+                <SelectItem value="entrega">Entrega ao domicílio</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label className="text-xs">Data da devolução</Label>
+            <Input type="date" value={form.returnedAt} onChange={e => setForm(f => ({ ...f, returnedAt: e.target.value }))} /></div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate({
+            id: item.id,
+            foundLocation: form.foundLocation || null,
+            foundByName: form.foundByName || null,
+            returnMethod: form.returnMethod || null,
+            returnedAt: form.returnedAt ? form.returnedAt + " 00:00:00" : null,
+          })}>
+            <CheckCircle2 className="w-4 h-4 mr-1" /> Guardar devolução
+          </Button>
+          <label className="text-xs text-blue-600 cursor-pointer inline-flex items-center gap-1">
+            <Upload className="w-3 h-3" /> Foto/assinatura da entrega
+            <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+          </label>
+          {item.returnPhotoUrl && <a href={item.returnPhotoUrl} target="_blank" rel="noreferrer" className="text-xs underline">ver foto</a>}
+        </div>
+        {item.clientEmailSentAt && (
+          <p className="text-xs text-muted-foreground">Cliente avisado por email em {fmtPTDateTime(item.clientEmailSentAt)}</p>
+        )}
+      </CardContent>
+      {emailOpen && <ReturnEmailDialog item={item} onClose={() => setEmailOpen(false)} />}
+    </Card>
+  );
+}
+
+function ReturnEmailDialog({ item, onClose }: { item: any; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [subject, setSubject] = useState(`Multipark — objeto encontrado`);
+  const [body, setBody] = useState(
+    `Informamos que foi encontrado um objeto associado à sua reserva${item.bookingRef ? ` ${item.bookingRef}` : ""}: ${item.description}.\n\n` +
+    `Pode levantá-lo no parque ou responder a este email para combinarmos a devolução.\n\nObrigado.`
+  );
+  const send = trpc.lostFound.sendEmailToClient.useMutation({
+    onSuccess: () => { utils.lostFound.getById.invalidate({ id: item.id }); toast.success("Email enviado ao cliente"); onClose(); },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Avisar cliente — {item.clientEmail}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Assunto</Label><Input value={subject} onChange={e => setSubject(e.target.value)} /></div>
+          <div><Label>Mensagem</Label><Textarea rows={6} value={body} onChange={e => setBody(e.target.value)} /></div>
+          <p className="text-xs text-muted-foreground">Sai de perdidos@multipark.pt. A saudação ("Olá {"{nome}"}") é adicionada automaticamente.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={send.isPending || !subject || !body} onClick={() => send.mutate({ itemId: item.id, subject, body })}>
+            <Mail className="w-4 h-4 mr-2" /> {send.isPending ? "A enviar…" : "Enviar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
