@@ -7537,6 +7537,83 @@ export async function findOpenComplaintByClient(clientEmail?: string | null, veh
   return rows[0] || null;
 }
 
+// ── Threading: agrupar RESPOSTAS na mesma reclamação/perdido ──────────────────
+// Normaliza um assunto removendo prefixos Re:/Fwd:/Enc: e espaços, p/ comparar
+// "Re: Fwd: Reclamação X" com o título original "Reclamação X".
+export function normalizeSubject(subject?: string | null): string {
+  return (subject || "")
+    .replace(/^(\s*(re|fw|fwd|enc|res|tr|aw)\s*:\s*)+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Procura a reclamação a que um email inbound pertence pelo THREAD:
+ *  1) gmThreadId (X-GM-THRID) igual a um email já roteado para uma reclamação;
+ *  2) interseção das referências (In-Reply-To/References) com o messageId OU as
+ *     headerRefs de emails já roteados para uma reclamação.
+ * Devolve a reclamação mesmo que esteja resolvida/fechada (uma resposta reabre).
+ */
+export async function findComplaintByThread(opts: { gmThreadId?: string | null; refs?: string[] }) {
+  const db = await getDb();
+  if (!db) return null;
+
+  if (opts.gmThreadId) {
+    const rows = await db.select().from(inboundEmails)
+      .where(and(
+        eq(inboundEmails.gmThreadId, opts.gmThreadId),
+        eq(inboundEmails.targetModule, "complaint"),
+        isNotNull(inboundEmails.targetId),
+      ))
+      .orderBy(desc(inboundEmails.id))
+      .limit(1);
+    if (rows[0]?.targetId) {
+      const c = await getComplaintById(rows[0].targetId);
+      if (c) return c;
+    }
+  }
+
+  const refs = (opts.refs || []).map(r => r.trim()).filter(Boolean);
+  if (refs.length) {
+    const refSet = new Set(refs);
+    const recent = await db.select().from(inboundEmails)
+      .where(and(eq(inboundEmails.targetModule, "complaint"), isNotNull(inboundEmails.targetId)))
+      .orderBy(desc(inboundEmails.id))
+      .limit(500);
+    for (const r of recent) {
+      const known = new Set<string>();
+      if (r.messageId) known.add(r.messageId.trim());
+      if (r.headerRefs) for (const x of r.headerRefs.split(/\s+/)) if (x) known.add(x.trim());
+      let hit = false;
+      for (const ref of refSet) if (known.has(ref)) { hit = true; break; }
+      if (hit && r.targetId) {
+        const c = await getComplaintById(r.targetId);
+        if (c) return c;
+      }
+    }
+  }
+  return null;
+}
+
+// Fallback: reclamação ABERTA com o mesmo assunto normalizado (cobre respostas
+// reencaminhadas que perderam thread/referências mas mantêm "Re: <assunto>").
+export async function findOpenComplaintBySubject(subject?: string | null) {
+  const db = await getDb();
+  if (!db) return null;
+  const key = normalizeSubject(subject);
+  if (key.length < 6) return null; // evita agrupar por assuntos demasiado genéricos
+  const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
+  const rows = await db.select().from(complaints)
+    .where(and(
+      notInArray(complaints.complaintStatus, ["resolved", "closed"]),
+      gte(complaints.createdAt, since),
+    ))
+    .orderBy(desc(complaints.createdAt))
+    .limit(200);
+  return rows.find(r => normalizeSubject(r.title) === key) || null;
+}
+
 // Idem para Perdidos & Achados (aberto = não devolvido/fechado).
 export async function findOpenLostFoundByClient(clientEmail?: string | null, vehiclePlate?: string | null) {
   const db = await getDb();

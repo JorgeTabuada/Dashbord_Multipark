@@ -1201,6 +1201,8 @@ export const inboundEmails = mysqlTable("inbound_emails", {
 	targetModule: varchar({ length: 40 }),                 // review | complaint | lostfound | rh
 	targetId: int(),                                       // id do registo criado
 	taskId: int(),                                         // tarefa criada (ex: RH → Kamila)
+	gmThreadId: varchar({ length: 64 }),                   // X-GM-THRID (thread do Gmail) p/ agrupar respostas
+	headerRefs: text(),                                    // In-Reply-To + References (message-ids) p/ threading
 	status: mysqlEnum(['processed', 'skipped', 'error']).default('processed').notNull(),
 	errorMsg: varchar({ length: 500 }),
 	receivedAt: timestamp({ mode: 'string' }),
@@ -1210,6 +1212,7 @@ export const inboundEmails = mysqlTable("inbound_emails", {
 (table) => [
 	uniqueIndex("inbound_emails_message_id_unique").on(table.messageId),
 	index("inbound_emails_alias_idx").on(table.alias),
+	index("inbound_emails_gm_thread_idx").on(table.gmThreadId),
 ]);
 
 // ─── Select & Insert type aliases ───────────────────────────────────────────

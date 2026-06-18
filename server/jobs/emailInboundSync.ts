@@ -32,6 +32,9 @@ import {
   assignTaskToEmployee,
   findOpenComplaintByClient,
   findOpenLostFoundByClient,
+  findComplaintByThread,
+  findOpenComplaintBySubject,
+  updateComplaint,
   addComplaintMessage,
   addLostFoundMessage,
 } from "../db";
@@ -65,7 +68,15 @@ function imapConfig() {
 async function routeToModule(
   alias: InboundAlias,
   parsed: ReturnType<typeof parseInboundBody>,
-  ctx: { subject: string; bodyText: string; fromName?: string; messageId: string },
+  ctx: {
+    subject: string;
+    bodyText: string;
+    fromName?: string;
+    fromEmail?: string;
+    messageId: string;
+    gmThreadId?: string | null;
+    refs?: string[];
+  },
 ): Promise<{ targetModule: string; targetId?: number; taskId?: number }> {
   const clientName = parsed.clientName || ctx.fromName || "Desconhecido";
   const desc = `${ctx.subject}\n\n${ctx.bodyText}`.trim().slice(0, 5000);
@@ -99,8 +110,14 @@ async function routeToModule(
   }
 
   if (alias === "reclamacoes") {
-    // Agrupa com reclamação aberta do mesmo cliente (email repetido / resposta).
-    const existing = await findOpenComplaintByClient(parsed.clientEmail, parsed.vehiclePlate);
+    // Agrupa respostas/emails repetidos na MESMA reclamação. Ordem de sinais:
+    //  1) thread do Gmail / referências (resposta ao mesmo email — o mais fiável)
+    //  2) email do cliente (corpo) ou remetente / matrícula
+    //  3) assunto normalizado (resposta reencaminhada que perdeu o thread)
+    const existing =
+      (await findComplaintByThread({ gmThreadId: ctx.gmThreadId, refs: ctx.refs })) ||
+      (await findOpenComplaintByClient(parsed.clientEmail || ctx.fromEmail, parsed.vehiclePlate)) ||
+      (await findOpenComplaintBySubject(ctx.subject));
     if (existing) {
       await addComplaintMessage({
         complaintId: existing.id,
@@ -108,6 +125,10 @@ async function routeToModule(
         isInternal: 0,
         authorName: clientName,
       } as any);
+      // Uma nova mensagem do cliente reabre uma reclamação resolvida/fechada.
+      if (existing.complaintStatus === "resolved" || existing.complaintStatus === "closed") {
+        try { await updateComplaint(existing.id, { complaintStatus: "analyzing", resolvedAt: null } as any); } catch { /* best-effort */ }
+      }
       return { targetModule: "complaint", targetId: existing.id };
     }
     const id = await createComplaint({
@@ -126,7 +147,7 @@ async function routeToModule(
   }
 
   if (alias === "perdidos") {
-    const existing = await findOpenLostFoundByClient(parsed.clientEmail, parsed.vehiclePlate);
+    const existing = await findOpenLostFoundByClient(parsed.clientEmail || ctx.fromEmail, parsed.vehiclePlate);
     if (existing) {
       await addLostFoundMessage({
         itemId: existing.id,
@@ -198,10 +219,20 @@ export async function runEmailInboundSync(opts?: { sinceDays?: number }): Promis
       for (const uid of uids) {
         result.scanned++;
         try {
-          const msg = await client.fetchOne(uid, { source: true }, { uid: true });
+          const msg = await client.fetchOne(uid, { source: true, threadId: true }, { uid: true });
           if (!msg || !msg.source) { result.skipped++; continue; }
           const mail = await simpleParser(msg.source as Buffer);
           const messageId = mail.messageId || `uid:${alias}:${uid}`;
+          // Thread do Gmail + referências de cabeçalho (p/ agrupar respostas).
+          const gmThreadId = (msg as any).threadId ? String((msg as any).threadId) : null;
+          const refsRaw = mail.references
+            ? (Array.isArray(mail.references) ? mail.references : [mail.references])
+            : [];
+          const refs = [...(mail.inReplyTo ? [mail.inReplyTo] : []), ...refsRaw]
+            .flatMap(r => String(r).split(/\s+/))
+            .map(r => r.trim())
+            .filter(Boolean);
+          const headerRefs = refs.length ? refs.join(" ").slice(0, 4000) : null;
 
           // dedup
           const existing = await getInboundEmailByMessageId(messageId);
@@ -229,7 +260,9 @@ export async function runEmailInboundSync(opts?: { sinceDays?: number }): Promis
             filename: a.filename, contentType: a.contentType, size: a.size,
           }));
 
-          const routed = await routeToModule(alias, parsed, { subject, bodyText, fromName, messageId });
+          const routed = await routeToModule(alias, parsed, {
+            subject, bodyText, fromName, fromEmail, messageId, gmThreadId, refs,
+          });
 
           await createInboundEmail({
             messageId, alias, fromName, fromEmail,
@@ -240,6 +273,7 @@ export async function runEmailInboundSync(opts?: { sinceDays?: number }): Promis
             attachmentsJson: attachments.length ? JSON.stringify(attachments) : null,
             targetModule: routed.targetModule, targetId: routed.targetId ?? null,
             taskId: routed.taskId ?? null,
+            gmThreadId, headerRefs,
             status: "processed",
             receivedAt: mail.date ? new Date(mail.date).toISOString().slice(0, 19).replace("T", " ") : null,
             processedAt: now(),
