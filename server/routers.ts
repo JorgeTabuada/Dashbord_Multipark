@@ -442,6 +442,32 @@ async function applyMigration0048(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0049(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0049_STATEMENTS, IDEMPOTENT_ERROR_CODES_0049 } = await import("./migrations/migration_0049");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0049_STATEMENTS) {
+    try {
+      await db.execute(sql.raw(stmt));
+      ok += 1;
+    } catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0049.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -479,6 +505,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0048_campaign_daily_metrics: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0049: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0049();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0049_inbound_emails: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),
@@ -1669,6 +1707,29 @@ export const appRouter = router({
     me: protectedProcedure.query(async ({ ctx }) => {
       return getEmployeeByUserId(ctx.user.id);
     }),
+
+    // ── RECRUTAMENTO (emails recebidos em recursos-humanos@) ───────────────────
+    recruitmentEmails: protectedProcedure.query(async ({ ctx }) => {
+      requireRole(ctx.user.role, "backoffice");
+      const { listInboundEmailsByAlias } = await import("./db");
+      return listInboundEmailsByAlias("recursos-humanos", 200);
+    }),
+
+    replyRecruitment: protectedProcedure
+      .input(z.object({ to: z.string().email(), subject: z.string().min(1), body: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
+        const { sendEmail } = await import("./_core/notification");
+        const ok = await sendEmail({ to: input.to, subject: input.subject, text: input.body });
+        await logActivity({
+          userId: ctx.user.id,
+          action: "email_reply",
+          entity: "recruitment",
+          details: `Resposta a ${input.to}: ${input.subject.slice(0, 80)}`,
+        });
+        if (!ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "SMTP não configurado ou falhou o envio" });
+        return { ok };
+      }),
 
     // Resumo do mês actual para o próprio colaborador: horas + valor a receber.
     // Admin pode ver de outros passando employeeId; o próprio só vê o seu.

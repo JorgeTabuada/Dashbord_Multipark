@@ -1163,6 +1163,35 @@ export const vehicles = mysqlTable("vehicles", {
 	index("vehicles_plate_unique").on(table.plate),
 ]);
 
+// ─── Inbound emails (leitura IMAP da reservas@ → roteamento para módulos) ────
+export const inboundEmails = mysqlTable("inbound_emails", {
+	id: int().autoincrement().primaryKey(),
+	messageId: varchar({ length: 255 }).notNull(),         // Message-ID do email (dedup)
+	alias: varchar({ length: 40 }).notNull(),              // criticas | reclamacoes | perdidos | recursos-humanos
+	fromName: varchar({ length: 255 }),
+	fromEmail: varchar({ length: 320 }),                   // remetente do cabeçalho (pode vir mascarado)
+	clientName: varchar({ length: 255 }),                  // cliente real extraído do corpo
+	clientEmail: varchar({ length: 320 }),
+	clientPhone: varchar({ length: 50 }),
+	vehiclePlate: varchar({ length: 20 }),
+	bookingRef: varchar({ length: 100 }),
+	subject: varchar({ length: 500 }),
+	bodyText: text(),
+	attachmentsJson: text(),                               // [{filename, contentType, size, s3Key}]
+	targetModule: varchar({ length: 40 }),                 // review | complaint | lostfound | rh
+	targetId: int(),                                       // id do registo criado
+	taskId: int(),                                         // tarefa criada (ex: RH → Kamila)
+	status: mysqlEnum(['processed', 'skipped', 'error']).default('processed').notNull(),
+	errorMsg: varchar({ length: 500 }),
+	receivedAt: timestamp({ mode: 'string' }),
+	processedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	uniqueIndex("inbound_emails_message_id_unique").on(table.messageId),
+	index("inbound_emails_alias_idx").on(table.alias),
+]);
+
 // ─── Select & Insert type aliases ───────────────────────────────────────────
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -1202,3 +1231,5 @@ export type InsertExtraRate = typeof extraRates.$inferInsert;
 export type LostFoundItem = typeof lostFoundItems.$inferSelect;
 export type LostFoundPhoto = typeof lostFoundPhotos.$inferSelect;
 export type LostFoundMessage = typeof lostFoundMessages.$inferSelect;
+export type InboundEmail = typeof inboundEmails.$inferSelect;
+export type InsertInboundEmail = typeof inboundEmails.$inferInsert;

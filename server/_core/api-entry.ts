@@ -180,6 +180,20 @@ app.get("/api/cron/daily-ops", async (req, res) => {
   }
 });
 
+// Leitor de email inbound: lê a caixa reservas@ por IMAP e cria registos nos
+// módulos (Críticas/Reclamações/Perdidos/RH) a partir dos emails reencaminhados
+// para os aliases. Substitui o fluxo Make.com. GitHub Actions chama a cada ~15min.
+app.get("/api/cron/email-inbound", async (req, res) => {
+  if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { runEmailInboundSync } = await import("../jobs/emailInboundSync");
+    const result = await runEmailInboundSync();
+    res.json({ ok: result.configured, ranAt: new Date().toISOString(), ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
+  }
+});
+
 app.get("/api/cron/multipark-cleanup", async (req, res) => {
   if (!cronAuthOk(req)) return res.status(401).json({ error: "Unauthorized" });
   try {

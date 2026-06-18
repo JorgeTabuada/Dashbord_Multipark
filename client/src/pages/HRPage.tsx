@@ -1635,6 +1635,30 @@ function RunMigration0046Button() {
   );
 }
 
+// ─── MIGRATION 0049 ONE-SHOT BUTTON (super_admin only) ────────────────────────
+function RunMigration0049Button() {
+  const run = trpc.admin.runMigration0049.useMutation({
+    onSuccess: (r) => {
+      if (r.failed > 0) toast.error(`Migration falhou em ${r.failed} statements: ${r.errors[0] ?? ""}`);
+      else toast.success(`Migration aplicada: ${r.ok} ok, ${r.skipped} já existiam`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={run.isPending}
+      onClick={() => {
+        if (!confirm("Aplicar a migration 0049 (tabela inbound_emails — leitor de email)?")) return;
+        run.mutate();
+      }}
+    >
+      {run.isPending ? "A aplicar..." : "DB: 0049"}
+    </Button>
+  );
+}
+
 function BackfillEmployeeProjectButton() {
   const utils = trpc.useUtils();
   const { data: projectsList = [] } = trpc.projects.list.useQuery();
@@ -2136,6 +2160,93 @@ function PayrollPage({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ── Aba RECRUTAMENTO: emails recebidos em recursos-humanos@ ────────────────────
+function RecruitmentTab() {
+  const { data: emails = [], isLoading, refetch } = trpc.rh.recruitmentEmails.useQuery();
+  const [selected, setSelected] = useState<any | null>(null);
+  const [replyTo, setReplyTo] = useState("");
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+
+  const reply = trpc.rh.replyRecruitment.useMutation({
+    onSuccess: () => { toast.success("Resposta enviada"); setSelected(null); setReplyBody(""); },
+    onError: (e) => toast.error(e.message || "Falha ao enviar"),
+  });
+
+  const openReply = (e: any) => {
+    setSelected(e);
+    setReplyTo(e.clientEmail || e.fromEmail || "");
+    setReplySubject(`Re: ${e.subject || "Candidatura"}`);
+    setReplyBody("");
+  };
+
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground">A carregar emails de recrutamento...</div>;
+  if (!emails.length) return (
+    <div className="text-center py-12 text-muted-foreground">
+      <Mail className="w-12 h-12 mx-auto mb-3 opacity-30" />
+      <p>Sem emails de recrutamento.</p>
+      <p className="text-xs mt-1">Reencaminha um email para <b>recursos-humanos@multipark.pt</b> e aparece aqui.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{emails.length} email(s) recebido(s)</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}><ArrowUpDown className="w-4 h-4 mr-2" />Atualizar</Button>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        {emails.map((e: any) => (
+          <Card key={e.id}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{e.subject || "(sem assunto)"}</span>
+                    {e.taskId ? <Badge variant="secondary">Tarefa #{e.taskId}</Badge> : null}
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+                    <span className="flex items-center gap-1"><Users className="w-3 h-3" />{e.clientName || e.fromName || "Desconhecido"}</span>
+                    {(e.clientEmail || e.fromEmail) && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{e.clientEmail || e.fromEmail}</span>}
+                    {e.clientPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{e.clientPhone}</span>}
+                    {e.receivedAt && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{String(e.receivedAt).slice(0, 16)}</span>}
+                  </div>
+                  {e.bodyText && <p className="text-sm mt-2 line-clamp-2 text-muted-foreground whitespace-pre-wrap">{e.bodyText.slice(0, 300)}</p>}
+                </div>
+                <Button size="sm" onClick={() => openReply(e)} disabled={!(e.clientEmail || e.fromEmail)}>
+                  <Mail className="w-4 h-4 mr-2" />Responder
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Responder candidatura</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Para</Label><Input value={replyTo} onChange={(ev) => setReplyTo(ev.target.value)} /></div>
+            <div><Label>Assunto</Label><Input value={replySubject} onChange={(ev) => setReplySubject(ev.target.value)} /></div>
+            <div>
+              <Label>Mensagem</Label>
+              <textarea className="w-full min-h-[160px] rounded-md border p-2 text-sm" value={replyBody}
+                onChange={(ev) => setReplyBody(ev.target.value)} placeholder="Escreve a resposta…" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
+            <Button onClick={() => reply.mutate({ to: replyTo, subject: replySubject, body: replyBody })}
+              disabled={reply.isPending || !replyTo || !replyBody}>
+              <Mail className="w-4 h-4 mr-2" />{reply.isPending ? "A enviar…" : "Enviar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function HRPage() {
   const { user } = useAuth();
   const userRole = user?.role ?? "user";
@@ -2296,6 +2407,7 @@ export default function HRPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {userRole === "super_admin" && <BackfillEmployeeProjectButton />}
           {userRole === "super_admin" && <RunMigration0046Button />}
+          {userRole === "super_admin" && <RunMigration0049Button />}
           {userRole === "super_admin" && (
             <Button variant="outline" size="sm" onClick={() => setShowDashboard(true)}>
               <BarChart3 className="w-4 h-4 mr-2" /> Dashboard
@@ -2383,6 +2495,9 @@ export default function HRPage() {
             <TabsTrigger value="extras">
               Extras <Badge variant="secondary" className="ml-2">{extrasList.length}</Badge>
             </TabsTrigger>
+            <TabsTrigger value="recrutamento">
+              <Mail className="w-4 h-4 mr-2" />Recrutamento
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="employees" className="mt-4">
             {employeesList.length === 0 ? (
@@ -2401,6 +2516,9 @@ export default function HRPage() {
                 {extrasList.map(renderCard)}
               </div>
             )}
+          </TabsContent>
+          <TabsContent value="recrutamento" className="mt-4">
+            <RecruitmentTab />
           </TabsContent>
         </Tabs>
       )}

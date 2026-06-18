@@ -8,6 +8,8 @@ import {
   projectEmployees,
   tasks,
   taskAssignees,
+  inboundEmails,
+  InsertInboundEmail,
   activityLogs,
   InsertUser,
   InsertExpense,
@@ -7454,4 +7456,56 @@ export async function syncIncidentsFromMultiparkHistory(opts: {
     }
   }
   return result;
+}
+
+// ─── INBOUND EMAILS (leitor IMAP → roteamento) ──────────────────────────────
+export async function createInboundEmail(data: InsertInboundEmail): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(inboundEmails).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function getInboundEmailByMessageId(messageId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(inboundEmails).where(eq(inboundEmails.messageId, messageId)).limit(1);
+  return rows[0] || null;
+}
+
+export async function listInboundEmailsByAlias(alias: string, limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(inboundEmails)
+    .where(eq(inboundEmails.alias, alias))
+    .orderBy(desc(inboundEmails.receivedAt), desc(inboundEmails.id))
+    .limit(limit);
+}
+
+// Procura um colaborador por email exato ou por nome (parcial, case-insensitive).
+export async function findEmployeeByEmailOrName(needle: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(employees)
+    .where(or(eq(employees.email, needle), like(employees.fullName, `%${needle}%`)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+// Id de um utilizador de "sistema" (1º super_admin) para createdBy/createdById.
+export async function getSystemUserId(): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db.select({ id: users.id }).from(users)
+    .where(eq(users.role, "super_admin")).orderBy(users.id).limit(1);
+  if (rows[0]?.id) return rows[0].id;
+  const any = await db.select({ id: users.id }).from(users).orderBy(users.id).limit(1);
+  if (!any[0]?.id) throw new Error("Sem utilizadores na BD");
+  return any[0].id;
+}
+
+export async function assignTaskToEmployee(taskId: number, employeeId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(taskAssignees).values({ taskId, employeeId });
 }
