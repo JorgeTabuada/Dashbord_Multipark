@@ -3760,6 +3760,8 @@ export const appRouter = router({
         const { sendComplaintEmailToClient } = await import("./complaintsExtended");
         const r = await sendComplaintEmailToClient(input);
         if (r.ok) {
+          // Responder ao cliente → reclamação passa a "aguarda cliente".
+          await updateComplaint(input.complaintId, { complaintStatus: "waiting_client" } as any);
           await logActivity({
             userId: ctx.user.id, action: "email_sent", entity: "complaint",
             entityId: input.complaintId, details: `Email para cliente: ${input.subject}`,

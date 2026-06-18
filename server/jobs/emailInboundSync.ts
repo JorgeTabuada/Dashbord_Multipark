@@ -30,6 +30,10 @@ import {
   findEmployeeByEmailOrName,
   getSystemUserId,
   assignTaskToEmployee,
+  findOpenComplaintByClient,
+  findOpenLostFoundByClient,
+  addComplaintMessage,
+  addLostFoundMessage,
 } from "../db";
 
 const ALIASES: InboundAlias[] = ["criticas", "reclamacoes", "perdidos", "recursos-humanos"];
@@ -95,6 +99,17 @@ async function routeToModule(
   }
 
   if (alias === "reclamacoes") {
+    // Agrupa com reclamação aberta do mesmo cliente (email repetido / resposta).
+    const existing = await findOpenComplaintByClient(parsed.clientEmail, parsed.vehiclePlate);
+    if (existing) {
+      await addComplaintMessage({
+        complaintId: existing.id,
+        message: `📧 ${ctx.subject}\n\n${ctx.bodyText}`.trim().slice(0, 5000),
+        isInternal: 0,
+        authorName: clientName,
+      } as any);
+      return { targetModule: "complaint", targetId: existing.id };
+    }
     const id = await createComplaint({
       title: (ctx.subject || "Reclamação por email").slice(0, 255),
       description: desc,
@@ -111,6 +126,17 @@ async function routeToModule(
   }
 
   if (alias === "perdidos") {
+    const existing = await findOpenLostFoundByClient(parsed.clientEmail, parsed.vehiclePlate);
+    if (existing) {
+      await addLostFoundMessage({
+        itemId: existing.id,
+        userId: await getSystemUserId(),
+        userName: clientName,
+        message: `📧 ${ctx.subject}\n\n${ctx.bodyText}`.trim().slice(0, 5000),
+        isInternal: 0,
+      } as any);
+      return { targetModule: "lostfound", targetId: existing.id };
+    }
     const id = await createLostFoundItem({
       clientName,
       clientEmail: parsed.clientEmail,

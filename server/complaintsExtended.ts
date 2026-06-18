@@ -294,6 +294,8 @@ export async function sendComplaintEmailToClient(input: {
     subject: input.subject,
     text: fullBody,
     html: `<p>${fullBody.replace(/\n/g, "<br>")}</p>`,
+    from: "reclamacoes@multipark.pt",
+    fromName: "Multipark",
   });
 
   if (ok) {

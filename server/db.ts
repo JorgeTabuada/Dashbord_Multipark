@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray, getTableColumns } from "drizzle-orm";
+import { and, desc, eq, gte, lte, like, or, sql, aliasedTable, isNotNull, isNull, inArray, notInArray, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   users,
@@ -7519,4 +7519,35 @@ export async function assignTaskToEmployee(taskId: number, employeeId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.insert(taskAssignees).values({ taskId, employeeId });
+}
+
+// Procura uma reclamação ABERTA do mesmo cliente (email ou matrícula), para
+// agrupar emails repetidos/respostas em vez de criar reclamações novas.
+export async function findOpenComplaintByClient(clientEmail?: string | null, vehiclePlate?: string | null) {
+  const db = await getDb();
+  if (!db) return null;
+  const conds: any[] = [];
+  if (clientEmail) conds.push(eq(complaints.clientEmail, clientEmail));
+  if (vehiclePlate) conds.push(eq(complaints.vehiclePlate, vehiclePlate));
+  if (!conds.length) return null;
+  const rows = await db.select().from(complaints)
+    .where(and(notInArray(complaints.complaintStatus, ["resolved", "closed"]), or(...conds)))
+    .orderBy(desc(complaints.createdAt))
+    .limit(1);
+  return rows[0] || null;
+}
+
+// Idem para Perdidos & Achados (aberto = não devolvido/fechado).
+export async function findOpenLostFoundByClient(clientEmail?: string | null, vehiclePlate?: string | null) {
+  const db = await getDb();
+  if (!db) return null;
+  const conds: any[] = [];
+  if (clientEmail) conds.push(eq(lostFoundItems.clientEmail, clientEmail));
+  if (vehiclePlate) conds.push(eq(lostFoundItems.vehiclePlate, vehiclePlate));
+  if (!conds.length) return null;
+  const rows = await db.select().from(lostFoundItems)
+    .where(and(notInArray(lostFoundItems.status, ["returned", "closed"]), or(...conds)))
+    .orderBy(desc(lostFoundItems.createdAt))
+    .limit(1);
+  return rows[0] || null;
 }
