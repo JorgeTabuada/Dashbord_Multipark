@@ -445,6 +445,26 @@ export const extrasDiaAssignments = mysqlTable("extras_dia_assignments", {
 	index("idx_extras_dia_date").on(table.assignmentDate),
 ]);
 
+export const extrasAvailability = mysqlTable("extras_availability", {
+	id: int().autoincrement().primaryKey(),
+	employeeId: int().notNull(),
+	weekStart: varchar({ length: 10 }).notNull(),
+	day: varchar({ length: 10 }).notNull(),
+	morning: tinyint().default(0).notNull(),
+	night: tinyint().default(0).notNull(),
+	fromHour: int(),
+	toHour: int(),
+	note: varchar({ length: 300 }),
+	createdById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	uniqueIndex("extras_availability_emp_day_unique").on(table.employeeId, table.day),
+	index("extras_availability_week_idx").on(table.weekStart),
+	index("extras_availability_emp_idx").on(table.employeeId),
+]);
+
 export const faqs = mysqlTable("faqs", {
 	id: int().autoincrement().primaryKey(),
 	categoryId: int(),

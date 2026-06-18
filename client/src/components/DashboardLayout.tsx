@@ -160,6 +160,7 @@ const menuGroups: MenuGroup[] = [
       { icon: LayoutDashboard, label: "Operações", path: "/operacoes", minRole: "backoffice" },
       { icon: ListTodo, label: "Tarefas", path: "/tarefas", minRole: "extra" },
       { icon: CalendarDays, label: "Extras Dia", path: "/extras-dia", minRole: "backoffice" },
+      { icon: CalendarCheck, label: "Disponibilidade", path: "/disponibilidade", minRole: "extra" },
       { icon: Trophy, label: "Avaliação Operacional", path: "/avaliacao-operacional", minRole: "backoffice" },
     ],
   },

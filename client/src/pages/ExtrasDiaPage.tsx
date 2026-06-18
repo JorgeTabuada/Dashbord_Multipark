@@ -26,6 +26,11 @@ import {
   Trash2,
   ChevronRight,
   ChevronDown,
+  Send,
+  Mail,
+  CheckCircle2,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 // Defaults para o preview do UI — devem coincidir com a tabela `extra_rates`
@@ -139,6 +144,8 @@ export default function ExtrasDiaPage() {
           />
         </div>
       </div>
+
+      <AvailabilitySection />
 
       {isLoading && (
         <div className="text-sm text-muted-foreground">A carregar previsão...</div>
@@ -432,7 +439,7 @@ function TeamSection({
 }) {
   const utils = trpc.useUtils();
   const assignmentsQuery = trpc.extrasDia.assignments.useQuery({ date: targetDate });
-  const candidatesQuery = trpc.extrasDia.candidates.useQuery();
+  const candidatesQuery = trpc.extrasDia.candidates.useQuery({ date: targetDate });
 
   const upsert = trpc.extrasDia.upsertAssignment.useMutation({
     onSuccess: () => {
@@ -450,7 +457,19 @@ function TeamSection({
   });
 
   const allAssignments = assignmentsQuery.data ?? [];
-  const candidates = candidatesQuery.data ?? [];
+  const allCandidates = candidatesQuery.data ?? [];
+  // Para a escala deste dia: esconde quem disse explicitamente que NÃO estava
+  // disponível; mantém os disponíveis (em primeiro) e os que não responderam.
+  const candidates = useMemo(() => {
+    const rank = (s?: string | null) => (s === "available" ? 0 : s === "no_response" ? 1 : 2);
+    return allCandidates
+      .filter(c => !c.availability || c.availability.status !== "unavailable")
+      .slice()
+      .sort((a, b) => {
+        const r = rank(a.availability?.status) - rank(b.availability?.status);
+        return r !== 0 ? r : a.fullName.localeCompare(b.fullName);
+      });
+  }, [allCandidates]);
 
   const assignments = allAssignments.filter(a => a.shift === shift);
   const tl = assignments.find(a => a.isTeamLeader);
@@ -622,7 +641,12 @@ function AssignmentForm({
   submitting,
 }: {
   targetDate: string;
-  candidates: { id: number; fullName: string; suggestedLevel: LevelId }[];
+  candidates: {
+    id: number;
+    fullName: string;
+    suggestedLevel: LevelId;
+    availability?: { status: "available" | "unavailable" | "no_response"; morning: boolean; night: boolean } | null;
+  }[];
   asTeamLeader?: boolean;
   shift: ShiftId;
   defaultStart: number;
@@ -671,7 +695,21 @@ function AssignmentForm({
             <SelectContent>
               <SelectItem value="none">— Nenhum (escrever nome) —</SelectItem>
               {candidates.map(c => (
-                <SelectItem key={c.id} value={String(c.id)}>{c.fullName}</SelectItem>
+                <SelectItem key={c.id} value={String(c.id)}>
+                  <span className="flex items-center gap-1.5">
+                    {c.availability?.status === "available" && (
+                      <span className="inline-flex gap-0.5">
+                        {c.availability.morning && <Sun className="h-3 w-3 text-amber-500" />}
+                        {c.availability.night && <Moon className="h-3 w-3 text-indigo-500" />}
+                        {!c.availability.morning && !c.availability.night && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                      </span>
+                    )}
+                    {c.availability?.status === "no_response" && (
+                      <span className="h-2 w-2 inline-block rounded-full bg-muted-foreground/30" title="Sem resposta" />
+                    )}
+                    {c.fullName}
+                  </span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1145,5 +1183,153 @@ function WashTile({
       <div className="text-xs text-muted-foreground">{fmtDate(date)}</div>
       <div className="text-2xl font-bold mt-1">{count}</div>
     </div>
+  );
+}
+
+// ─── Disponibilidade semanal dos extras (backoffice) ─────────────────────────
+function AvailabilitySection() {
+  const hints = trpc.extrasAvailability.weekHints.useQuery();
+  const [weekStart, setWeekStart] = useState<string>("");
+  const [note, setNote] = useState("");
+
+  // assim que chegam as sugestões, default = próxima segunda
+  const effectiveWeek = weekStart || hints.data?.next || "";
+
+  const overview = trpc.extrasAvailability.overview.useQuery(
+    { weekStart: effectiveWeek },
+    { enabled: !!effectiveWeek },
+  );
+
+  const send = trpc.extrasAvailability.sendRequest.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Pedido enviado: ${r.sent} extras${r.failed ? `, ${r.failed} falhas` : ""}${r.noEmail ? `, ${r.noEmail} sem email` : ""}`);
+      overview.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const o = overview.data;
+
+  return (
+    <Card className="border-blue-200">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Mail className="h-4 w-4 text-blue-600" />
+          Disponibilidade dos extras
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="space-y-1">
+            <Label className="text-xs">Semana (começa em)</Label>
+            <Input
+              type="date"
+              className="w-44"
+              value={effectiveWeek}
+              onChange={(e) => setWeekStart(e.target.value)}
+            />
+          </div>
+          {hints.data && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setWeekStart(hints.data!.current)}>
+                Esta semana
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setWeekStart(hints.data!.next)}>
+                Próxima semana
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Mensagem opcional no email</Label>
+          <Input
+            placeholder="Ex: Reforço para o fim de semana do festival..."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+
+        <Button
+          disabled={!effectiveWeek || send.isPending}
+          onClick={() => {
+            if (!confirm(`Enviar pedido de disponibilidade a todos os extras ativos para a semana de ${effectiveWeek}?`)) return;
+            send.mutate({
+              weekStart: effectiveWeek,
+              origin: window.location.origin,
+              note: note.trim() || null,
+            });
+          }}
+        >
+          {send.isPending ? <Clock className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+          Enviar pedido por email
+        </Button>
+
+        {o && (
+          <div className="space-y-3 pt-2">
+            <div className="text-sm text-muted-foreground">
+              {o.responded}/{o.totalExtras} extras responderam para {o.weekStart} – {o.weekEnd}
+            </div>
+
+            {/* Contagem por dia */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-1 pr-2">Extra</th>
+                    {o.dayHeaders.map((h) => (
+                      <th key={h.day} className="px-1 text-center whitespace-nowrap">{h.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {o.extras.map((ex) => (
+                    <tr key={ex.employeeId} className="border-b last:border-0">
+                      <td className="py-1 pr-2 whitespace-nowrap">
+                        <span className="flex items-center gap-1">
+                          {ex.responded
+                            ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                            : <span className="h-3.5 w-3.5 inline-block rounded-full border border-muted-foreground/30" />}
+                          {ex.fullName}
+                        </span>
+                      </td>
+                      {ex.days.map((d) => (
+                        <td key={d.day} className="px-1 text-center">
+                          {(d.morning || d.night) ? (
+                            <span className="inline-flex gap-0.5 justify-center">
+                              {d.morning && <Sun className="h-3.5 w-3.5 text-amber-500" />}
+                              {d.night && <Moon className="h-3.5 w-3.5 text-indigo-500" />}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30">·</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {o.extras.length === 0 && (
+                    <tr><td colSpan={o.dayHeaders.length + 1} className="py-3 text-center text-muted-foreground">Sem extras ativos.</td></tr>
+                  )}
+                  {/* Totais por dia */}
+                  <tr className="font-medium border-t-2">
+                    <td className="py-1 pr-2">Disponíveis</td>
+                    {o.perDay.map((p) => (
+                      <td key={p.day} className="px-1 text-center text-xs">
+                        <span className="text-amber-600">{p.morning}</span>
+                        {" / "}
+                        <span className="text-indigo-600">{p.night}</span>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+              <div className="text-xs text-muted-foreground mt-1">
+                <Sun className="h-3 w-3 inline text-amber-500" /> manhã · <Moon className="h-3 w-3 inline text-indigo-500" /> noite · totais = nº disponíveis por turno
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

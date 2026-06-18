@@ -21,6 +21,14 @@ import {
 } from "./extrasDia";
 import { importExtrasFromCsv } from "./extrasImport";
 import {
+  sendWeeklyAvailabilityRequest,
+  getMyWeek,
+  setMyAvailability,
+  getWeekOverview,
+  nextMonday,
+  mondayOf,
+} from "./extrasAvailability";
+import {
   upsertUser,
   getUserByOpenId,
   getAllUsers,
@@ -468,6 +476,32 @@ async function applyMigration0049(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0050(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0050_STATEMENTS, IDEMPOTENT_ERROR_CODES_0050 } = await import("./migrations/migration_0050");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0050_STATEMENTS) {
+    try {
+      await db.execute(sql.raw(stmt));
+      ok += 1;
+    } catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0050.has(err.code)) {
+        skipped += 1;
+      } else {
+        failed += 1;
+        errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`);
+      }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -517,6 +551,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0049_inbound_emails: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0050: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0050();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0050_extras_availability: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),
@@ -5686,10 +5732,12 @@ export const appRouter = router({
         return getExtrasDiaForecast(input?.baseDate);
       }),
 
-    candidates: protectedProcedure.query(async ({ ctx }) => {
-      requireRole(ctx.user.role, "backoffice");
-      return listDriverCandidates();
-    }),
+    candidates: protectedProcedure
+      .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
+        return listDriverCandidates(input?.date);
+      }),
 
     assignments: protectedProcedure
       .input(z.object({ date: z.string() }))
@@ -5770,6 +5818,90 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         requireRole(ctx.user.role, "backoffice");
         return getBookingsInSlot(input.date, input.hour, input.slot, input.type);
+      }),
+  }),
+
+  // ── DISPONIBILIDADE SEMANAL DOS EXTRAS ────────────────────────────────────
+  extrasAvailability: router({
+    // Sugestões de semanas (próxima e atual) para o picker.
+    weekHints: protectedProcedure.query(() => {
+      return { current: mondayOf(), next: nextMonday() };
+    }),
+
+    // O extra vê/edita a SUA disponibilidade da semana.
+    myWeek: protectedProcedure
+      .input(z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+      .query(async ({ ctx, input }) => {
+        const emp = await getEmployeeByUserId(ctx.user.id);
+        if (!emp) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "A tua conta não está associada a um colaborador. Fala com o backoffice.",
+          });
+        }
+        return getMyWeek(emp.employee.id, input.weekStart);
+      }),
+
+    setMyWeek: protectedProcedure
+      .input(
+        z.object({
+          weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          days: z.array(
+            z.object({
+              day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+              morning: z.boolean().optional(),
+              night: z.boolean().optional(),
+              fromHour: z.number().int().min(0).max(23).nullable().optional(),
+              toHour: z.number().int().min(0).max(23).nullable().optional(),
+              note: z.string().max(300).nullable().optional(),
+            }),
+          ),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const emp = await getEmployeeByUserId(ctx.user.id);
+        if (!emp) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "A tua conta não está associada a um colaborador. Fala com o backoffice.",
+          });
+        }
+        return setMyAvailability(emp.employee.id, input.weekStart, input.days, ctx.user.id);
+      }),
+
+    // Backoffice: resumo da semana (quem respondeu, disponíveis por dia/turno).
+    overview: protectedProcedure
+      .input(z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), projectId: z.number().nullable().optional() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
+        return getWeekOverview(input.weekStart, input.projectId ?? null);
+      }),
+
+    // Backoffice: envia o pedido por email a todos os extras ativos.
+    sendRequest: protectedProcedure
+      .input(
+        z.object({
+          weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          origin: z.string().url(),
+          projectId: z.number().nullable().optional(),
+          note: z.string().max(500).nullable().optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "backoffice");
+        const result = await sendWeeklyAvailabilityRequest({
+          weekStart: input.weekStart,
+          origin: input.origin,
+          projectId: input.projectId ?? null,
+          note: input.note ?? null,
+        });
+        await logActivity({
+          userId: ctx.user.id,
+          action: "email_sync",
+          entity: "extras_availability",
+          details: `Pedido disponibilidade semana ${input.weekStart}: ${result.sent} enviados, ${result.failed} falhas, ${result.noEmail} sem email`,
+        });
+        return result;
       }),
   }),
 });

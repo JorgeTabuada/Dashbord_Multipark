@@ -751,6 +751,9 @@ export interface DriverCandidate {
   position: string;
   extraLevel: number | null;
   suggestedLevel: DriverLevelId;
+  // Preenchido quando se passa uma data: disponibilidade declarada pelo extra
+  // para esse dia (alimenta a escala do Extras-Dia). null = não aplicável.
+  availability?: import("./extrasAvailability").DayAvailability | null;
 }
 
 const POSITION_TO_LEVEL: Record<string, DriverLevelId> = {
@@ -771,7 +774,7 @@ function suggestLevel(position: string | null | undefined, extraLevel: number | 
   return POSITION_TO_LEVEL[(position ?? "").toLowerCase()] ?? "junior";
 }
 
-export async function listDriverCandidates(): Promise<DriverCandidate[]> {
+export async function listDriverCandidates(date?: string): Promise<DriverCandidate[]> {
   const db = await getDb();
   if (!db) return [];
   const rows = await db
@@ -785,12 +788,21 @@ export async function listDriverCandidates(): Promise<DriverCandidate[]> {
     .from(employees)
     .where(eq(employees.isActive, 1))
     .orderBy(asc(employees.fullName));
+
+  // Disponibilidade declarada para o dia, se uma data foi pedida.
+  let availMap: Map<number, import("./extrasAvailability").DayAvailability> | null = null;
+  if (date) {
+    const { getAvailabilityForDay } = await import("./extrasAvailability");
+    availMap = await getAvailabilityForDay(date);
+  }
+
   return rows.map(r => ({
     id: r.id,
     fullName: r.fullName,
     position: r.position,
     extraLevel: r.extraLevel,
     suggestedLevel: suggestLevel(r.position, r.extraLevel),
+    availability: availMap ? (availMap.get(r.id) ?? { status: "no_response", morning: false, night: false, fromHour: null, toHour: null, note: null }) : null,
   }));
 }
 
