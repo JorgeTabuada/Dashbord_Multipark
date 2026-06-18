@@ -61,6 +61,29 @@ export const SHIFT_BOUNDS: Record<ShiftId, { startHour: number; endHour: number 
   night: { startHour: 15, endHour: 27 }, // 27 = 03h do dia seguinte
 };
 
+// A API Multipark devolve horas em hora europeia (CET/CEST); a operação é em
+// Lisboa = sempre -1h. Corrigimos as horas das RESERVAS ao lê-las da BD, para
+// que todo o forecast e drill-down trabalhem já em hora de Lisboa.
+const MULTIPARK_HOUR_OFFSET = -1;
+
+function shiftIso(s: string | null): string | null {
+  if (!s) return s;
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return s;
+  const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0) + MULTIPARK_HOUR_OFFSET * 3600_000;
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+function shiftHHmm(s: string | null): string | null {
+  if (!s) return s;
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  const h = (((+m[1] + MULTIPARK_HOUR_OFFSET) % 24) + 24) % 24;
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
+}
+
 const CITY_PATTERN = "%lisb%"; // matches Lisboa, Lisbon, LISBON, lisbôa, ...
 const PARK_ID_PREFIX = "LISBON_%"; // backup: when city was not set on the row
 const LAVAGEM_RE = /lavag|wash/i;
@@ -317,7 +340,7 @@ async function fetchBookingsInRange(
   const startStr = toMysqlDateTime(startInclusive);
   const endStr = toMysqlDateTime(endExclusive);
 
-  return db
+  const rows = await db
     .select({
       id: multiparkBookings.id,
       externalId: multiparkBookings.externalId,
@@ -347,6 +370,15 @@ async function fetchBookingsInRange(
       ),
     )
     .limit(20000);
+
+  // Corrige hora europeia → Lisboa (-1h) nas horas das reservas.
+  return rows.map(r => ({
+    ...r,
+    checkIn: shiftIso(r.checkIn),
+    checkOut: shiftIso(r.checkOut),
+    checkInTime: shiftHHmm(r.checkInTime),
+    checkOutTime: shiftHHmm(r.checkOutTime),
+  }));
 }
 
 // ─── Assignments (gestor escala pessoas a turnos) ────────────────────────────
