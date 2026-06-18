@@ -2205,12 +2205,9 @@ function RecruitmentTab() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{emails.length} email(s) recebido(s)</p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
-            <Mail className="w-4 h-4 mr-2" />{sync.isPending ? "A sincronizar…" : "Sincronizar"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()}><ArrowUpDown className="w-4 h-4 mr-2" />Atualizar</Button>
-        </div>
+        <Button variant="outline" size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
+          <Mail className="w-4 h-4 mr-2" />{sync.isPending ? "A sincronizar…" : "Sincronizar emails"}
+        </Button>
       </div>
       <div className="grid grid-cols-1 gap-3">
         {emails.map((e: any) => (

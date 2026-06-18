@@ -4033,14 +4033,17 @@ export const appRouter = router({
     }),
     syncFromGmail: protectedProcedure.mutation(async ({ ctx }) => {
       if (ROLE_HIERARCHY[ctx.user.role] < ROLE_HIERARCHY["admin"]) throw new TRPCError({ code: "FORBIDDEN" });
-      // Gmail sync is handled externally via scheduled task (2x/day)
-      // This endpoint just returns info about the sync status
+      // Leitor IMAP nativo (substitui o antigo fluxo Make.com 2x/dia).
+      const { runEmailInboundSync } = await import("./jobs/emailInboundSync");
+      const r = await runEmailInboundSync();
       return {
-        reviewsImported: 0,
-        reviewsSkipped: 0,
+        reviewsImported: r.byAlias["criticas"] || 0,
+        reviewsSkipped: r.skipped,
         incidentsImported: 0,
         incidentsSkipped: 0,
-        message: "A sincroniza\u00e7\u00e3o Gmail corre automaticamente 2x/dia (0h e 12h). Para for\u00e7ar manualmente, contacta o administrador.",
+        message: r.configured
+          ? `Sincronizado: ${r.created} novos registos, ${r.skipped} ignorados.`
+          : "IMAP n\u00e3o configurado no servidor.",
       };
     }),
     // Checkout drivers ranking (DB local — alimentada pelo sync da API Multipark)

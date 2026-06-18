@@ -33,7 +33,7 @@ import {
 } from "../db";
 
 const ALIASES: InboundAlias[] = ["criticas", "reclamacoes", "perdidos", "recursos-humanos"];
-const RH_TASK_OWNER = "Kamila Fagundes"; // tarefa de recrutamento atribuída a
+const RH_TASK_OWNER = "kamilafagundes@multipark.pt"; // tarefa de recrutamento atribuída a (Kamila Fagundes)
 
 export type EmailSyncResult = {
   configured: boolean;

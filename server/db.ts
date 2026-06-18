@@ -7482,14 +7482,25 @@ export async function listInboundEmailsByAlias(alias: string, limit = 100) {
     .limit(limit);
 }
 
-// Procura um colaborador por email exato ou por nome (parcial, case-insensitive).
+// Procura um colaborador por email exato, por nome (parcial) ou via o user
+// associado (employees.userId = users.id com esse email).
 export async function findEmployeeByEmailOrName(needle: string) {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select().from(employees)
+  // 1) email ou nome do próprio employee
+  let rows = await db.select().from(employees)
     .where(or(eq(employees.email, needle), like(employees.fullName, `%${needle}%`)))
     .limit(1);
-  return rows[0] || null;
+  if (rows[0]) return rows[0];
+  // 2) via user (quando o email pertence à conta de utilizador, não à ficha)
+  if (needle.includes("@")) {
+    const u = await db.select({ id: users.id }).from(users).where(eq(users.email, needle)).limit(1);
+    if (u[0]) {
+      rows = await db.select().from(employees).where(eq(employees.userId, u[0].id)).limit(1);
+      if (rows[0]) return rows[0];
+    }
+  }
+  return null;
 }
 
 // Id de um utilizador de "sistema" (1º super_admin) para createdBy/createdById.
