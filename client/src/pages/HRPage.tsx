@@ -2173,6 +2173,15 @@ function RecruitmentTab() {
     onError: (e) => toast.error(e.message || "Falha ao enviar"),
   });
 
+  const sync = trpc.admin.runEmailInbound.useMutation({
+    onSuccess: (r: any) => {
+      if (!r.configured) toast.error("IMAP não configurado no servidor");
+      else toast.success(`Sincronização: ${r.created} criados, ${r.skipped} ignorados`);
+      refetch();
+    },
+    onError: (e) => toast.error(e.message || "Falha na sincronização"),
+  });
+
   const openReply = (e: any) => {
     setSelected(e);
     setReplyTo(e.clientEmail || e.fromEmail || "");
@@ -2186,6 +2195,9 @@ function RecruitmentTab() {
       <Mail className="w-12 h-12 mx-auto mb-3 opacity-30" />
       <p>Sem emails de recrutamento.</p>
       <p className="text-xs mt-1">Reencaminha um email para <b>recursos-humanos@multipark.pt</b> e aparece aqui.</p>
+      <Button className="mt-4" size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
+        <Mail className="w-4 h-4 mr-2" />{sync.isPending ? "A sincronizar…" : "Sincronizar emails agora"}
+      </Button>
     </div>
   );
 
@@ -2193,7 +2205,12 @@ function RecruitmentTab() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{emails.length} email(s) recebido(s)</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}><ArrowUpDown className="w-4 h-4 mr-2" />Atualizar</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
+            <Mail className="w-4 h-4 mr-2" />{sync.isPending ? "A sincronizar…" : "Sincronizar"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}><ArrowUpDown className="w-4 h-4 mr-2" />Atualizar</Button>
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-3">
         {emails.map((e: any) => (

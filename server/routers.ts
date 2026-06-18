@@ -521,6 +521,20 @@ export const appRouter = router({
       return report;
     }),
 
+    // Sincroniza os emails inbound (reclamações/perdidos/críticas/RH) on-demand.
+    runEmailInbound: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "admin");
+      const { runEmailInboundSync } = await import("./jobs/emailInboundSync");
+      const result = await runEmailInboundSync();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "email_sync",
+        entity: "inbound_emails",
+        details: `criados=${result.created} ignorados=${result.skipped} erros=${result.errors.length}`,
+      });
+      return result;
+    }),
+
     // Apaga um batch de duplicados em multipark_bookings. Cliente itera até
     // deleted === 0. Evita timeout do Vercel.
     fixMultiparkDuplicatesBatch: protectedProcedure
