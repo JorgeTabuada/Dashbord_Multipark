@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useDashboardFilters, DashboardFilterBar } from "@/components/DashboardFilterBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -368,7 +369,7 @@ export default function SuporteDashboard() {
                         {c.clientName && <span>{c.clientName}</span>}
                         {c.vehiclePlate && <span>{c.vehiclePlate}</span>}
                         {c.createdAt && (
-                          <span>{new Date(c.createdAt).toLocaleDateString("pt-PT")}</span>
+                          <span>{fmtPTDate(c.createdAt)}</span>
                         )}
                       </div>
                     </div>

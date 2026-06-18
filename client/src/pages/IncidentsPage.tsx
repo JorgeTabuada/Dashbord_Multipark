@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -251,7 +252,7 @@ export default function IncidentsPage() {
                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           {inc.vehiclePlate && <span className="flex items-center gap-1"><Car className="w-3 h-3" /> {inc.vehiclePlate}</span>}
                           {inc.employeeId && <span className="flex items-center gap-1"><User className="w-3 h-3" /> {employeeMap.get(inc.employeeId) || `#${inc.employeeId}`}</span>}
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(inc.createdAt).toLocaleString("pt-PT")}</span>
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {fmtPTDateTime(inc.createdAt)}</span>
                           {(inc as any).gpsLatitude && (inc as any).gpsLongitude && (
                             <a href={`https://www.google.com/maps?q=${(inc as any).gpsLatitude},${(inc as any).gpsLongitude}`} target="_blank" rel="noopener" className="flex items-center gap-1 text-blue-500 hover:underline">
                               <MapPin className="w-3 h-3" /> Ver no mapa

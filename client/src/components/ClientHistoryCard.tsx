@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate } from "@/lib/lisbonTime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { History, Car, MessageSquareWarning, PackageSearch, Star, Loader2 } from "lucide-react";
@@ -12,7 +13,7 @@ type Props = {
   className?: string;
 };
 
-const d = (s?: string | null) => (s ? new Date(s.includes("T") ? s : s.replace(" ", "T")).toLocaleDateString("pt-PT") : "—");
+const d = (s?: string | null) => fmtPTDate(s);
 
 /**
  * Mostra TODO o histórico de um cliente (reservas, reclamações, perdidos,

@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -757,8 +758,8 @@ export default function PartnershipsPage() {
                                 <td className="p-2">{[b.clientFirstName, b.clientLastName].filter(Boolean).join(" ") || "—"}</td>
                                 <td className="p-2 font-mono text-xs">{b.licensePlate || "—"}</td>
                                 <td className="p-2 text-muted-foreground">{b.parkName}{b.city ? ` (${b.city})` : ""}</td>
-                                <td className="p-2 text-xs">{b.checkIn ? new Date(b.checkIn).toLocaleDateString("pt-PT") : "—"}</td>
-                                <td className="p-2 text-xs">{b.checkOut ? new Date(b.checkOut).toLocaleDateString("pt-PT") : "—"}</td>
+                                <td className="p-2 text-xs">{b.checkIn ? fmtPTDate(b.checkIn) : "—"}</td>
+                                <td className="p-2 text-xs">{b.checkOut ? fmtPTDate(b.checkOut) : "—"}</td>
                                 <td className="p-2 text-right tabular-nums">{fmt(b.totalPrice)}</td>
                                 <td className="p-2 text-right tabular-nums text-red-600">{b.discount > 0 ? fmt(b.discount) : "—"}</td>
                                 <td className="p-2 text-right tabular-nums text-orange-700 font-medium">{fmt(commission)}</td>

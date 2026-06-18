@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -294,7 +295,7 @@ function ReviewsList({ onSelect }: { onSelect: (id: number) => void }) {
                     </div>
                     {r.reviewText && <p className="text-sm text-muted-foreground line-clamp-2 mt-1">"{r.reviewText}"</p>}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      {r.reviewDate && <span>{new Date(r.reviewDate).toLocaleDateString("pt-PT")}</span>}
+                      {r.reviewDate && <span>{fmtPTDate(r.reviewDate)}</span>}
                       {r.vehiclePlate && <span>🚗 {r.vehiclePlate}</span>}
                     </div>
                   </div>
@@ -512,7 +513,7 @@ function ReviewDetailDialog({ id, onClose }: { id: number; onClose: () => void }
               <CardContent className="p-4">
                 <p className="text-sm italic">"{review.reviewText}"</p>
                 <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                  {review.reviewDate && <span>📅 {new Date(review.reviewDate).toLocaleDateString("pt-PT")}</span>}
+                  {review.reviewDate && <span>📅 {fmtPTDate(review.reviewDate)}</span>}
                   {review.vehiclePlate && <span>🚗 {review.vehiclePlate}</span>}
                   {review.reviewerEmail && <span>📧 {review.reviewerEmail}</span>}
                 </div>
@@ -618,7 +619,7 @@ function ReviewDetailDialog({ id, onClose }: { id: number; onClose: () => void }
                     <p className="text-xs font-medium text-muted-foreground mb-1">Movimentos de viatura ({clientHistory.movements.length})</p>
                     {clientHistory.movements.slice(0, 5).map((m: any) => (
                       <div key={m.id} className="text-sm p-2 bg-muted rounded mb-1">
-                        {m.movementType} — {new Date(m.createdAt).toLocaleDateString("pt-PT")}
+                        {m.movementType} — {fmtPTDate(m.createdAt)}
                       </div>
                     ))}
                   </div>
@@ -867,7 +868,7 @@ function AgentPerformancePanel() {
                       <span>{h.booking?.licensePlate || "—"}</span>
                       <span className="text-muted-foreground">{h.booking?.parkName || ""}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{h.actionTime ? new Date(h.actionTime).toLocaleString("pt-PT") : "—"}</span>
+                    <span className="text-xs text-muted-foreground">{h.actionTime ? fmtPTDateTime(h.actionTime) : "—"}</span>
                   </div>
                 ))}
               </div>

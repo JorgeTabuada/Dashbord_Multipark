@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -320,7 +321,7 @@ function ItemCard({ item, onSelect, onMove, currentStatus }: any) {
         )}
 
         <div className="text-[10px] text-muted-foreground">
-          {new Date(item.createdAt).toLocaleDateString("pt-PT")}
+          {fmtPTDate(item.createdAt)}
         </div>
 
         <div className="flex items-center justify-between pt-1">
@@ -471,7 +472,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
             <Badge className={STATUS_CONFIG[item.status]?.color}>{STATUS_CONFIG[item.status]?.label}</Badge>
             <Badge className={PRIORITY_CONFIG[item.priority]?.color}>{PRIORITY_CONFIG[item.priority]?.label}</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">Caso #{item.id} — Criado em {new Date(item.createdAt).toLocaleDateString("pt-PT")}</p>
+          <p className="text-sm text-muted-foreground">Caso #{item.id} — Criado em {fmtPTDate(item.createdAt)}</p>
         </div>
         <Button variant="outline" size="sm" onClick={startEditing}><Pencil className="w-4 h-4 mr-1" /> Editar</Button>
         <Select value={item.status} onValueChange={handleStatusChange}>
@@ -587,7 +588,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                             <span className="font-medium">{m.userName}</span>
                             <div className="flex items-center gap-2">
                               {m.isInternal && <Badge variant="outline" className="text-[10px]">Interna</Badge>}
-                              <span className="text-[10px] text-muted-foreground">{new Date(m.createdAt).toLocaleString("pt-PT")}</span>
+                              <span className="text-[10px] text-muted-foreground">{fmtPTDateTime(m.createdAt)}</span>
                             </div>
                           </div>
                           <p>{m.message}</p>
@@ -686,7 +687,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                               <span className="text-violet-600 font-medium">{a.checkouts} out</span>
                               <span className="text-amber-600 font-medium">{a.movements} mov</span>
                               <span className="text-muted-foreground">
-                                {a.lastActionAt ? new Date(a.lastActionAt).toLocaleDateString("pt-PT") : ""}
+                                {a.lastActionAt ? fmtPTDate(a.lastActionAt) : ""}
                               </span>
                             </div>
                           </div>
@@ -731,7 +732,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                                   {h.parkName && <p className="text-xs text-muted-foreground">Parque: {h.parkName}</p>}
                                 </div>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {h.actionDate ? new Date(h.actionDate).toLocaleString("pt-PT") : "—"}
+                                  {h.actionDate ? fmtPTDateTime(h.actionDate) : "—"}
                                 </span>
                               </div>
                             </div>
@@ -768,7 +769,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Criado</span>
-                <span>{new Date(item.createdAt).toLocaleDateString("pt-PT")}</span>
+                <span>{fmtPTDate(item.createdAt)}</span>
               </div>
               {item.estimatedValue && (
                 <>
@@ -982,7 +983,7 @@ function LostFoundReservationPreview({ bookingId }: { bookingId: string }) {
               <Badge className={`${cfg.color} text-[10px] px-1`}>{cfg.label}</Badge>
               <span>{h.user?.firstName || h.agentName || "Sistema"} {h.user?.lastName || ""}</span>
             </div>
-            <span className="text-muted-foreground">{h.actionTime ? new Date(h.actionTime).toLocaleString("pt-PT") : "—"}</span>
+            <span className="text-muted-foreground">{h.actionTime ? fmtPTDateTime(h.actionTime) : "—"}</span>
           </div>
         );
       })}
@@ -1158,7 +1159,7 @@ function BookingHistoryView({ onBack }: { onBack: () => void }) {
 
   const handleSearch = () => setActiveSearch(searchTerm.trim());
 
-  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleString("pt-PT") : "—";
+  const fmtDate = (d: string | null) => d ? fmtPTDateTime(d) : "—";
 
   // Conta totais flagged
   const flaggedDrivers = driverStats.filter((d: any) => d.flagged).length;

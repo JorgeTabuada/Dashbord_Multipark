@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useDashboardFilters, DashboardFilterBar } from "@/components/DashboardFilterBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +35,7 @@ import {
 
 const fmtNum = (n: number) => n.toLocaleString("pt-PT");
 const fmtDateTime = (d: string | null | undefined) =>
-  d ? new Date(d).toLocaleString("pt-PT") : "—";
+  d ? fmtPTDateTime(d) : "—";
 
 const DONUT_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899"];
 

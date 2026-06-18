@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -154,8 +155,8 @@ export default function ApiKeysPage() {
                       <div>
                         <p className="font-medium">{k.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Criada: {new Date(k.createdAt).toLocaleDateString("pt-PT")}
-                          {k.lastUsedAt && ` · Último uso: ${new Date(k.lastUsedAt).toLocaleDateString("pt-PT")}`}
+                          Criada: {fmtPTDate(k.createdAt)}
+                          {k.lastUsedAt && ` · Último uso: ${fmtPTDate(k.lastUsedAt)}`}
                         </p>
                         <code className="text-xs text-muted-foreground">mp_••••••••{k.key?.slice(-8) || "••••"}</code>
                       </div>

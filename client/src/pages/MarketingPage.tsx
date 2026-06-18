@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -675,7 +676,7 @@ function CampaignStatsDialog({ campaignId, onClose }: { campaignId: number; onCl
           <div className="space-y-4">
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={stats.map((s: any) => ({
-                date: new Date(s.date).toLocaleDateString("pt-PT"),
+                date: fmtPTDate(s.date),
                 spend: parseFloat(s.spend || "0"),
                 reservas: s.conversions || 0,
               })).reverse()}>
@@ -701,7 +702,7 @@ function CampaignStatsDialog({ campaignId, onClose }: { campaignId: number; onCl
                 <tbody>
                   {stats.map((s: any) => (
                     <tr key={s.id} className="border-b">
-                      <td className="p-2">{new Date(s.date).toLocaleDateString("pt-PT")}</td>
+                      <td className="p-2">{fmtPTDate(s.date)}</td>
                       <td className="p-2">{parseFloat(s.spend || "0").toFixed(2)} €</td>
                       <td className="p-2">{s.impressions}</td>
                       <td className="p-2">{s.clicks}</td>
@@ -802,7 +803,7 @@ function MktExpensesTab() {
               <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Sem despesas de marketing.</td></tr>
             ) : expensesList.map((e: any) => (
               <tr key={e.expense.id} className="border-b hover:bg-muted/50">
-                <td className="p-2">{new Date(e.expense.date).toLocaleDateString("pt-PT")}</td>
+                <td className="p-2">{fmtPTDate(e.expense.date)}</td>
                 <td className="p-2 font-medium">{e.expense.description}</td>
                 <td className="p-2"><Badge variant="outline">{MKT_CAT_LABELS[e.expense.category] || e.expense.category}</Badge></td>
                 <td className="p-2">{e.project?.name || "-"}</td>

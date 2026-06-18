@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -347,7 +348,7 @@ export default function TasksPage() {
           {task.dueDate && (
             <span className={`flex items-center gap-1 ${isOverdue(task) ? "text-red-600 font-medium" : ""}`}>
               <CalendarDays className="h-3 w-3" />
-              {new Date(task.dueDate).toLocaleDateString("pt-PT")}
+              {fmtPTDate(task.dueDate)}
               {isOverdue(task) && <AlertTriangle className="h-3 w-3" />}
             </span>
           )}
@@ -531,7 +532,7 @@ export default function TasksPage() {
                           <TableCell className="text-sm">
                             {task.dueDate ? (
                               <span className={isOverdue(task) ? "text-red-600 font-medium" : ""}>
-                                {new Date(task.dueDate).toLocaleDateString("pt-PT")}
+                                {fmtPTDate(task.dueDate)}
                                 {isOverdue(task) && <AlertTriangle className="h-3 w-3 inline ml-1" />}
                               </span>
                             ) : "—"}

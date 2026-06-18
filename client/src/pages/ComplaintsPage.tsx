@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -298,7 +299,7 @@ function ComplaintCard({ complaint: c, onSelect, onMove, currentStatus }: any) {
 
         {c.slaDeadline && !isOverdue && c.complaintStatus !== "resolved" && c.complaintStatus !== "closed" && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="w-3 h-3" /> Prazo: {new Date(c.slaDeadline).toLocaleDateString("pt-PT")}
+            <Clock className="w-3 h-3" /> Prazo: {fmtPTDate(c.slaDeadline)}
           </div>
         )}
 
@@ -454,7 +455,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
             {isOverdue && <Badge className="bg-red-100 text-red-800">SLA Ultrapassado</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
-            Ticket #{c.id} — Criado em {new Date(c.createdAt).toLocaleDateString("pt-PT")}
+            Ticket #{c.id} — Criado em {fmtPTDate(c.createdAt)}
             {c.assignedToName ? ` — Atribuída a: ${c.assignedToName}` : " — Por atribuir"}
           </p>
         </div>
@@ -493,8 +494,8 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 <CardHeader><CardTitle className="text-sm">Dados da Reserva</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-muted-foreground">Ref. Reserva:</span> <span className="font-medium">{c.reservationRef || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Início:</span> <span className="font-medium">{c.reservationStart ? new Date(c.reservationStart).toLocaleDateString("pt-PT") : "—"}</span></div>
-                  <div><span className="text-muted-foreground">Fim:</span> <span className="font-medium">{c.reservationEnd ? new Date(c.reservationEnd).toLocaleDateString("pt-PT") : "—"}</span></div>
+                  <div><span className="text-muted-foreground">Início:</span> <span className="font-medium">{c.reservationStart ? fmtPTDate(c.reservationStart) : "—"}</span></div>
+                  <div><span className="text-muted-foreground">Fim:</span> <span className="font-medium">{c.reservationEnd ? fmtPTDate(c.reservationEnd) : "—"}</span></div>
                   <div><span className="text-muted-foreground">Matrícula:</span> <span className="font-medium">{c.vehiclePlate || "—"}</span></div>
                 </CardContent>
               </Card>
@@ -526,7 +527,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium">{m.authorName}</span>
                             {m.isInternal && <Badge variant="outline" className="text-[10px] text-amber-700">Nota Interna</Badge>}
-                            <span className="text-xs text-muted-foreground ml-auto">{new Date(m.createdAt).toLocaleString("pt-PT")}</span>
+                            <span className="text-xs text-muted-foreground ml-auto">{fmtPTDateTime(m.createdAt)}</span>
                           </div>
                           <p className="whitespace-pre-wrap">{m.message}</p>
                         </div>
@@ -591,8 +592,8 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                             <Car className="w-4 h-4 text-muted-foreground" />
                             <span className="font-medium">{h.driverName || "Desconhecido"}</span>
                             <span className="text-muted-foreground">
-                              {new Date(h.startTime).toLocaleString("pt-PT")}
-                              {h.endTime && ` → ${new Date(h.endTime).toLocaleString("pt-PT")}`}
+                              {fmtPTDateTime(h.startTime)}
+                              {h.endTime && ` → ${fmtPTDateTime(h.endTime)}`}
                             </span>
                             {h.startKm && <span className="text-xs text-muted-foreground ml-auto">{h.startKm} km</span>}
                           </div>
@@ -647,7 +648,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                                   {h.remarks && <p className="text-xs text-muted-foreground">{h.remarks}</p>}
                                 </div>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {h.actionDate ? new Date(h.actionDate).toLocaleString("pt-PT") : "—"}
+                                  {h.actionDate ? fmtPTDateTime(h.actionDate) : "—"}
                                 </span>
                               </div>
                             </div>
@@ -740,7 +741,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 <>
                   <div className={`flex items-center gap-2 ${isOverdue ? "text-red-600 font-bold" : "text-foreground"}`}>
                     <Clock className="w-4 h-4" />
-                    Prazo: {new Date(c.slaDeadline).toLocaleString("pt-PT")}
+                    Prazo: {fmtPTDateTime(c.slaDeadline)}
                   </div>
                   {isOverdue && <p className="text-red-600 text-xs">O prazo de resposta foi ultrapassado!</p>}
                 </>
@@ -750,7 +751,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               {c.resolvedAt && (
                 <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle2 className="w-4 h-4" />
-                  Resolvido em: {new Date(c.resolvedAt).toLocaleString("pt-PT")}
+                  Resolvido em: {fmtPTDateTime(c.resolvedAt)}
                 </div>
               )}
             </CardContent>
@@ -802,7 +803,7 @@ function ReservationPreview({ bookingId }: { bookingId: string }) {
               <Badge className={`${cfg.color} text-[10px] px-1`}>{cfg.label}</Badge>
               <span>{h.user?.firstName || h.agentName || "Sistema"} {h.user?.lastName || ""}</span>
             </div>
-            <span className="text-muted-foreground">{h.actionTime ? new Date(h.actionTime).toLocaleString("pt-PT") : "—"}</span>
+            <span className="text-muted-foreground">{h.actionTime ? fmtPTDateTime(h.actionTime) : "—"}</span>
           </div>
         );
       })}
@@ -1003,7 +1004,7 @@ function CreateDialog({ user, onClose }: { user: any; onClose: () => void }) {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {b.parkName} {b.city && !b.parkName?.includes(b.city) ? b.city : ""}
-                      {b.checkIn && <span className="ml-2">{new Date(b.checkIn).toLocaleDateString("pt-PT")}</span>}
+                      {b.checkIn && <span className="ml-2">{fmtPTDate(b.checkIn)}</span>}
                     </div>
                   </div>
                 ))}
@@ -1343,7 +1344,7 @@ function SendClientEmailButton({
       </Button>
       {lastSentAt && (
         <p className="text-[10px] text-muted-foreground">
-          Último envio: {new Date(lastSentAt).toLocaleString("pt-PT")}
+          Último envio: {fmtPTDateTime(lastSentAt)}
         </p>
       )}
       <Dialog open={open} onOpenChange={setOpen}>

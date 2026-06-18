@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Search } from "lucide-react";
@@ -119,7 +120,7 @@ export default function BookingSearchField({
               </div>
               <div className="text-xs text-muted-foreground whitespace-nowrap ml-2">
                 {b.parkName} {b.city && !b.parkName?.includes(b.city) ? b.city : ""}
-                {b.checkIn && <span className="ml-2">{new Date(b.checkIn).toLocaleDateString("pt-PT")}</span>}
+                {b.checkIn && <span className="ml-2">{fmtPTDate(b.checkIn)}</span>}
               </div>
             </button>
           ))}

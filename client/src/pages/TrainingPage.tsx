@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { toast } from "sonner";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Play, BookOpen, HelpCircle, Gamepad2, GraduationCap, Plus, Trash2, Trophy, CheckCircle, XCircle, Clock, Star, ChevronRight, FileText, Newspaper, RefreshCw } from "lucide-react";
@@ -189,7 +190,7 @@ function ManualsTab({ isAdmin }: { isAdmin: boolean }) {
               <Badge className={typeColors[selectedManual.type] || "bg-gray-100 text-gray-800"}>{typeLabels[selectedManual.type] || selectedManual.type}</Badge>
               <CardTitle>{selectedManual.title}</CardTitle>
             </div>
-            <p className="text-sm text-muted-foreground">{new Date(selectedManual.createdAt).toLocaleDateString("pt-PT")}</p>
+            <p className="text-sm text-muted-foreground">{fmtPTDate(selectedManual.createdAt)}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             {selectedManual.fileUrl && (
@@ -246,7 +247,7 @@ function ManualsTab({ isAdmin }: { isAdmin: boolean }) {
                     <div>
                       <h3 className="font-semibold">{m.title}</h3>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{new Date(m.createdAt).toLocaleDateString("pt-PT")}</span>
+                        <span>{fmtPTDate(m.createdAt)}</span>
                         <Badge variant="outline" className="text-xs">{typeLabels[m.type] || m.type}</Badge>
                         {m.fileUrl && <Badge variant="secondary" className="text-xs">📎 Ficheiro</Badge>}
                       </div>
@@ -740,7 +741,7 @@ function CareerTab({ isAdmin }: { isAdmin: boolean }) {
                   <div className="flex flex-wrap gap-2">
                     {minhas.slice(0, 5).map((a: any) => (
                       <Badge key={a.id} className={a.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>
-                        {a.score}% {a.passed ? "✓" : "✗"} · {new Date(a.createdAt).toLocaleDateString("pt-PT")}
+                        {a.score}% {a.passed ? "✓" : "✗"} · {fmtPTDate(a.createdAt)}
                       </Badge>
                     ))}
                   </div>

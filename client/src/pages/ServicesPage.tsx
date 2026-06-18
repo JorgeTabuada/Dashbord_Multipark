@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -257,7 +258,7 @@ export default function ServicesPage() {
                     <td className="p-2">{s.licensePlate || "—"}</td>
                     <td className="p-2">{s.parkName || "—"}</td>
                     <td className="p-2 text-right">{(s.price || 0).toFixed(2)} €</td>
-                    <td className="p-2 text-xs">{s.checkOut ? new Date(s.checkOut).toLocaleDateString("pt-PT") : "—"}</td>
+                    <td className="p-2 text-xs">{s.checkOut ? fmtPTDate(s.checkOut) : "—"}</td>
                     <td className="p-2">
                       <Badge variant={s.done ? "default" : "secondary"}>{s.done ? "Feito" : "Pendente"}</Badge>
                     </td>
