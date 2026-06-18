@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
+import { filterBookingHistory } from "@/lib/bookingHistory";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -350,7 +351,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
     { enabled: !!data?.complaint?.reservationRef }
   );
   const timelineHist = useMemo(() => {
-    return (apiTimeline?.history || []).map((h: any) => ({
+    const mapped = (apiTimeline?.history || []).map((h: any) => ({
       id: h.id,
       changeType: h.changeType,
       actionDate: h.actionTime,
@@ -358,7 +359,10 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
       userLastName: h.user?.lastName || "",
       parkName: h.booking?.parkName || "",
       remarks: h.remarks || h.modifiedFields || "",
-    })).sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
+    }));
+    // Reclamações: esconde ações administrativas, mostra só movimentos relevantes.
+    return filterBookingHistory(mapped, "complaint")
+      .sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
   }, [apiTimeline]);
   const { data: vehicles = [] } = trpc.operational.vehicles.list.useQuery();
   const { data: employees = [] } = trpc.rh.list.useQuery();

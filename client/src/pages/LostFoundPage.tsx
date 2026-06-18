@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { fmtPTDate, fmtPTDateTime } from "@/lib/lisbonTime";
+import { filterBookingHistory } from "@/lib/bookingHistory";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { Button } from "@/components/ui/button";
@@ -372,7 +373,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
     { enabled: !!item?.bookingRef }
   );
   const timelineHist = useMemo(() => {
-    return (apiTimeline?.history || []).map((h: any) => ({
+    const mapped = (apiTimeline?.history || []).map((h: any) => ({
       id: h.id,
       changeType: h.changeType,
       actionDate: h.actionTime,
@@ -380,7 +381,10 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
       userLastName: h.user?.lastName || "",
       parkName: h.booking?.parkName || "",
       remarks: h.remarks || h.modifiedFields || "",
-    })).sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
+    }));
+    // Roubos: mantém quem mexeu no carro; esconde só recolha-pendente/caixa.
+    return filterBookingHistory(mapped, "theft")
+      .sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
   }, [apiTimeline]);
   const updateMut = trpc.lostFound.update.useMutation();
   const uploadPhotoMut = trpc.lostFound.uploadPhoto.useMutation();
