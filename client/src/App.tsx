@@ -150,7 +150,7 @@ function Router() {
       <Route path="/formacao">
         {() => (<DashboardLayout><TrainingPage /></DashboardLayout>)}
       </Route>
-      <Route path="/perdidos-achados/:section*">
+      <Route path="/perdidos-achados/:section/:sub?">
         {() => (<DashboardLayout><LostFoundPage /></DashboardLayout>)}
       </Route>
       <Route path="/perdidos-achados">
