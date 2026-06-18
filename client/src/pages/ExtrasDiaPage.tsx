@@ -458,12 +458,11 @@ function TeamSection({
 
   const allAssignments = assignmentsQuery.data ?? [];
   const allCandidates = candidatesQuery.data ?? [];
-  // Para a escala deste dia: esconde quem disse explicitamente que NÃO estava
-  // disponível; mantém os disponíveis (em primeiro) e os que não responderam.
+  // Mostra TODOS os extras ativos para podermos tentar/insistir com mais gente:
+  // disponíveis primeiro, depois sem-resposta, depois quem disse que não pode.
   const candidates = useMemo(() => {
     const rank = (s?: string | null) => (s === "available" ? 0 : s === "no_response" ? 1 : 2);
     return allCandidates
-      .filter(c => !c.availability || c.availability.status !== "unavailable")
       .slice()
       .sort((a, b) => {
         const r = rank(a.availability?.status) - rank(b.availability?.status);
@@ -707,7 +706,10 @@ function AssignmentForm({
                     {c.availability?.status === "no_response" && (
                       <span className="h-2 w-2 inline-block rounded-full bg-muted-foreground/30" title="Sem resposta" />
                     )}
-                    {c.fullName}
+                    {c.availability?.status === "unavailable" && (
+                      <span className="text-[10px] text-red-500" title="Disse que não está disponível">✕</span>
+                    )}
+                    <span className={c.availability?.status === "unavailable" ? "text-muted-foreground" : undefined}>{c.fullName}</span>
                   </span>
                 </SelectItem>
               ))}
@@ -1211,6 +1213,9 @@ function AvailabilitySection() {
   });
 
   const o = overview.data;
+  // "Cá de cima": só quem declarou disponibilidade nesse período. O resto
+  // vê-se na página de disponibilidade do próprio funcionário.
+  const shownExtras = o ? o.extras.filter(e => e.availableDays > 0) : [];
 
   return (
     <Card className="border-blue-200">
@@ -1312,9 +1317,9 @@ function AvailabilitySection() {
                       <input
                         type="checkbox"
                         title="Selecionar todos"
-                        checked={selectedIds.size > 0 && selectedIds.size === o.extras.length}
+                        checked={selectedIds.size > 0 && selectedIds.size === shownExtras.length}
                         onChange={(e) => {
-                          setSelectedIds(e.target.checked ? new Set(o.extras.map(x => x.employeeId)) : new Set());
+                          setSelectedIds(e.target.checked ? new Set(shownExtras.map(x => x.employeeId)) : new Set());
                         }}
                       />
                     </th>
@@ -1325,7 +1330,7 @@ function AvailabilitySection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {o.extras.map((ex) => (
+                  {shownExtras.map((ex) => (
                     <tr key={ex.employeeId} className="border-b last:border-0">
                       <td className="py-1 pr-1">
                         <input
@@ -1363,8 +1368,8 @@ function AvailabilitySection() {
                       ))}
                     </tr>
                   ))}
-                  {o.extras.length === 0 && (
-                    <tr><td colSpan={o.dayHeaders.length + 2} className="py-3 text-center text-muted-foreground">Sem extras ativos.</td></tr>
+                  {shownExtras.length === 0 && (
+                    <tr><td colSpan={o.dayHeaders.length + 2} className="py-3 text-center text-muted-foreground">Ainda ninguém com disponibilidade para esta semana.</td></tr>
                   )}
                   {/* Totais por dia */}
                   <tr className="font-medium border-t-2">

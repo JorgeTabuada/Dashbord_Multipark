@@ -2070,6 +2070,27 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // Ativa/desativa o colaborador E, em cascata, o utilizador associado
+    // (login + notificações por email param imediatamente). Útil p/ extras.
+    setActive: protectedProcedure
+      .input(z.object({ id: z.number(), isActive: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "admin");
+        const found = await getEmployeeById(input.id);
+        if (!found) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado" });
+        await updateEmployee(input.id, { isActive: input.isActive ? 1 : 0 } as any);
+        const userId = found.employee.userId;
+        if (userId) await toggleUserActive(userId, input.isActive);
+        await logActivity({
+          userId: ctx.user.id,
+          action: input.isActive ? "activate" : "deactivate",
+          entity: "employee",
+          entityId: input.id,
+          details: `${input.isActive ? "Ativado" : "Desativado"} colaborador ${found.employee.fullName}${userId ? " + utilizador" : ""}`,
+        });
+        return { success: true, cascadedUser: !!userId };
+      }),
+
     uploadPhoto: protectedProcedure
       .input(z.object({ employeeId: z.number(), fileBase64: z.string(), mimeType: z.string() }))
       .mutation(async ({ ctx, input }) => {

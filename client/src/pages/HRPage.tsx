@@ -1191,6 +1191,14 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
     },
     onError: (e) => toast.error(e.message),
   });
+  const setActive = trpc.rh.setActive.useMutation({
+    onSuccess: (r) => {
+      utils.rh.byId.invalidate({ id: employeeId });
+      utils.rh.list.invalidate();
+      toast.success(r.cascadedUser ? "Estado alterado (colaborador + login)" : "Estado alterado");
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const photoRef = useRef<HTMLInputElement>(null);
   const uploadPhoto = trpc.rh.uploadPhoto.useMutation({
     onSuccess: () => { utils.rh.byId.invalidate({ id: employeeId }); toast.success("Foto atualizada!"); },
@@ -1271,7 +1279,26 @@ function EmployeeDetail({ employeeId, onBack }: { employeeId: number; onBack: ()
         <Button variant="ghost" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Voltar</Button>
         <h2 className="text-xl font-semibold">{emp.fullName}</h2>
         <Badge className={POSITION_COLORS[emp.position as Position]}>{POSITION_LABELS[emp.position as Position]}</Badge>
+        <Badge variant={emp.isActive ? "default" : "secondary"} className={emp.isActive ? "bg-green-600" : "bg-muted text-muted-foreground"}>
+          {emp.isActive ? "Ativo" : "Inativo"}
+        </Badge>
         <div className="flex-1" />
+        {!editing && (
+          <Button
+            variant={emp.isActive ? "outline" : "default"}
+            disabled={setActive.isPending}
+            onClick={() => {
+              const turningOff = !!emp.isActive;
+              if (!confirm(turningOff
+                ? `Desativar ${emp.fullName}? O login e as notificações por email ficam imediatamente bloqueados.`
+                : `Reativar ${emp.fullName}? Volta a ter acesso e a receber emails.`)) return;
+              setActive.mutate({ id: employeeId, isActive: !emp.isActive });
+            }}
+          >
+            {emp.isActive ? <X className="w-4 h-4 mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            {emp.isActive ? "Desativar" : "Reativar"}
+          </Button>
+        )}
         {!editing ? (
           <Button variant="outline" onClick={startEditing}>
             <Pencil className="w-4 h-4 mr-2" /> Editar
