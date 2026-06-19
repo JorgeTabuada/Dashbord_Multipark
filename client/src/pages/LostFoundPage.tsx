@@ -20,6 +20,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import BookingSearchField from "@/components/BookingSearchField";
 import ClientHistoryCard from "@/components/ClientHistoryCard";
+import CaseAssignmentCard from "@/components/CaseAssignmentCard";
 import {
   Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
@@ -387,6 +388,8 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
     return filterBookingHistory(mapped, "theft")
       .sort((a: any, b: any) => new Date(b.actionDate || 0).getTime() - new Date(a.actionDate || 0).getTime());
   }, [apiTimeline]);
+  const { data: lfProjects = [] } = trpc.projects.list.useQuery();
+  const { data: lfEmployees = [] } = trpc.rh.list.useQuery();
   const updateMut = trpc.lostFound.update.useMutation();
   const uploadPhotoMut = trpc.lostFound.uploadPhoto.useMutation();
   const addMsgMut = trpc.lostFound.addMessage.useMutation();
@@ -572,6 +575,20 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 phone={item.clientPhone}
                 plate={item.vehiclePlate}
                 name={item.clientName}
+              />
+
+              <CaseAssignmentCard
+                projectId={item.projectId}
+                assigneeId={item.assignedTo}
+                dueDate={item.dueDate}
+                closedAt={item.closedAt}
+                projects={(lfProjects as any[]).map(p => ({ id: p.id, name: p.name }))}
+                people={(lfEmployees as any[]).map(e => e.employee ?? e).map((e: any) => ({ id: e.id, fullName: e.fullName }))}
+                saving={updateMut.isPending}
+                onSave={(patch) => updateMut.mutate({
+                  id: item.id, projectId: patch.projectId, assignedTo: patch.assigneeId,
+                  investigatedById: patch.assigneeId, dueDate: patch.dueDate,
+                } as any, { onSuccess: () => { utils.lostFound.getById.invalidate({ id: item.id }); toast.success("Atribuição guardada"); } })}
               />
 
               {item.vehiclePlate && (

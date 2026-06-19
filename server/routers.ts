@@ -546,6 +546,24 @@ async function applyMigration0052(): Promise<{ ok: number; skipped: number; fail
   return { ok, skipped, failed, errors };
 }
 
+async function applyMigration0053(): Promise<{ ok: number; skipped: number; failed: number; errors: string[] }> {
+  const { getDb } = await import("./db");
+  const { MIGRATION_0053_STATEMENTS, IDEMPOTENT_ERROR_CODES_0053 } = await import("./migrations/migration_0053");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  let ok = 0, skipped = 0, failed = 0;
+  const errors: string[] = [];
+  for (const stmt of MIGRATION_0053_STATEMENTS) {
+    try { await db.execute(sql.raw(stmt)); ok += 1; }
+    catch (err: any) {
+      if (err?.code && IDEMPOTENT_ERROR_CODES_0053.has(err.code)) skipped += 1;
+      else { failed += 1; errors.push(`${err?.code ?? "ERR"}: ${String(err?.message ?? err).slice(0, 200)}`); }
+    }
+  }
+  return { ok, skipped, failed, errors };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -631,6 +649,18 @@ export const appRouter = router({
         action: "migration",
         entity: "schema",
         details: `0052_lostfound_return_fields: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
+      });
+      return report;
+    }),
+
+    runMigration0053: protectedProcedure.mutation(async ({ ctx }) => {
+      requireRole(ctx.user.role, "super_admin");
+      const report = await applyMigration0053();
+      await logActivity({
+        userId: ctx.user.id,
+        action: "migration",
+        entity: "schema",
+        details: `0053_case_assignment_audit: ok=${report.ok} skipped=${report.skipped} failed=${report.failed}`,
       });
       return report;
     }),
@@ -3967,15 +3997,20 @@ export const appRouter = router({
       driversInvolved: z.string().optional(),
       slaHours: z.number().optional(),
       penaltyPoints: z.number().int().optional(),
+      // Atribuição/prazo/auditoria
+      projectId: z.number().nullable().optional(),
+      dueDate: z.string().nullable().optional(),
+      investigatedById: z.number().nullable().optional(),
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const { id, slaHours, type, status, priority, penaltyPoints, ...rest } = input;
+      const { id, slaHours, type, status, priority, penaltyPoints, dueDate, ...rest } = input;
       const updateData: any = { ...rest };
       // Map to actual DB column names
       if (type) updateData.complaintType = type;
       if (status) updateData.complaintStatus = status;
       if (priority) updateData.complaintPriority = priority;
       if (penaltyPoints !== undefined) updateData.penaltyPoints = penaltyPoints;
+      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
       // slaHours: 0 limpa o prazo, > 0 redefine. Antes 0 era ignorado.
       if (slaHours !== undefined) {
         updateData.slaDeadline = slaHours > 0
@@ -3983,6 +4018,14 @@ export const appRouter = router({
           : null;
       }
       if (status === "resolved") updateData.resolvedAt = new Date();
+      // Auditoria de fecho: quem fechou e quando (em resolved/closed).
+      if (status === "resolved" || status === "closed") {
+        const existing = await getComplaintById(id);
+        if (existing && existing.complaintStatus !== "resolved" && existing.complaintStatus !== "closed") {
+          updateData.closedById = ctx.user.id;
+          updateData.closedAt = new Date();
+        }
+      }
       await updateComplaint(id, updateData);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "complaint", entityId: id, details: `Reclamação atualizada` });
       return { success: true };
@@ -4523,9 +4566,24 @@ export const appRouter = router({
       foundByName: z.string().nullable().optional(),
       returnMethod: z.string().nullable().optional(),
       returnedAt: z.string().nullable().optional(),
+      // Atribuição / prazo / auditoria
+      projectId: z.number().nullable().optional(),
+      dueDate: z.string().nullable().optional(),
+      investigatedById: z.number().nullable().optional(),
     })).mutation(async ({ ctx, input }) => {
       requireRole(ctx.user.role, "frontoffice");
-      const { id, ...data } = input;
+      const { id, dueDate, status, ...rest } = input;
+      const data: any = { ...rest };
+      if (status) data.status = status;
+      if (dueDate !== undefined) data.dueDate = dueDate ? dueDate.slice(0, 19).replace("T", " ") : null;
+      // Auditoria de fecho (returned/closed): quem fechou e quando.
+      if (status === "returned" || status === "closed") {
+        const existing = await getLostFoundItemById(id);
+        if (existing && existing.status !== "returned" && existing.status !== "closed") {
+          data.closedById = ctx.user.id;
+          data.closedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+        }
+      }
       await updateLostFoundItem(id, data as any);
       await logActivity({ userId: ctx.user.id, action: "update", entity: "lost_found", entityId: id, details: `Atualizado: ${JSON.stringify(data)}` });
       return { success: true };

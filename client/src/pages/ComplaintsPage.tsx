@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import ClientHistoryCard from "@/components/ClientHistoryCard";
+import CaseAssignmentCard from "@/components/CaseAssignmentCard";
 import { useState, useMemo } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
@@ -367,6 +368,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
   }, [apiTimeline]);
   const { data: vehicles = [] } = trpc.operational.vehicles.list.useQuery();
   const { data: employees = [] } = trpc.rh.list.useQuery();
+  const { data: projectsList = [] } = trpc.projects.list.useQuery();
   const updateMut = trpc.complaints.update.useMutation();
   const addMsgMut = trpc.complaints.addMessage.useMutation();
   const uploadPhotoMut = trpc.complaints.uploadPhoto.useMutation();
@@ -684,6 +686,20 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               />
             </CardContent>
           </Card>
+
+          <CaseAssignmentCard
+            projectId={c.projectId}
+            assigneeId={c.assignedToId}
+            dueDate={c.dueDate}
+            closedAt={c.closedAt}
+            projects={(projectsList as any[]).map(p => ({ id: p.id, name: p.name }))}
+            people={(employees as any[]).map(e => e.employee ?? e).map((e: any) => ({ id: e.id, fullName: e.fullName }))}
+            saving={updateMut.isPending}
+            onSave={(patch) => updateMut.mutate({
+              id, projectId: patch.projectId, assignedToId: patch.assigneeId,
+              investigatedById: patch.assigneeId, dueDate: patch.dueDate,
+            } as any, { onSuccess: () => { utils.complaints.getById.invalidate({ id }); toast.success("Atribuição guardada"); } })}
+          />
 
           <ClientHistoryCard
             email={c.clientEmail}

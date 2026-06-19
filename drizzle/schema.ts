@@ -246,6 +246,10 @@ export const complaints = mysqlTable("complaints", {
 	clientEmailSentAt: timestamp({ mode: 'string' }),
 	clientEmailSubject: varchar({ length: 255 }),
 	clientEmailBody: text(),
+	dueDate: timestamp({ mode: 'string' }),
+	investigatedById: int(),
+	closedById: int(),
+	closedAt: timestamp({ mode: 'string' }),
 });
 
 export const dailyDriverHistory = mysqlTable("daily_driver_history", {
@@ -600,6 +604,10 @@ export const lostFoundItems = mysqlTable("lost_found_items", {
 	returnPhotoUrl: text(),
 	returnPhotoKey: varchar({ length: 512 }),
 	clientEmailSentAt: timestamp({ mode: 'string' }),
+	dueDate: timestamp({ mode: 'string' }),
+	investigatedById: int(),
+	closedById: int(),
+	closedAt: timestamp({ mode: 'string' }),
 	createdBy: int().notNull(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
