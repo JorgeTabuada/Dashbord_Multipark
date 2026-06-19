@@ -3993,6 +3993,9 @@ export const appRouter = router({
       clientName: z.string().optional(),
       clientEmail: z.string().optional(),
       clientPhone: z.string().optional(),
+      vehiclePlate: z.string().nullable().optional(),
+      reservationRef: z.string().nullable().optional(),
+      clientNotes: z.string().nullable().optional(),
       assignedToId: z.number().nullable().optional(),
       driversInvolved: z.string().optional(),
       slaHours: z.number().optional(),
@@ -4561,6 +4564,7 @@ export const appRouter = router({
       itemType: z.string().optional(),
       description: z.string().optional(),
       estimatedValue: z.number().optional(),
+      clientNotes: z.string().nullable().optional(),
       // Devolução estruturada
       foundLocation: z.string().nullable().optional(),
       foundByName: z.string().nullable().optional(),

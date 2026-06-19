@@ -250,6 +250,7 @@ export const complaints = mysqlTable("complaints", {
 	investigatedById: int(),
 	closedById: int(),
 	closedAt: timestamp({ mode: 'string' }),
+	clientNotes: text(),
 });
 
 export const dailyDriverHistory = mysqlTable("daily_driver_history", {
@@ -608,6 +609,7 @@ export const lostFoundItems = mysqlTable("lost_found_items", {
 	investigatedById: int(),
 	closedById: int(),
 	closedAt: timestamp({ mode: 'string' }),
+	clientNotes: text(),
 	createdBy: int().notNull(),
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),

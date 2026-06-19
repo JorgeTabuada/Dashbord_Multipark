@@ -395,6 +395,9 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
       clientName: c.clientName || "",
       clientEmail: c.clientEmail || "",
       clientPhone: c.clientPhone || "",
+      vehiclePlate: c.vehiclePlate || "",
+      reservationRef: c.reservationRef || "",
+      clientNotes: c.clientNotes || "",
     });
     setIsEditing(true);
   };
@@ -410,6 +413,9 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
         clientName: editForm.clientName || undefined,
         clientEmail: editForm.clientEmail || undefined,
         clientPhone: editForm.clientPhone || undefined,
+        vehiclePlate: editForm.vehiclePlate || null,
+        reservationRef: editForm.reservationRef || null,
+        clientNotes: editForm.clientNotes || null,
       });
       utils.complaints.getById.invalidate({ id });
       utils.complaints.list.invalidate();
@@ -677,6 +683,9 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               <div><span className="text-muted-foreground">Nome:</span> <span className="font-medium">{c.clientName || "—"}</span></div>
               <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{c.clientEmail || "—"}</span></div>
               <div><span className="text-muted-foreground">Telefone:</span> <span className="font-medium">{c.clientPhone || "—"}</span></div>
+              {c.clientNotes && (
+                <div className="text-xs bg-muted/50 rounded p-2 whitespace-pre-wrap"><span className="text-muted-foreground">Notas: </span>{c.clientNotes}</div>
+              )}
               <SendClientEmailButton
                 complaintId={id}
                 clientEmail={c.clientEmail}
@@ -746,6 +755,11 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                     <div><Label>Email</Label><Input value={editForm.clientEmail} onChange={e => setEditForm((f: any) => ({ ...f, clientEmail: e.target.value }))} /></div>
                     <div><Label>Telefone</Label><Input value={editForm.clientPhone} onChange={e => setEditForm((f: any) => ({ ...f, clientPhone: e.target.value }))} /></div>
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><Label>Matrícula</Label><Input value={editForm.vehiclePlate} onChange={e => setEditForm((f: any) => ({ ...f, vehiclePlate: e.target.value }))} /></div>
+                    <div><Label>Ref. Reserva</Label><Input value={editForm.reservationRef} onChange={e => setEditForm((f: any) => ({ ...f, reservationRef: e.target.value }))} /></div>
+                  </div>
+                  <div><Label>Notas / dados adicionais do cliente</Label><Textarea value={editForm.clientNotes} onChange={e => setEditForm((f: any) => ({ ...f, clientNotes: e.target.value }))} rows={3} placeholder="Ex: 2º contacto, NIF, morada, indicações do cliente…" /></div>
                 </div>
               )}
               <DialogFooter>

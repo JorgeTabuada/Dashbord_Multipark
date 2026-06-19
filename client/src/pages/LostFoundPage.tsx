@@ -416,6 +416,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
       description: item.description || "",
       estimatedValue: item.estimatedValue || 0,
       priority: item.priority || "medium",
+      clientNotes: item.clientNotes || "",
     });
     setIsEditing(true);
   };
@@ -433,6 +434,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
         description: editForm.description || undefined,
         estimatedValue: editForm.estimatedValue ? Number(editForm.estimatedValue) : undefined,
         priority: editForm.priority || undefined,
+        clientNotes: editForm.clientNotes || null,
       });
       utils.lostFound.getById.invalidate({ id });
       utils.lostFound.list.invalidate();
@@ -567,6 +569,9 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                       <p className="font-medium">{item.bookingRef || "N/A"}</p>
                     </div>
                   </div>
+                  {item.clientNotes && (
+                    <div className="text-xs bg-muted/50 rounded p-2 whitespace-pre-wrap mt-2"><span className="text-muted-foreground">Notas: </span>{item.clientNotes}</div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -892,6 +897,7 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               </div>
               <div><Label>Valor Estimado (€)</Label><Input type="number" value={editForm.estimatedValue} onChange={e => setEditForm((f: any) => ({ ...f, estimatedValue: e.target.value }))} /></div>
               <div><Label>Descrição</Label><Textarea value={editForm.description} onChange={e => setEditForm((f: any) => ({ ...f, description: e.target.value }))} rows={3} /></div>
+              <div><Label>Notas / dados adicionais do cliente</Label><Textarea value={editForm.clientNotes} onChange={e => setEditForm((f: any) => ({ ...f, clientNotes: e.target.value }))} rows={3} placeholder="Ex: 2º contacto, NIF, morada, indicações…" /></div>
             </div>
           )}
           <DialogFooter>
