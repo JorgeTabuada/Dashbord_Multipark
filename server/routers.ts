@@ -3975,6 +3975,14 @@ export const appRouter = router({
         if (r.ok) {
           // Responder ao cliente → reclamação passa a "aguarda cliente".
           await updateComplaint(input.complaintId, { complaintStatus: "waiting_client" } as any);
+          // Transcreve o email enviado como mensagem do caso (histórico da conversa).
+          await addComplaintMessage({
+            complaintId: input.complaintId,
+            message: `📤 Email enviado ao cliente — ${input.subject}\n\n${input.body}`,
+            isInternal: 0,
+            authorId: ctx.user.id,
+            authorName: ctx.user.name ?? "Multipark",
+          } as any);
           await logActivity({
             userId: ctx.user.id, action: "email_sent", entity: "complaint",
             entityId: input.complaintId, details: `Email para cliente: ${input.subject}`,
@@ -4631,6 +4639,14 @@ export const appRouter = router({
       });
       if (!ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Falha ao enviar email (SMTP)" });
       await updateLostFoundItem(input.itemId, { clientEmailSentAt: new Date().toISOString().slice(0, 19).replace("T", " ") } as any);
+      // Transcreve o email enviado como mensagem do caso (histórico da conversa).
+      await addLostFoundMessage({
+        itemId: input.itemId,
+        userId: ctx.user.id,
+        userName: ctx.user.name ?? "Multipark",
+        message: `📤 Email enviado ao cliente — ${input.subject}\n\n${input.body}`,
+        isInternal: 0,
+      } as any);
       await logActivity({ userId: ctx.user.id, action: "email_sent", entity: "lost_found", entityId: input.itemId, details: `Email para cliente: ${input.subject}` });
       return { ok: true };
     }),

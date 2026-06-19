@@ -1472,7 +1472,12 @@ function ReturnEmailDialog({ item, onClose }: { item: any; onClose: () => void }
     `Pode levantá-lo no parque ou responder a este email para combinarmos a devolução.\n\nObrigado.`
   );
   const send = trpc.lostFound.sendEmailToClient.useMutation({
-    onSuccess: () => { utils.lostFound.getById.invalidate({ id: item.id }); toast.success("Email enviado ao cliente"); onClose(); },
+    onSuccess: () => {
+      utils.lostFound.getById.invalidate({ id: item.id });
+      utils.lostFound.getMessages.invalidate({ itemId: item.id });
+      toast.success("Email enviado ao cliente (e registado nas mensagens)");
+      onClose();
+    },
     onError: (e) => toast.error(e.message),
   });
   return (
