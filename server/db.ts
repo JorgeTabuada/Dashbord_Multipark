@@ -7551,6 +7551,45 @@ export async function listInboundEmailsByAlias(alias: string, limit = 100) {
     .limit(limit);
 }
 
+// Pesquisa emails inbound de um alias (from/subject/cliente) para anexar à mão.
+export async function searchInboundEmails(alias: string, search?: string | null, limit = 60) {
+  const db = await getDb();
+  if (!db) return [];
+  const conds: any[] = [eq(inboundEmails.alias, alias)];
+  const q = (search ?? "").trim();
+  if (q) {
+    const pat = `%${q}%`;
+    conds.push(or(
+      like(inboundEmails.fromEmail, pat),
+      like(inboundEmails.fromName, pat),
+      like(inboundEmails.clientEmail, pat),
+      like(inboundEmails.clientName, pat),
+      like(inboundEmails.subject, pat),
+    ));
+  }
+  return db.select({
+    id: inboundEmails.id, fromName: inboundEmails.fromName, fromEmail: inboundEmails.fromEmail,
+    clientName: inboundEmails.clientName, clientEmail: inboundEmails.clientEmail,
+    subject: inboundEmails.subject, bodyText: inboundEmails.bodyText,
+    targetModule: inboundEmails.targetModule, targetId: inboundEmails.targetId,
+    receivedAt: inboundEmails.receivedAt,
+  }).from(inboundEmails).where(and(...conds))
+    .orderBy(desc(inboundEmails.receivedAt), desc(inboundEmails.id)).limit(limit);
+}
+
+export async function getInboundEmailById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(inboundEmails).where(eq(inboundEmails.id, id)).limit(1);
+  return rows[0] || null;
+}
+
+export async function setInboundEmailTarget(id: number, targetModule: string, targetId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(inboundEmails).set({ targetModule, targetId }).where(eq(inboundEmails.id, id));
+}
+
 // Procura um colaborador por email exato, por nome (parcial) ou via o user
 // associado (employees.userId = users.id com esse email).
 export async function findEmployeeByEmailOrName(needle: string) {

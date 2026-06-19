@@ -6217,6 +6217,42 @@ export const appRouter = router({
         const { getClientHistory } = await import("./db");
         return getClientHistory(input);
       }),
+
+    // Lista/pesquisa emails inbound de um alias, para anexar à mão a um caso.
+    inboundEmails: protectedProcedure
+      .input(z.object({ alias: z.enum(["reclamacoes", "perdidos", "criticas", "recursos-humanos"]), search: z.string().nullable().optional() }))
+      .query(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { searchInboundEmails } = await import("./db");
+        return searchInboundEmails(input.alias, input.search);
+      }),
+
+    // Anexa um email inbound a um caso: transcreve o conteúdo como MENSAGEM do
+    // caso e marca o email como pertencendo a esse caso. Para o cenário multi-
+    // identidade (ex.: email do marido) que o match automático não apanha.
+    linkInbound: protectedProcedure
+      .input(z.object({
+        inboundId: z.number(),
+        module: z.enum(["complaint", "lostfound"]),
+        caseId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireRole(ctx.user.role, "frontoffice");
+        const { getInboundEmailById, setInboundEmailTarget } = await import("./db");
+        const em = await getInboundEmailById(input.inboundId);
+        if (!em) throw new TRPCError({ code: "NOT_FOUND", message: "Email não encontrado" });
+        const who = em.clientName || em.fromName || em.fromEmail || "Cliente";
+        const msg = `📥 Email do cliente (${who}) — ${em.subject || "(sem assunto)"}\n\n${em.bodyText || ""}`.slice(0, 5000);
+        if (input.module === "complaint") {
+          await addComplaintMessage({ complaintId: input.caseId, message: msg, isInternal: 0, authorName: who } as any);
+          await setInboundEmailTarget(input.inboundId, "complaint", input.caseId);
+        } else {
+          await addLostFoundMessage({ itemId: input.caseId, userId: ctx.user.id, userName: who, message: msg, isInternal: 0 } as any);
+          await setInboundEmailTarget(input.inboundId, "lostfound", input.caseId);
+        }
+        await logActivity({ userId: ctx.user.id, action: "link_email", entity: input.module, entityId: input.caseId, details: `Email anexado: ${em.subject ?? ""}` });
+        return { ok: true };
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

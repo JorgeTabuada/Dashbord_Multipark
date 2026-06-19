@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import ClientHistoryCard from "@/components/ClientHistoryCard";
 import CaseAssignmentCard from "@/components/CaseAssignmentCard";
+import LinkInboundEmailButton from "@/components/LinkInboundEmailButton";
 import { useState, useMemo } from "react";
 import {
   AlertTriangle, Plus, MessageSquare, Camera, Clock, User, Car,
@@ -692,6 +693,11 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 clientName={c.clientName}
                 complaintTitle={c.title}
                 lastSentAt={c.clientEmailSentAt}
+              />
+              <LinkInboundEmailButton
+                module="complaint" alias="reclamacoes" caseId={id}
+                defaultSearch={c.clientEmail || c.clientName}
+                onLinked={() => utils.complaints.getById.invalidate({ id })}
               />
             </CardContent>
           </Card>

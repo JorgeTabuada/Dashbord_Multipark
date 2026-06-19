@@ -21,6 +21,7 @@ import { useLocation } from "wouter";
 import BookingSearchField from "@/components/BookingSearchField";
 import ClientHistoryCard from "@/components/ClientHistoryCard";
 import CaseAssignmentCard from "@/components/CaseAssignmentCard";
+import LinkInboundEmailButton from "@/components/LinkInboundEmailButton";
 import {
   Search, Plus, Clock, User, Car,
   ChevronRight, ChevronLeft, Send, Eye, Trash2, Upload, Pencil,
@@ -580,6 +581,12 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
                 phone={item.clientPhone}
                 plate={item.vehiclePlate}
                 name={item.clientName}
+              />
+
+              <LinkInboundEmailButton
+                module="lostfound" alias="perdidos" caseId={item.id}
+                defaultSearch={item.clientEmail || item.clientName}
+                onLinked={() => utils.lostFound.getMessages.invalidate({ itemId: item.id })}
               />
 
               <CaseAssignmentCard
