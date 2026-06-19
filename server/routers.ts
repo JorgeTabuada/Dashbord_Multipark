@@ -4681,6 +4681,36 @@ export const appRouter = router({
       return { success: true };
     }),
 
+    // ── Condutores anexados ao caso (roubos) ──────────────────────────────
+    attachedDrivers: protectedProcedure.input(z.object({ itemId: z.number() })).query(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { listLostFoundDrivers } = await import("./db");
+      return listLostFoundDrivers(input.itemId);
+    }),
+
+    attachDriver: protectedProcedure.input(z.object({
+      itemId: z.number(),
+      employeeId: z.number().nullable().optional(),
+      driverName: z.string().min(1),
+      source: z.enum(["history", "manual"]).default("manual"),
+      movementDate: z.string().nullable().optional(),
+      movementsSummary: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { attachLostFoundDriver } = await import("./db");
+      const id = await attachLostFoundDriver({ ...input, attachedById: ctx.user.id });
+      await logActivity({ userId: ctx.user.id, action: "attach_driver", entity: "lost_found", entityId: input.itemId, details: `Condutor anexado: ${input.driverName}` });
+      return { id };
+    }),
+
+    detachDriver: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      requireRole(ctx.user.role, "frontoffice");
+      const { detachLostFoundDriver } = await import("./db");
+      await detachLostFoundDriver(input.id);
+      return { success: true };
+    }),
+
     // Driver ranking (cruzamento de dados)
     driverRanking: protectedProcedure.query(({ ctx }) => {
       requireRole(ctx.user.role, "frontoffice");

@@ -54,6 +54,7 @@ import {
   lostFoundItems,
   lostFoundPhotos,
   lostFoundMessages,
+  lostFoundAttachedDrivers,
   incidents,
   performanceEvaluations,
   services,
@@ -110,6 +111,7 @@ async function ensureRecentSchema(db: NonNullable<typeof _db>): Promise<void> {
       import("./migrations/migration_0052").then(m => ({ s: m.MIGRATION_0052_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0052 })),
       import("./migrations/migration_0053").then(m => ({ s: m.MIGRATION_0053_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0053 })),
       import("./migrations/migration_0054").then(m => ({ s: m.MIGRATION_0054_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0054 })),
+      import("./migrations/migration_0055").then(m => ({ s: m.MIGRATION_0055_STATEMENTS, ok: m.IDEMPOTENT_ERROR_CODES_0055 })),
     ]);
     for (const { s, ok } of mods) {
       for (const stmt of s) {
@@ -2467,6 +2469,38 @@ export async function getLostFoundPhotos(itemId: number) {
 export async function addLostFoundMessage(data: Omit<LostFoundMessage, "id" | "createdAt">) {
   const db = await getDb(); if (!db) return;
   await db.insert(lostFoundMessages).values(data as any);
+}
+
+// ── Condutores anexados a um caso (roubos) ────────────────────────────────────
+export async function attachLostFoundDriver(data: {
+  itemId: number; employeeId?: number | null; driverName: string;
+  source: string; movementDate?: string | null; movementsSummary?: string | null;
+  notes?: string | null; attachedById?: number | null;
+}) {
+  const db = await getDb(); if (!db) throw new Error("DB unavailable");
+  const r = await db.insert(lostFoundAttachedDrivers).values({
+    itemId: data.itemId,
+    employeeId: data.employeeId ?? null,
+    driverName: data.driverName,
+    source: data.source,
+    movementDate: data.movementDate ?? null,
+    movementsSummary: data.movementsSummary ?? null,
+    notes: data.notes ?? null,
+    attachedById: data.attachedById ?? null,
+  });
+  return Number((r[0] as any).insertId);
+}
+
+export async function listLostFoundDrivers(itemId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(lostFoundAttachedDrivers)
+    .where(eq(lostFoundAttachedDrivers.itemId, itemId))
+    .orderBy(desc(lostFoundAttachedDrivers.createdAt));
+}
+
+export async function detachLostFoundDriver(id: number) {
+  const db = await getDb(); if (!db) return;
+  await db.delete(lostFoundAttachedDrivers).where(eq(lostFoundAttachedDrivers.id, id));
 }
 
 export async function getLostFoundMessages(itemId: number) {

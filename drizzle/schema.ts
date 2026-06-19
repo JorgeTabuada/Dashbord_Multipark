@@ -634,6 +634,23 @@ export const lostFoundPhotos = mysqlTable("lost_found_photos", {
 	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
 });
 
+export const lostFoundAttachedDrivers = mysqlTable("lost_found_attached_drivers", {
+	id: int().autoincrement().primaryKey(),
+	itemId: int().notNull(),
+	employeeId: int(),
+	driverName: varchar({ length: 256 }).notNull(),
+	source: varchar({ length: 32 }).default('manual').notNull(),
+	movementDate: varchar({ length: 10 }),
+	movementsSummary: varchar({ length: 512 }),
+	notes: varchar({ length: 512 }),
+	attachedById: int(),
+	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
+},
+(table) => [
+	index("idx_lfad_item").on(table.itemId),
+	index("idx_lfad_employee").on(table.employeeId),
+]);
+
 export const bookingHistory = mysqlTable("booking_history", {
 	id: int().autoincrement().primaryKey(),
 	historyId: varchar({ length: 128 }).notNull(),

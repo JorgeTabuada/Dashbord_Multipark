@@ -618,6 +618,12 @@ function DetailView({ id, user, onBack }: { id: number; user: any; onBack: () =>
               )}
 
               <ReturnPanel item={item} />
+
+              <CaseDriversPanel
+                itemId={item.id}
+                agents={vehicleAgents as any[]}
+                employees={(lfEmployees as any[]).map(e => e.employee ?? e).map((e: any) => ({ id: e.id, fullName: e.fullName }))}
+              />
             </TabsContent>
 
             <TabsContent value="messages" className="space-y-4">
@@ -1494,5 +1500,97 @@ function ReturnEmailDialog({ item, onClose }: { item: any; onClose: () => void }
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Condutores do caso (roubos): anexar quem mexeu no carro ──────────────────
+function CaseDriversPanel({ itemId, agents, employees }: {
+  itemId: number;
+  agents: any[];
+  employees: { id: number; fullName: string }[];
+}) {
+  const utils = trpc.useUtils();
+  const { data: attached = [] } = trpc.lostFound.attachedDrivers.useQuery({ itemId });
+  const attach = trpc.lostFound.attachDriver.useMutation({
+    onSuccess: () => { utils.lostFound.attachedDrivers.invalidate({ itemId }); toast.success("Condutor anexado"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const detach = trpc.lostFound.detachDriver.useMutation({
+    onSuccess: () => { utils.lostFound.attachedDrivers.invalidate({ itemId }); toast.success("Removido"); },
+  });
+  const [empId, setEmpId] = useState("none");
+  const [date, setDate] = useState("");
+  const [note, setNote] = useState("");
+  const attachedNames = new Set((attached as any[]).map(a => (a.driverName || "").toLowerCase()));
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <User className="w-4 h-4 text-primary" /> Condutores do caso
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {(attached as any[]).length > 0 ? (attached as any[]).map(a => (
+          <div key={a.id} className="flex items-start justify-between border-b last:border-0 py-1 gap-2">
+            <div className="min-w-0">
+              <span className="font-medium">{a.driverName}</span>
+              {a.movementDate && <span className="text-xs text-muted-foreground ml-2">{a.movementDate}</span>}
+              {a.source === "history" && <Badge variant="outline" className="ml-2 text-[10px]">do carro</Badge>}
+              {a.movementsSummary && <p className="text-xs text-muted-foreground">{a.movementsSummary}</p>}
+              {a.notes && <p className="text-xs">{a.notes}</p>}
+            </div>
+            <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => detach.mutate({ id: a.id })}><Trash2 className="w-3 h-3" /></Button>
+          </div>
+        )) : <p className="text-xs text-muted-foreground">Nenhum condutor anexado a este caso.</p>}
+
+        {agents.length > 0 && (
+          <div className="border-t pt-2">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Quem mexeu no carro (1 clique p/ anexar)</p>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {agents.map((ag, i) => {
+                const summary = `${ag.actions} ações · ${ag.checkins} entr. / ${ag.checkouts} saí. / ${ag.movements} mov.`;
+                const linked = attachedNames.has((ag.agentName || "").toLowerCase());
+                return (
+                  <div key={i} className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs">
+                      <span className="font-medium">{ag.agentName}</span> · {summary}
+                      {ag.flagged ? <Badge variant="outline" className="ml-1 text-[10px] text-red-600 border-red-300">tocou nesta reserva</Badge> : null}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={linked || attach.isPending}
+                      onClick={() => attach.mutate({ itemId, driverName: ag.agentName, source: "history", movementDate: ag.lastActionAt ? String(ag.lastActionAt).slice(0, 10) : null, movementsSummary: summary })}>
+                      {linked ? "anexado" : "Anexar"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="border-t pt-2 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Anexar manualmente (qualquer colaborador)</p>
+          <div className="flex gap-2 items-end flex-wrap">
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs">Colaborador</Label>
+              <Select value={empId} onValueChange={setEmpId}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">—</SelectItem>
+                  {employees.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label className="text-xs">Data</Label><Input type="date" className="w-36" value={date} onChange={e => setDate(e.target.value)} /></div>
+          </div>
+          <Input placeholder="Nota (opcional)" value={note} onChange={e => setNote(e.target.value)} />
+          <Button size="sm" disabled={empId === "none" || attach.isPending} onClick={() => {
+            const emp = employees.find(e => String(e.id) === empId); if (!emp) return;
+            attach.mutate({ itemId, employeeId: emp.id, driverName: emp.fullName, source: "manual", movementDate: date || null, notes: note || null });
+            setEmpId("none"); setDate(""); setNote("");
+          }}>Anexar colaborador</Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
