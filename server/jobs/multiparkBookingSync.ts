@@ -293,6 +293,13 @@ function bookingToRecord(
 const ENRICH_CONCURRENCY = 5;
 const ENRICH_MAX_PER_SYNC = 30; // cap to fit within Vercel function timeout
 
+// Max simultaneous /bookings/report calls in the sync fan-out. Each report
+// request holds several be-multipark Prisma connections for its duration;
+// firing all parks×actionTypes (~108) at once via Promise.allSettled saturated
+// the 25→40-slot pool and produced P2024 cascades. Cap the fan-out so the pool
+// drains comfortably (tunable 6–8). See memory/p2024-regression-sync-burst.md.
+const REPORT_CONCURRENCY = 6;
+
 function nowMysql(): string {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
@@ -783,12 +790,20 @@ export async function syncBookings(opts: {
     }
   }
 
-  const perParkResults = await Promise.allSettled(jobs.map(async ({ park, actionType }) => {
+  let totalProcessed = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  const enrichTargets = new Set<string>();
+
+  // Bounded fan-out (was Promise.allSettled = unbounded ~108-wide burst). Up to
+  // REPORT_CONCURRENCY report calls run at once; the rest queue. JS is
+  // single-threaded, so the synchronous accumulations below are race-free
+  // across the concurrent workers. Per-job errors are still captured (the inner
+  // try/catch pushes into `errors`), matching the previous allSettled behaviour.
+  await runConcurrent(jobs, REPORT_CONCURRENCY, async ({ park, actionType }) => {
     const apiKey = park ? getParkApiKey(park) : undefined;
     const parkLabel = park ? `${park.name} ${park.city}` : "global";
-    let processed = 0, created = 0, updated = 0;
     const parkErrors: string[] = [];
-    const enrichIds: string[] = []; // reservas novas ou com mudança de estado
 
     try {
       const report = await getBookingsReport(opts.startDate, opts.endDate, actionType, apiKey);
@@ -798,13 +813,13 @@ export async function syncBookings(opts: {
             const record = bookingToRecord(booking, projectMap, aliasResolver);
             const result = await upsertMultiparkBooking(record);
             await upsertBookingExtras(booking.id, (booking as any).extraServices);
-            processed++;
-            if (result?.action === "created") created++;
-            else updated++;
+            totalProcessed++;
+            if (result?.action === "created") totalCreated++;
+            else totalUpdated++;
             // Marca para enriquecimento imediato: novas, ou as que mudaram de
             // estado (o detalhe foi reaberto via enrichedAt=null no upsert).
             if (result?.action === "created" || result?.statusChanged) {
-              enrichIds.push(booking.id);
+              enrichTargets.add(booking.id);
             }
           } catch (err: any) {
             parkErrors.push(`Booking ${booking.id}: ${err.message}`);
@@ -814,24 +829,8 @@ export async function syncBookings(opts: {
     } catch (err: any) {
       parkErrors.push(`${parkLabel}/${actionType}: ${err.message}`);
     }
-    return { processed, created, updated, errors: parkErrors, enrichIds };
-  }));
-
-  let totalProcessed = 0;
-  let totalCreated = 0;
-  let totalUpdated = 0;
-  const enrichTargets = new Set<string>();
-  for (const r of perParkResults) {
-    if (r.status === "fulfilled") {
-      totalProcessed += r.value.processed;
-      totalCreated += r.value.created;
-      totalUpdated += r.value.updated;
-      errors.push(...r.value.errors);
-      for (const id of r.value.enrichIds) enrichTargets.add(id);
-    } else {
-      errors.push(`Park task failed: ${r.reason?.message ?? r.reason}`);
-    }
-  }
+    if (parkErrors.length) errors.push(...parkErrors);
+  });
   // Nota: enrichment com /bookings/:id corre num endpoint separado
   // (multipark.enrichBatch) para evitar timeout do Vercel no sync.
 
